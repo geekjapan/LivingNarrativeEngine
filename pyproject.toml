@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 living-narrative = "living_narrative.cli:app"
+living-narrative-state-schemas = "living_narrative.state.schema_export:main"
 
 [dependency-groups]
 dev = [

@@ -1,13 +1,29 @@
-"""Pydantic v2 models for ``project.yaml`` (spec-foundation.md D105)."""
+"""Pydantic v2 models for project and state files."""
 
 import re
-from typing import Literal
+from enum import StrEnum
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from living_narrative.state.ids import id_type
 
 AutonomyLevel = Literal["manual", "assist", "auto", "watch", "god"]
 UserMode = Literal["watcher", "assistant_gm", "full_gm", "author", "player_character", "god"]
 PromptRecording = Literal["full", "hash_only"]
+Percent = Annotated[int, Field(ge=0, le=100)]
+
+WorldId = id_type("world")
+FactionId = id_type("faction")
+CharacterId = id_type("char")
+SceneId = id_type("scene")
+CanonId = id_type("canon")
+ReaderStateId = id_type("reader_state")
+GmVaultId = id_type("gm_vault")
+EventId = id_type("event")
+RollId = id_type("roll")
+ThreadId = id_type("thread")
+FactId = id_type("fact")
 
 _BINDING_KEY_FIXED = {
     "narrator",
@@ -72,3 +88,179 @@ class ProjectConfig(BaseModel):
                     f"entry {profile_name!r}"
                 )
         return self
+
+
+class Visibility(StrEnum):
+    GM_ONLY = "gm_only"
+    CANON = "canon"
+    CHARACTER = "character"
+    SCENE = "scene"
+    READER = "reader"
+
+
+class CharacterStatus(StrEnum):
+    ALIVE = "alive"
+    DEAD = "dead"
+    MISSING = "missing"
+
+
+class SceneStatus(StrEnum):
+    ACTIVE = "active"
+    ENDED = "ended"
+
+
+class StateBaseModel(BaseModel):
+    model_config = {"extra": "allow"}
+
+
+class WorldState(StateBaseModel):
+    id: WorldId
+    name: str
+    summary: str
+    laws: list[str] = Field(default_factory=list)
+    parameters: dict[str, Percent] = Field(default_factory=dict)
+
+
+class FactionState(StateBaseModel):
+    id: FactionId
+    name: str
+    public_face: str
+    goals: list[str] = Field(default_factory=list)
+    resources: dict[str, Percent] = Field(default_factory=dict)
+    relations: dict[CharacterId | FactionId | str, Percent] = Field(default_factory=dict)
+
+
+class CharacterGoals(StateBaseModel):
+    short_term: list[str] = Field(default_factory=list)
+    long_term: list[str] = Field(default_factory=list)
+
+
+class CharacterKnowledge(StateBaseModel):
+    knows: list[str] = Field(default_factory=list)
+    believes: list[str] = Field(default_factory=list)
+    does_not_know: list[str] = Field(default_factory=list)
+
+
+class CharacterState(StateBaseModel):
+    """Character state. ``private_mind`` is visible only to this character."""
+
+    id: CharacterId
+    name: str
+    role: str
+    traits: list[str] = Field(default_factory=list)
+    goals: CharacterGoals = Field(default_factory=CharacterGoals)
+    emotions: dict[str, Percent] = Field(default_factory=dict)
+    knowledge: CharacterKnowledge = Field(default_factory=CharacterKnowledge)
+    secrets: list[str] = Field(default_factory=list)
+    private_mind: list[str] = Field(default_factory=list)
+    inventory: list[str] = Field(default_factory=list)
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    status: CharacterStatus = CharacterStatus.ALIVE
+
+
+class RelationshipState(StateBaseModel):
+    from_: CharacterId = Field(alias="from")
+    to: CharacterId
+    trust: Percent
+    affection: Percent
+    tension: Percent
+    suspicion: Percent
+    notes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _reject_self_reference(self) -> "RelationshipState":
+        if self.from_ == self.to:
+            raise ValueError("relationship cannot reference the same character")
+        return self
+
+
+class HiddenFact(StateBaseModel):
+    id: FactId
+    text: str
+    visibility: Visibility
+    known_by: list[CharacterId] = Field(default_factory=list)
+
+
+class SceneState(StateBaseModel):
+    id: SceneId
+    location: str
+    time: str
+    active_characters: list[CharacterId] = Field(default_factory=list)
+    mood: str = ""
+    stakes: str = ""
+    reader_visible_facts: list[str] = Field(default_factory=list)
+    hidden_facts: list[HiddenFact] = Field(default_factory=list)
+    status: SceneStatus = SceneStatus.ACTIVE
+
+
+class CanonEntry(StateBaseModel):
+    id: CanonId
+    text: str
+    established_turn: int
+    source_event: EventId | None = None
+
+
+class ReaderStateEntry(StateBaseModel):
+    id: ReaderStateId
+    text: str
+    established_turn: int
+    source_event: EventId | None = None
+    disclosed_turn: int
+
+
+class GmVaultEntry(StateBaseModel):
+    id: GmVaultId
+    text: str
+    reveal_condition: str | None = None
+
+
+class TimelineEntry(StateBaseModel):
+    turn: int
+    event_ids: list[EventId] = Field(default_factory=list)
+
+
+class UnresolvedThread(StateBaseModel):
+    id: ThreadId
+    description: str
+    status: str
+    related_event_ids: list[EventId] = Field(default_factory=list)
+
+
+class Event(StateBaseModel):
+    id: EventId
+    turn: int
+    type: str
+    cause: str | None = None
+    text: str = Field(min_length=1)
+    visibility: Visibility
+    known_by: list[CharacterId] = Field(default_factory=list)
+    hidden_from: list[CharacterId] = Field(default_factory=list)
+    effects: dict[str, Any] = Field(default_factory=dict)
+    roll_ids: list[RollId] = Field(default_factory=list)
+
+    @field_validator("text")
+    @classmethod
+    def _reject_blank_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("text must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def _known_by_and_hidden_from_do_not_overlap(self) -> "Event":
+        overlap = set(self.known_by) & set(self.hidden_from)
+        if overlap:
+            raise ValueError(f"known_by and hidden_from overlap: {sorted(overlap)}")
+        return self
+
+
+class WorldStateBundle(StateBaseModel):
+    world: WorldState
+    factions: list[FactionState] = Field(default_factory=list)
+    characters: list[CharacterState] = Field(default_factory=list)
+    relationships: list[RelationshipState] = Field(default_factory=list)
+    scenes: list[SceneState] = Field(default_factory=list)
+    canon: list[CanonEntry] = Field(default_factory=list)
+    reader_state: list[ReaderStateEntry] = Field(default_factory=list)
+    gm_vault: list[GmVaultEntry] = Field(default_factory=list)
+    timeline: list[TimelineEntry] = Field(default_factory=list)
+    unresolved_threads: list[UnresolvedThread] = Field(default_factory=list)
