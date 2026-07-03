@@ -1,0 +1,79 @@
+import re
+
+import pytest
+
+from living_narrative.narration import (
+    NarratorContext,
+    RendererNotFoundError,
+    default_renderer_registry,
+    narrate,
+)
+from living_narrative.state.models import Event, Visibility
+
+_JAPANESE_RE = re.compile(r"[぀-ヿ一-鿿]")
+
+
+def _context() -> NarratorContext:
+    return NarratorContext(
+        turn=3,
+        reader_state_facts=["既知の事実"],
+        scene_reader_visible_facts=["駅は静かだ"],
+        reader_visible_events=[
+            Event(
+                id="event_0001",
+                turn=3,
+                type="action",
+                text="彼は歩き出した",
+                visibility=Visibility.READER,
+            )
+        ],
+    )
+
+
+def test_novel_renderer_produces_continuous_japanese_prose():
+    result = narrate(_context(), style="novel", mood="緊張")
+
+    assert result.style == "novel"
+    assert result.text
+    assert _JAPANESE_RE.search(result.text)
+    assert "駅は静かだ" in result.text
+    assert "彼は歩き出した" in result.text
+
+
+def test_log_renderer_produces_bulleted_log():
+    result = narrate(_context(), style="log")
+
+    assert result.style == "log"
+    assert result.text.startswith("# turn 3")
+    assert "- fact: 駅は静かだ" in result.text
+    assert "- event[action]: 彼は歩き出した" in result.text
+
+
+def test_narrator_falls_back_to_default_message_without_events_or_facts():
+    empty_context = NarratorContext(turn=1)
+
+    result = narrate(empty_context, style="novel")
+
+    assert result.text
+    assert _JAPANESE_RE.search(result.text)
+
+
+def test_unregistered_renderer_style_raises():
+    with pytest.raises(RendererNotFoundError):
+        narrate(_context(), style="script")
+
+
+def test_tone_control_value_is_passed_through_to_renderer():
+    captured = {}
+
+    def spy_renderer(context, mood, tone_control):
+        captured["mood"] = mood
+        captured["tone_control"] = tone_control
+        return "captured"
+
+    registry = default_renderer_registry()
+    registry.register("spy", spy_renderer)
+
+    narrate(_context(), style="spy", mood="静寂", tone_control="serious", registry=registry)
+
+    assert captured == {"mood": "静寂", "tone_control": "serious"}
