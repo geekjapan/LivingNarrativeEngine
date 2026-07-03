@@ -21,6 +21,7 @@ class InterventionHistoryEntry(BaseModel):
     type: str
     source_event_ids: list[str] = Field(default_factory=list)
     diff_id: str | None = None
+    applied_nothing: bool = False
     superseded_by_rerun: bool = False
 
 
@@ -60,6 +61,7 @@ def build_history_entries(
                 type=item["type"],
                 source_event_ids=source_event_ids,
                 diff_id=diff.id if has_diff_change else None,
+                applied_nothing=not diff.changes,
             )
         )
     return entries
@@ -69,7 +71,8 @@ def append_history(path: Path, new_entries: list[InterventionHistoryEntry]) -> N
     if not new_entries:
         return
     history = load_history(path)
-    history.entries.extend(new_entries)
+    existing_ids = {entry.id for entry in history.entries}
+    history.entries.extend(entry for entry in new_entries if entry.id not in existing_ids)
     _atomic_write_yaml(path, history.model_dump(mode="json"))
 
 
