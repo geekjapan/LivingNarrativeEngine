@@ -37,7 +37,7 @@
 - **THEN** `ValidationError` が送出される
 
 ### Requirement: Character モデル
-`CharacterState` は id/name/role/traits/goals(short_term/long_term)/emotions(0-100 整数の辞書)/knowledge(knows/believes/does_not_know の3リスト)/secrets/private_mind/inventory/constraints を持たなければならない(SHALL)。`traits`・`secrets`・`private_mind`・`inventory` はいずれも文字列のリストでなければならず(SHALL)、`constraints` はキーと値からなる辞書でなければならない(SHALL)。`private_mind` は情報スコープ上「本人のみ可視」(spec-foundation §4.1)であることをモデルのドキュメント文字列に明記しなければならない(SHALL)。
+`CharacterState` は id/name/role/traits/goals(short_term/long_term)/emotions(0-100 整数の辞書)/knowledge(knows/believes/does_not_know の3リスト)/secrets/private_mind/inventory/constraints/status を持たなければならない(SHALL)。`status` は `alive` | `dead` | `missing` の enum で既定値 `alive` でなければならず(SHALL)、他フィールドと同様 dot-path StateDiff(`op: set, path: status`)で変更できなければならない(SHALL、spec-foundation §4.4 D123。session-autonomy の `character_death` 停止条件が `dead` への遷移を機械的に判定するための材料であり、専用の判定機構は追加しない)。`traits`・`secrets`・`private_mind`・`inventory` はいずれも文字列のリストでなければならず(SHALL)、`constraints` はキーと値からなる辞書でなければならない(SHALL)。`private_mind` は情報スコープ上「本人のみ可視」(spec-foundation §4.1)であることをモデルのドキュメント文字列に明記しなければならない(SHALL)。
 
 #### Scenario: 完全な CharacterState の構築
 - **WHEN** 企画書 §14.4 の例のフィールドに加え、本 Requirement が定める `private_mind`/`inventory`/`constraints`(§14.4 には無い)を補った YAML から `CharacterState` を構築する
@@ -46,6 +46,10 @@
 #### Scenario: emotions が範囲外
 - **WHEN** `emotions.fear: -5` のように負の値で `CharacterState` を構築する
 - **THEN** `ValidationError` が送出される
+
+#### Scenario: state diff で status が dead に遷移する
+- **WHEN** `target: character, id: char_001, op: set, path: status, value: dead` を含む `StateDiff` を適用する
+- **THEN** 適用後の `CharacterState.status` は `dead` になる
 
 ### Requirement: Relationship モデル
 `RelationshipState` は有向ペア(`from`/`to` に character id)と trust/affection/tension/suspicion(いずれも 0-100 整数)、notes(文字列リスト)を持たなければならない(SHALL)。`from` と `to` が同一 character id の場合、`ValidationError` を送出しなければならない(SHALL)。
@@ -59,7 +63,7 @@
 - **THEN** `ValidationError` が送出される(自己参照の関係性は不正とする)
 
 ### Requirement: Scene モデル
-`SceneState` は id/location/time/active_characters(character id リスト)/mood/stakes/reader_visible_facts/hidden_facts を持たなければならない(SHALL)。`reader_visible_facts` と `hidden_facts` は spec-foundation §4.1 の Scene スコープに従い別フィールドとして分離しなければならない(SHALL)。`reader_visible_facts` は文字列のリスト(`list[str]`)のままとする(SHALL)。`hidden_facts` は `HiddenFact`(id=`fact_NNN`/text/visibility: `Visibility`/known_by: character id リスト)の構造化オブジェクトのリストでなければならず(SHALL、D115)、per-fact のスコープ指定(spec-foundation §4.1「hidden はスコープ指定に従う」)を表現できなければならない(SHALL)。`hidden_facts` に対する dot-path の add/remove/set は、他の id 付きオブジェクトのリストと同様に `id` 一致で対象要素を特定しなければならない(SHALL)。
+`SceneState` は id/location/time/active_characters(character id リスト)/mood/stakes/reader_visible_facts/hidden_facts/status を持たなければならない(SHALL)。`status` は `active` | `ended` の enum で既定値 `active` でなければならず(SHALL)、他フィールドと同様 dot-path StateDiff(`op: set, path: status`)で変更できなければならない(SHALL、spec-foundation §4.4 D123。session-autonomy の `scene_end` 停止条件が `ended` への遷移を機械的に判定するための材料。この diff を誰が発行するか(World Simulator か Conflict Resolver か)は agent-runtime capability の責務であり本 change の範囲外)。`reader_visible_facts` と `hidden_facts` は spec-foundation §4.1 の Scene スコープに従い別フィールドとして分離しなければならない(SHALL)。`reader_visible_facts` は文字列のリスト(`list[str]`)のままとする(SHALL)。`hidden_facts` は `HiddenFact`(id=`fact_NNN`/text/visibility: `Visibility`/known_by: character id リスト)の構造化オブジェクトのリストでなければならず(SHALL、D115)、per-fact のスコープ指定(spec-foundation §4.1「hidden はスコープ指定に従う」)を表現できなければならない(SHALL)。`hidden_facts` に対する dot-path の add/remove/set は、他の id 付きオブジェクトのリストと同様に `id` 一致で対象要素を特定しなければならない(SHALL)。
 
 #### Scenario: Scene の構築
 - **WHEN** 企画書 §14.6 の例に相当する YAML から、`hidden_facts` を `HiddenFact` の構造化形式(id/text/visibility/known_by)に置き換えた `SceneState` を構築する
@@ -68,6 +72,10 @@
 #### Scenario: known_by を伴う HiddenFact
 - **WHEN** `id: fact_001, text: "追跡者の正体", visibility: character, known_by: [char_002]` で `HiddenFact` を構築する
 - **THEN** バリデーションが成功する
+
+#### Scenario: state diff で status が ended に遷移する
+- **WHEN** `target: scene, id: scene_001, op: set, path: status, value: ended` を含む `StateDiff` を適用する
+- **THEN** 適用後の `SceneState.status` は `ended` になる
 
 ### Requirement: Canon / Reader State / GM Vault エントリモデル
 `CanonEntry` は id/text/established_turn/source_event を持たなければならない(SHALL)。`ReaderStateEntry` は `CanonEntry` と同じフィールドに加え開示ターン(`disclosed_turn`)を持たなければならない(SHALL)。`GmVaultEntry` は id/text/`reveal_condition`(省略可能)を持たなければならない(SHALL)。`reveal_condition` は開示条件を表す自由記述の文字列(省略時 `None`)でなければならず(SHALL)、本 change はその内容をプログラムで自動判定する機能を実装してはならない(MUST NOT、判定は GM の目視判断に委ねる)。

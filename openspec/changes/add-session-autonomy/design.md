@@ -67,5 +67,5 @@
 ## Open Questions
 
 - `major_canon_change` の「重大」判定基準(変更件数か、canon の重要度タグか)は state-model / consistency-checks capability 側の定義待ちであり、本 change では「重大度が閾値を超える」という抽象条件として扱う。閾値の具体的な算出方法は将来 change で確定する。
-- 同様に、`character_death`(state-model の CharacterState に生死を表すフィールドが未定義)、`heavy_roll_failure`(random-engine の roll `outcome` に成功/失敗以外の重大度区分が未定義)、`scene_end`(SceneState・project.yaml のいずれにも「現在アクティブなシーン」「シーン終了」を表す状態遷移フィールドが未定義)も、判定に必要な具体的フィールドが他 capability 側で未確定である。本 change ではこれら3条件も「該当する抽象条件が成立した場合」として扱い、具体的なフィールド定義は state-model / random-engine / turn-pipeline 側の将来変更で確定させる。
+- ~~`character_death`/`heavy_roll_failure`/`scene_end` の判定に必要な具体的フィールドが他 capability 側で未確定~~ → **Resolved(spec-foundation D123)**: `character_death` は state diff 中の `CharacterState.status` の `dead` への遷移、`heavy_roll_failure` は `rolls.yaml` 中の roll の `severity: critical`(Conflict Resolver が明示指定、add-agent-runtime D6)、`scene_end` は state diff 中の `SceneState.status` の `ended` への遷移で機械的に評価する。詳細は spec.md「停止条件の判定とレベル別適用」Requirement を参照。フィールド自体のスキーマ定義は add-state-model / add-random-engine の責務であり、本 change は評価ロジックのみを実装する。
 - watch レベルでの「介入候補の提示」の既定オフを、プロジェクト設定で明示的にオンにできるようにするかは cli capability 側の UX 決定に委ねる。

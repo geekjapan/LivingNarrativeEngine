@@ -34,7 +34,8 @@
 - [ ] 5.3 design.md D4 の順序ポリシー(そのターンに directive を持つキャラクターの全候補を優先 → active_characters 順 → 背景イベント)を実装する
 - [ ] 5.4 検出された衝突全件に対する random-engine への roll 要求を実装する(D121: 例外なし、決定的除外ルールは対象外)
 - [ ] 5.5 resolved event(state-model Event 準拠、元候補の追跡可能性、roll で解決した event への `roll_ids` 記録)の生成を実装する
-- [ ] 5.6 衝突検出・順序・roll 連携のテストを作成する
+- [ ] 5.6 衝突が生死に関わる行動を含むと判断した場合に roll 呼び出しへ `severity: critical` を付与する capability を実装する(D123、Conflict Resolver の裁量判断)
+- [ ] 5.7 衝突検出・順序・roll 連携・severity 付与のテストを作成する
 
 ## 6. State Manager
 
@@ -42,7 +43,8 @@
 - [ ] 6.2 `source_event` を持たない変更候補の生成時拒否と `rejected_changes` への記録を実装する
 - [ ] 6.3 `reveal_control`(must-not-reveal)によりマークされた事実を reader_state へ昇格する変更候補の除外と `rejected_changes` への記録を実装する
 - [ ] 6.4 現在状態に対する diff 変更の検証(存在しない id 参照等)と失敗時の `rejected_changes` への理由記録を実装する
-- [ ] 6.5 拒否ケース・正常ケースのテスト(`rejected_changes` の内容検証、reveal_control 除外ケースを含む)を作成する
+- [ ] 6.5 死亡を表す resolved event から `status: dead`(CharacterState.status)の diff 候補を、シーン終了を表す resolved event から `status: ended`(SceneState.status)の diff 候補を生成する処理を実装する(D123)
+- [ ] 6.6 拒否ケース・正常ケースのテスト(`rejected_changes` の内容検証、reveal_control 除外ケース、status: dead/ended diff 生成ケースを含む)を作成する
 
 ## 7. Turn Pipeline スロット統合
 

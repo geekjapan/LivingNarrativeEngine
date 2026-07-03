@@ -31,10 +31,12 @@
 ## 5. Roll ログ永続化
 
 - [ ] 5.1 project 全体で一意な `roll_NNNN` id 採番機構を実装する(RNG draw 消費数カウンタとは別管理、1.2 参照)
-- [ ] 5.2 roll レコード(id/turn/type[dice|chance|table]/入力[dice記法+target可、または base_chance/modifiers/final_chance、または table 情報]/結果値/target指定時または確率判定のoutcome/呼び出し側が渡す任意のlabel・consequences)の Pydantic スキーマを定義する
+- [ ] 5.2 roll レコード(id/turn/type[dice|chance|table]/入力[dice記法+target可、または base_chance/modifiers/final_chance、または table 情報]/結果値/target指定時または確率判定のoutcome/呼び出し側が渡す任意のlabel・consequences/任意の `severity`: `normal`|`critical` 既定 `normal`、D123・呼び出し側指定をそのまま保存し Random Engine 側では判定しない)の Pydantic スキーマを定義する
 - [ ] 5.3 ターン artifact `rolls.yaml` への追記(既存レコードを保持したまま append)を実装する
 - [ ] 5.4 そのターンで消費した RNG draw 数を問い合わせ可能にする API を実装する(実際の `meta.yaml` への書き込みは add-turn-pipeline 側の責務)
 - [ ] 5.5 rolls.yaml への書き込み・追記のテストを書く
+- [ ] 5.6 呼び出し側が `severity: critical` を指定した roll がそのまま記録され、Random Engine が
+      値を自動判定・上書きしないことを検証するテストを書く(D123)
 
 ## 6. Reroll / GM override
 

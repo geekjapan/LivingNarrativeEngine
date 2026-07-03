@@ -233,6 +233,10 @@ visibility の汎用化)を残しつつ、YAGNI に反する speculative general
   ステップの追加コストに見合う利点がなく、apply-time reject 経路と機能的に重複する)。
   存在しない要素への remove を no-op として許容する(選択肢 C) — 却下(監査可能性の後退)。
 
+### D123: 停止条件判定用フィールド(CharacterState.status / SceneState.status)
+
+`CharacterState.status`(alive/dead/missing、既定 alive)と `SceneState.status`(active/ended、既定 active)を追加し、他フィールドと同じ dot-path StateDiff(`op: set, path: status`)で変更できるようにする(spec-foundation §4.4 D123。session-autonomy の `character_death`/`scene_end` 停止条件を機械的に評価可能にするため。新規の判定機構は導入せず既存の StateDiff 検証・適用パスに乗せる)。
+
 ### バリデーションエラーの集約
 
 - **決定**: `StateStore.load()` は最初のエラーで例外送出せず、workspace 内の全対象ファイルを走査して

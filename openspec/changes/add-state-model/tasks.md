@@ -17,11 +17,12 @@
 
 - [ ] 2.1 `WorldState` / `FactionState`(parameters/resources/relations、Percent 適用)を実装する
 - [ ] 2.2 `CharacterState`(traits/goals/emotions/knowledge/secrets/private_mind/inventory/
-      constraints)を実装する
+      constraints/status: `alive`|`dead`|`missing` 既定 `alive`、D123)を実装する
 - [ ] 2.3 `RelationshipState`(from/to/trust/affection/tension/suspicion/notes、自己参照禁止
       バリデーション)を実装する
 - [ ] 2.4 `HiddenFact`(id=`fact_NNN`/text/visibility/known_by、D115)と `SceneState`
-      (active_characters/reader_visible_facts: `list[str]`/hidden_facts: `list[HiddenFact]`)を実装する
+      (active_characters/reader_visible_facts: `list[str]`/hidden_facts: `list[HiddenFact]`/
+      status: `active`|`ended` 既定 `active`、D123)を実装する
 - [ ] 2.5 `CanonEntry` / `ReaderStateEntry` / `GmVaultEntry` を実装する
 - [ ] 2.6 `TimelineEntry` / `UnresolvedThread`(データ形式のみ)を実装する
 - [ ] 2.7 `Event`(known_by/hidden_from の矛盾禁止バリデーション、省略可能な `roll_ids: list[str]`
@@ -62,14 +63,16 @@
 
 ## 6. テスト(pytest, mock provider 不要・純粋ユニット)
 
-- [ ] 6.1 各状態モデルの正常系・異常系(範囲外値、ID フォーマット不正、必須フィールド欠落)を
+- [ ] 6.1 各状態モデルの正常系・異常系(範囲外値、ID フォーマット不正、必須フィールド欠落、
+      `CharacterState.status`/`SceneState.status` の既定値・enum 外の値の拒否、D123)を
       テストする
 - [ ] 6.2 `StateStore` の roundtrip テスト(save→load で内容一致、保存出力バイト列の再現性)を書く
 - [ ] 6.3 `StateStore` の固定ファイル欠落時の fail-fast(`StateLoadError`)、固定ファイルが空の場合の
       成功、可変コレクションディレクトリ欠落時の lenient な成功、未知フィールド警告、複数エラー集約を
       テストする
 - [ ] 6.4 `StateDiff` の適用成功・reject(部分失敗時の状態不変・id 一致 remove の対象不在時 reject 含む)・
-      partial apply をテストする
+      partial apply をテストする(`op: set, path: status` による `CharacterState.status`→`dead`・
+      `SceneState.status`→`ended` の遷移を含む、D123)
 - [ ] 6.5 delta clamp のテスト(上限超過・下限超過それぞれ)を書く
 - [ ] 6.6 inverse diff の生成と、生成した inverse diff を適用して元の状態に戻ることを確認する
       roundtrip テストを書く(`value` 省略の id 一致 remove から pre-state 由来の add.value を持つ

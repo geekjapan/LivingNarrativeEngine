@@ -97,7 +97,7 @@ TurnPipeline は各ターンの実行結果を `applied` / `pending_review` / `s
 
 #### Scenario: failedなターンは同じ番号で再実行される
 - **WHEN** `turn_0005` が `failed` ステータスで確定した状態で次のターン実行を要求する
-- **THEN** `turn_0005` は `applied` ではないため「最後に applied されたターン + 1」の計算に含まれず、次の実行は再び `turn_0005` として行われる。実行開始前に既存の `turn_0005` ディレクトリは `turn_0005_discarded_1`(既存の discarded ディレクトリがあればそれ以降の連番)へ退避され、新規の `turn_0005` ディレクトリへ新しい実行の全 artifact が書き込まれる。新しい `turn_0005/meta.yaml` の `rng_draws_consumed` は退避された `turn_0005_discarded_1` 分の消費数を含めた累積値になる
+- **THEN** `turn_0005` は `applied` ではないため「最後に applied されたターン + 1」の計算に含まれず、次の実行は再び `turn_0005` として行われる。実行開始前に既存の `turn_0005` ディレクトリは `turn_0005_discarded_1`(既存の discarded ディレクトリがあればそれ以降の連番)へ退避され、新規の `turn_0005` ディレクトリへ新しい実行の全 artifact が書き込まれる。新しい `turn_0005/meta.yaml` の `rng_draws_consumed` は新規 attempt 単体の消費数のみを記録し、退避された `turn_0005_discarded_1` 分の消費数を含めない。プロジェクト全体の累積消費数を求める場合は、呼び出し側が現存する `turn_0005/meta.yaml` と `turn_0005_discarded_1/meta.yaml` の両方の値を合算しなければならない
 
 ### Requirement: ターン番号決定と discarded-dir 退避ロジックの公開ユーティリティ化
 「最後に `applied` されたターン番号 + 1」を計算する次ターン番号決定ロジックと、`failed` ターンの旧 artifact ディレクトリを `turn_NNNN_discarded_<n>` へ退避するロジックは、TurnPipeline 内部にのみ閉じたコードとして実装してはならず(MUST NOT)、`add-session-autonomy` の GM review gate 事後操作から呼び出し可能な公開ユーティリティ関数として提供しなければならない(SHALL)。GM review gate の事後操作(`partial` / `edit` / `rerun_turn` 等)は TurnPipeline の8フェーズ実行そのものを経由せず、state-model の diff 適用 API とこれらの公開ユーティリティを直接呼び出す形で行われることを前提とする(D112)。

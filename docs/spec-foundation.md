@@ -120,6 +120,14 @@ Event / Fact / Intervention は `visibility` を持つ:
 3. World Simulator / State Manager は全状態を参照できるが、出力の visibility を必ず付与する。
 4. Leak Checker は Narration 出力を Reader State と照合し、未開示情報の漏洩を検出する。
 
+### 4.4 停止条件判定用フィールド(D123)
+
+session-autonomy の停止条件は state/roll の具体的フィールドから機械的に評価可能でなければならない(自然文の解釈や推測に頼ってはならない)。
+
+- `CharacterState.status`: `alive` | `dead` | `missing`(既定 `alive`)。`character_death` は `dead` への遷移(state diff の `op: set, path: status`)で判定する。
+- `SceneState.status`: `active` | `ended`(既定 `active`)。`scene_end` は `ended` への遷移で判定する。誰がこの diff を発行するか(World Simulator か Conflict Resolver か)は `agent-runtime` capability の責務。
+- Roll record の任意フィールド `severity`: `normal` | `critical`(既定 `normal`)。`heavy_roll_failure` は `severity == critical` の roll で判定する。`severity` は呼び出し側(Conflict Resolver)が明示的に指定する値であり、random-engine は自動判定ロジックを持たない(判定基準は agent-runtime 側の設計判断)。
+
 ---
 
 ## 5. データモデル概要
@@ -235,6 +243,7 @@ state_diff:
 | D120 | reject_all ターンの narration は artifact として保持するが、export-replay の正史からは除外(review.yaml の decision を参照) | 監査可能性と読者向け正史の分離 |
 | D121 | Conflict Resolver は検出した衝突を例外なく roll で解決(決定的除外ルールは将来拡張)。Event は任意の `roll_ids` を持ち、export の roll 可視性はそれを参照する reader 可視イベントから導出 | バッチ1の単純化・決定的テスト。roll 自体に visibility を持たせない |
 | D122 | LLM は名前付きプロファイル(`llm_profiles`)+ binding(`llm_bindings`)でエージェント種別・キャラクター単位に切替可能。`llm` は既定プロファイル。1ターン内の複数 provider 同時利用を正式サポート | ユーザー要件(キャラクターごと・進行役ごとに異なる LLM)。企画書 §24.4 の small/large モデル役割分担にも接続 |
+| D123 | `CharacterState.status`(alive/dead/missing)、`SceneState.status`(active/ended)、Roll の任意 `severity`(normal/critical)を追加し、停止条件(character_death/scene_end/heavy_roll_failure)を機械的に評価可能にする。severity は Conflict Resolver が明示指定、random-engine は自動判定しない | PR #11 Codexレビュー指摘: 判定材料が無いと停止条件が「推測または絶対に発火しない」実装になる |
 
 ## 10. 未決事項(ユーザー確認待ち・第1バッチをブロックしない)
 

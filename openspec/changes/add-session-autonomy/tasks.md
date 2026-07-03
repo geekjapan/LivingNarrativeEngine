@@ -18,7 +18,7 @@
 
 ## 4. 停止条件評価
 
-- [ ] 4.1 10条件(character_death, major_canon_change, relationship_threshold_crossing, major_secret_reveal, checker_error, leak_suspicion, heavy_roll_failure, scene_end, target_turn_count_reached, stop_condition)の判定関数を実装する(spec-foundation D119)。
+- [ ] 4.1 10条件(character_death, major_canon_change, relationship_threshold_crossing, major_secret_reveal, checker_error, leak_suspicion, heavy_roll_failure, scene_end, target_turn_count_reached, stop_condition)の判定関数を実装する(spec-foundation D119)。`character_death`・`heavy_roll_failure`・`scene_end` は spec-foundation D123 の具体的フィールド(state diff 中の CharacterState.status の dead 遷移、rolls.yaml 中の roll の severity: critical、state diff 中の SceneState.status の ended 遷移)を機械的に評価し、自然文解釈や推測に頼らない。
 - [ ] 4.2 プロジェクト設定(enable/disable、閾値)の読み込みとデフォルト値フォールバックを実装する。`stop_condition` は enable/disable の対象外とする(常に有効)。
 - [ ] 4.3 レベル別適用ルール(assist/auto は全10条件、watch/god は checker_error・scene_end・target_turn_count_reached・stop_condition の4条件のみ)を実装する。
 - [ ] 4.4 停止条件評価の呼び出しをターンパイプラインの Check→Commit 境界(design.md D2)に統合する。`stop_condition` は当該ターンで確定した `stop_condition` 介入の有無を判定材料とする。
@@ -66,6 +66,7 @@
 - [ ] 10.6 rerun の既定(新規シーケンス)と `--replay-same-seed`(同一シーケンス)双方の乱数結果を検証するテストを書く。
 - [ ] 10.7 god モードの編集が常に diff として記録されることを検証するテストを書く。
 - [ ] 10.8 rerun で破棄された `turn_NNNN_discarded_*` の rng 消費数が resume の累積計算に含まれることを検証するテストを書く(design.md D6)。
+- [ ] 10.9 `character_death`(state diff の CharacterState.status: dead 遷移)・`heavy_roll_failure`(rolls.yaml の severity: critical)・`scene_end`(state diff の SceneState.status: ended 遷移)の具体的フィールド評価を検証するテストを書く(spec-foundation D123)。
 
 ## 11. ドキュメント
 
