@@ -2,7 +2,7 @@
 
 - [ ] 1.1 `living_narrative.agents.context_builder` に `build_character_context` を実装する(WorldStateBundle 入力の純粋関数)
 - [ ] 1.2 `build_world_context`(World Simulator / State Manager 用の全状態参照コンテキスト、出力タグ付け前提)を実装する
-- [ ] 1.3 直近 N 件(既定値 20、`project.yaml` で上書き可能)イベント切り詰め + 関連 relationships 抽出ロジックを実装する
+- [ ] 1.3 直近 N 件(既定値 20、Context Builder 関数の引数で上書き可能。`project.yaml` の設定キーは追加しない)イベント切り詰め + 関連 relationships 抽出ロジックを実装する
 - [ ] 1.4 adversarial fixture(他者 private_mind・gm_vault・hidden_from イベントを含む WorldStateBundle)を用いた単体テストを作成し、spec の各 Scenario を再現する
 
 ## 2. Agent I/O スキーマ

@@ -31,7 +31,7 @@ Context Builder は、World Simulator および State Manager に対しては全
 - **THEN** その候補は妥当な出力として受理されず、検証エラーとして扱われる
 
 ### Requirement: コンテキストサイズの直近 N 件切り詰め
-Context Builder は、コンテキストに含めるイベント履歴を、直近 N 件(既定値 20。`project.yaml` で上書き可能)+ 現在シーン + 関連関係性(対象キャラクターと `relationships.yaml` 上に有向ペアが存在する相手)に単純な切り詰めルールで制限しなければならない(SHALL)。要約(memory summary)による圧縮は行わない(Phase 5 の対象外)。
+Context Builder は、コンテキストに含めるイベント履歴を、直近 N 件(既定値 20。Context Builder 関数の引数として呼び出し側から上書き可能とする。`project.yaml` にはこの設定キーを追加しない — プロジェクト単位の設定化は project-workspace スキーマの変更を伴うため将来 change の対象)+ 現在シーン + 関連関係性(対象キャラクターと `relationships.yaml` 上に有向ペアが存在する相手)に単純な切り詰めルールで制限しなければならない(SHALL)。要約(memory summary)による圧縮は行わない(Phase 5 の対象外)。
 
 #### Scenario: イベント数が N を超える場合に切り詰められる
 - **WHEN** 対象キャラクターの可視イベント数が設定された N を超える

@@ -75,7 +75,7 @@
 
 #### Scenario: partial適用の非対話実行
 - **WHEN** state diff が3件の change を含むターンで `living-narrative review --project <path> --decision partial --apply 0,2` を実行する
-- **THEN** インデックス0と2の change のみが適用され、インデックス1は未適用のまま state diff に記録される
+- **THEN** インデックス0と2の change のみが適用され、インデックス1は破棄される。`state_diff.yaml` は適用された change のみを含む内容に更新され(決定前の diff は `state_diff_pre_review.yaml` として保持。session-autonomy の GM レビューゲート契約)、選択内容は `review.yaml` の `applied_change_indices` から追跡できる
 
 ### Requirement: `review` の pending 不在時の挙動
 `living-narrative review --project <path>` は、`pending_review`/`stopped_for_review` のターンが存在しない場合、レビュー対象が無い旨を標準出力に示して正常終了(exit code 0)しなければならない(SHALL)。エラーとして扱ってはならない(MUST NOT)。

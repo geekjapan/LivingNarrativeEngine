@@ -37,7 +37,7 @@
 - [ ] 4.3 `log` レンダラ(ターン見出し・intervention要約・roll要約・diff要約 + 本文)を実装する
 - [ ] 4.4 `pending_review`/`stopped_for_review`/`failed` ターンのギャップ処理(`log` スタイルのみプレースホルダ挿入、`novel` スタイルは注釈なしで省略)を実装する
 - [ ] 4.5 reader 可視性フィルタ(gm_vault/hidden_facts/secrets/private_mind を一切読み込まない)を実装する
-- [ ] 4.6 出力先ディレクトリの自動作成と、applied ターンが1件も無い場合のエラー終了を実装する
+- [ ] 4.6 出力先ディレクトリの自動作成と、本文対象ターン(applied かつ非 reject_all)が1件も無い場合のエラー終了を実装する
 - [ ] 4.7 `export replay` CLI サブコマンドを実装し、`--project` `--output` `--style` を配線する
 - [ ] 4.8 export-replay の pytest(novel/log 出力内容、再実行時のバイト単位一致、ギャップ表記、可視性フィルタ、reader 可視イベントの `roll_ids` 経由の roll フィルタ(`gm_only` イベントのみが参照する roll が除外されること)、エラー終了)を書く
 
