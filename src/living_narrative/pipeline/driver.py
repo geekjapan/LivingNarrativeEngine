@@ -38,9 +38,12 @@ from living_narrative.pipeline.writer import (
     write_narration,
     write_state_diff,
 )
-from living_narrative.random.engine import RandomEngine, next_roll_number
+from living_narrative.random.engine import RandomEngine, load_rolls, next_roll_number
+from living_narrative.session.mode import session_permission_table
+from living_narrative.session.review import write_review_yaml
+from living_narrative.session.stop_conditions import evaluate_stop_conditions
 from living_narrative.state.diff import apply_state_diff
-from living_narrative.state.models import SceneStatus
+from living_narrative.state.models import SceneStatus, UserMode
 from living_narrative.state.store import StateLoadError, StateStore
 from living_narrative.workspace.loader import load_project
 
@@ -138,12 +141,13 @@ class TurnPipeline:
         try:
             with _timed_phase("intervene", durations, current_phase):
                 allocate_intervention_id = make_intervention_id_allocator(paths.runs)
+                effective_permission_table = permission_table or session_permission_table()
                 intervene_result = run_intervene_phase(
                     gateway=gateway,
                     turn=turn,
                     user_role=project.user_mode,
                     allocate_id=allocate_intervention_id,
-                    permission_table=permission_table,
+                    permission_table=effective_permission_table,
                     free_text=intervention_text,
                     direct_drafts=intervention_drafts,
                 )
@@ -243,7 +247,27 @@ class TurnPipeline:
 
             with _timed_phase("commit", durations, current_phase):
                 has_error = any(result.severity == "error" for result in check_results)
-                if has_error:
+                stop_conditions = evaluate_stop_conditions(
+                    project=project,
+                    autonomy_level=project.autonomy_level,
+                    diff=build_diff_output.diff,
+                    checks=check_results,
+                    rolls=load_rolls(turn_dir / "rolls.yaml"),
+                    interventions=intervention_file.interventions,
+                )
+                write_agent_io_component(
+                    turn_dir,
+                    "stop_conditions",
+                    [
+                        {
+                            "name": item.name.value,
+                            "should_stop": item.should_stop,
+                            "log_only": item.log_only,
+                        }
+                        for item in stop_conditions
+                    ],
+                )
+                if has_error or any(item.should_stop for item in stop_conditions):
                     status = TurnStatus.STOPPED_FOR_REVIEW
                     applied = False
                 elif commit_mode == "auto":
@@ -262,6 +286,15 @@ class TurnPipeline:
                         intervention_file.interventions, resolved_events, build_diff_output.diff
                     )
                     append_history(paths.root / "interventions.yaml", history_entries)
+                if status == TurnStatus.APPLIED and project.user_mode == UserMode.GOD:
+                    write_review_yaml(
+                        turn_dir,
+                        turn=turn,
+                        decision="accept_all",
+                        decided_by=project.user_mode,
+                        resulting_turn_status=status,
+                        auto_applied=True,
+                    )
         except Exception as exc:  # noqa: BLE001 - must never swallow: recorded as `failed`
             status = TurnStatus.FAILED
             error = ErrorReport(

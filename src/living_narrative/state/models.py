@@ -8,8 +8,24 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from living_narrative.state.ids import id_type
 
-AutonomyLevel = Literal["manual", "assist", "auto", "watch", "god"]
-UserMode = Literal["watcher", "assistant_gm", "full_gm", "author", "player_character", "god"]
+
+class AutonomyLevel(StrEnum):
+    MANUAL = "manual"
+    ASSIST = "assist"
+    AUTO = "auto"
+    WATCH = "watch"
+    GOD = "god"
+
+
+class UserMode(StrEnum):
+    WATCHER = "watcher"
+    ASSISTANT_GM = "assistant_gm"
+    FULL_GM = "full_gm"
+    AUTHOR = "author"
+    PLAYER_CHARACTER = "player_character"
+    GOD = "god"
+
+
 PromptRecording = Literal["full", "hash_only"]
 Percent = Annotated[int, Field(ge=0, le=100)]
 
@@ -35,6 +51,19 @@ _BINDING_KEY_FIXED = {
     "character_default",
 }
 _BINDING_KEY_CHARACTER_RE = re.compile(r"^character:char_\d+$")
+_PLAYER_CHAR_ID_RE = re.compile(r"^char_\d+$")
+STOP_CONDITION_NAMES = {
+    "character_death",
+    "major_canon_change",
+    "relationship_threshold_crossing",
+    "major_secret_reveal",
+    "checker_error",
+    "leak_suspicion",
+    "heavy_roll_failure",
+    "scene_end",
+    "target_turn_count_reached",
+}
+THRESHOLD_STOP_CONDITIONS = {"relationship_threshold_crossing"}
 
 
 def _is_valid_binding_key(key: str) -> bool:
@@ -56,6 +85,11 @@ class WorkspaceConfig(BaseModel):
     exports: str
 
 
+class StopConditionConfig(BaseModel):
+    enabled: bool = True
+    threshold: int | None = None
+
+
 class ProjectConfig(BaseModel):
     model_config = {"extra": "allow"}
 
@@ -72,9 +106,11 @@ class ProjectConfig(BaseModel):
     workspace: WorkspaceConfig
     llm_profiles: dict[str, LLMConfig] = Field(default_factory=dict)
     llm_bindings: dict[str, str] = Field(default_factory=dict)
+    stop_conditions: dict[str, StopConditionConfig] = Field(default_factory=dict)
+    player_char_id: str | None = None
 
     @model_validator(mode="after")
-    def _validate_llm_bindings(self) -> "ProjectConfig":
+    def _validate_session_fields(self) -> "ProjectConfig":
         for key, profile_name in self.llm_bindings.items():
             if not _is_valid_binding_key(key):
                 raise ValueError(
@@ -87,6 +123,20 @@ class ProjectConfig(BaseModel):
                     f"llm_bindings[{key!r}] references undefined llm_profiles "
                     f"entry {profile_name!r}"
                 )
+        for key, config in self.stop_conditions.items():
+            if key == "stop_condition":
+                raise ValueError("stop_condition cannot be disabled by project config")
+            if key not in STOP_CONDITION_NAMES:
+                raise ValueError(f"unknown stop_conditions key {key!r}")
+            if config.threshold is not None and key not in THRESHOLD_STOP_CONDITIONS:
+                raise ValueError(f"stop_conditions[{key!r}] does not support threshold")
+        if self.user_mode == UserMode.PLAYER_CHARACTER:
+            if self.player_char_id is None:
+                raise ValueError("player_char_id is required when user_mode is player_character")
+            if not _PLAYER_CHAR_ID_RE.match(self.player_char_id):
+                raise ValueError("player_char_id must match char_<number>")
+        elif self.player_char_id is not None:
+            raise ValueError("player_char_id is only valid when user_mode is player_character")
         return self
 
 
