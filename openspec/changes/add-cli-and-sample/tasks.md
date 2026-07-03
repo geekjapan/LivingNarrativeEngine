@@ -21,7 +21,7 @@
 ## 3. `review` / `status`
 
 - [ ] 3.1 `review` サブコマンド(pending diff の人間可読提示)を実装する
-- [ ] 3.2 `--decision accept|reject|rerun` の非対話フラグを実装する
+- [ ] 3.2 `--decision accept_all|reject_all|rerun_turn`(`review.yaml` decision 正準値と1:1)の非対話フラグを実装する
 - [ ] 3.3 `--decision partial --apply <index...>`(0始まりインデックスのカンマ区切り/繰り返し指定)の非対話フラグを実装する
 - [ ] 3.4 `--decision edit --patch <file>` の非対話フラグを実装する
 - [ ] 3.5 pending 対象が存在しない場合の正常終了(exit code 0)パスを実装する
@@ -35,7 +35,7 @@
 - [ ] 4.1 `living_narrative.export_replay` パッケージを作成し、turn artifact 読み込み(`meta.yaml`/`narration.md`/`intervention.yaml`/`rolls.yaml`/`events.yaml`/`state_diff.yaml`/`review.yaml`。`events.yaml` は reader 可視イベントの `Event.roll_ids` から reader 可視 roll を導出するために必須)を実装する
 - [ ] 4.2 `novel` レンダラ(本文のみ連結)を実装する
 - [ ] 4.3 `log` レンダラ(ターン見出し・intervention要約・roll要約・diff要約 + 本文)を実装する
-- [ ] 4.4 `pending_review`/`stopped_for_review`/`failed` ターンのギャッププレースホルダ挿入を実装する
+- [ ] 4.4 `pending_review`/`stopped_for_review`/`failed` ターンのギャップ処理(`log` スタイルのみプレースホルダ挿入、`novel` スタイルは注釈なしで省略)を実装する
 - [ ] 4.5 reader 可視性フィルタ(gm_vault/hidden_facts/secrets/private_mind を一切読み込まない)を実装する
 - [ ] 4.6 出力先ディレクトリの自動作成と、applied ターンが1件も無い場合のエラー終了を実装する
 - [ ] 4.7 `export replay` CLI サブコマンドを実装し、`--project` `--output` `--style` を配線する

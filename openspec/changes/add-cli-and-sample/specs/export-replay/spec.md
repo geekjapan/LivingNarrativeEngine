@@ -31,11 +31,15 @@ export-replay は、保存済みの turn artifact のみを入力として `repl
 - **THEN** 2回分の `replay.md` の内容がバイト単位で完全に一致する
 
 ### Requirement: 失敗・停止・却下ターンのギャップ処理
-`meta.yaml` の `status` フィールド(spec-foundation §9 D111)が `pending_review`・`stopped_for_review`・`failed` のターンが存在する場合、export-replay はそのターンの本文を出力せず、`replay.md` 内の該当箇所にギャップが存在する旨(ターン番号とステータス)を明示するプレースホルダを挿入しなければならない(SHALL)。`status: applied` のターンであっても `review.yaml` の `decision` が `reject_all`(spec-foundation §9 D120、state への実変更がゼロのまま解決されたターン)である場合も同様にギャップとして扱わなければならず(SHALL)、`style: novel` では当該ターンを一切の注釈なく省略しなければならず(SHALL、novelスタイル出力の「システムログ的な注釈を含まない」契約と整合させる)、`style: log` では `failed`/`stopped_for_review` 等と同様にターン番号と `reject_all` である旨を明示するプレースホルダを挿入しなければならない(SHALL)。ギャップの前後にある本文対象ターンの内容は欠落させてはならない(MUST NOT)。
+`meta.yaml` の `status` フィールド(spec-foundation §9 D111)が `pending_review`・`stopped_for_review`・`failed` のターン、および `status: applied` だが `review.yaml` の `decision` が `reject_all`(spec-foundation §9 D120、state への実変更がゼロのまま解決されたターン)であるターンは、いずれもギャップとして扱い、そのターンの本文を出力してはならない(MUST NOT)。ギャップの表現はスタイルごとに次のとおりでなければならない(SHALL): `style: log` では該当箇所にギャップが存在する旨(ターン番号とステータス、`reject_all` の場合はその旨)を明示するプレースホルダを挿入する。`style: novel` では当該ターンを一切の注釈・プレースホルダなく省略する(SHALL NOT プレースホルダを挿入してはならない — novelスタイル出力の「システムログ的な注釈を含まない」契約と整合させる)。ギャップの前後にある本文対象ターンの内容は欠落させてはならない(MUST NOT)。
 
-#### Scenario: 未解決ターンを含む場合のギャップ表記
-- **WHEN** ターン4が `stopped_for_review` のまま残っているプロジェクトで export-replay を実行する
+#### Scenario: 未解決ターンを含む場合のギャップ表記(logスタイル)
+- **WHEN** ターン4が `stopped_for_review` のまま残っているプロジェクトで `--style log` を指定して export-replay を実行する
 - **THEN** `replay.md` のターン3とターン5の間に、ターン4が未解決(`stopped_for_review`)である旨のプレースホルダが挿入され、ターン3・5の本文は完全に出力される
+
+#### Scenario: 未解決ターンの省略(novelスタイル)
+- **WHEN** ターン4が `stopped_for_review` のまま残っているプロジェクトで `--style novel` を指定して export-replay を実行する
+- **THEN** `replay.md` にはターン4に関する本文・注釈のいずれも含まれず、ターン3とターン5の本文がそのまま連続する
 
 #### Scenario: reject_allターンの省略(novelスタイル)
 - **WHEN** ターン4の `review.yaml` の `decision` が `reject_all` であるプロジェクトで `--style novel` を指定して export-replay を実行する

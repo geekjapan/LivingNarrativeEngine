@@ -7,7 +7,7 @@
 - **検討した選択肢**: A) spec-foundation §6 を正とし、turn-pipeline 側を `stop_for_review` に修正する / B) turn-pipeline 側を正とし、spec-foundation §6 の文言を「retry 上限到達 → failed」に修正する / C) 両者を統合し、「schema 不一致は起動前提条件違反として即 `failed`、`stop_for_review` は Check フェーズの checker error 検出専用」と役割分担を明文化する
 - **推奨案**: C。turn-pipeline 側は既に Check フェーズのエラー検出を `stopped_for_review` に明確に割り当てており(該当 spec.md 内で別 Requirement として存在)、LLM retry 失敗は「エージェントが構造化出力を生成できない」というより重い失敗であるため `failed` の方が turn-pipeline の設計と整合する。spec-foundation §6 の該当行を turn-pipeline の実際の挙動に合わせて修正するのが最小の変更で済む。
 - **不足インプット**: spec-foundation §6 と add-turn-pipeline のどちらを正とするかのユーザー判断、および該当箇所の編集承認(add-llm-provider の変更範囲外)。
-- **Status**: Resolved — D110: failed を正とし spec-foundation §6/§8 修正済み (docs/spec-foundation.md)
+- **Status**: Resolved — D110: failed を正とし spec-foundation §6/§8 修正済み (docs/spec-foundation.md)。注: 本項の引用に現れる `stop_for_review` は修正前の spec-foundation §6 の旧表記をそのまま引用したものであり、正準のターンステータス enum 値は `stopped_for_review`(現行仕様に `stop_for_review` という状態は存在しない)
 
 ### Q2. turn `meta.yaml` は LLM 呼び出しの token 使用量を集約フィールドとして含めるべきか
 - **対象**: `docs/spec-foundation.md` §6(`meta.yaml` の内容: 所要時間・LLM 呼び出し回数・model・prompt hash・rng 消費数)、`openspec/changes/add-turn-pipeline/specs/turn-pipeline/spec.md` の Requirement「meta.yaml の内容」(token 使用量への言及なし)、および本 change の Requirement「呼び出しメタデータの記録」(呼び出しごとに token 使用量を含める)

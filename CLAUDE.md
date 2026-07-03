@@ -16,7 +16,7 @@ No source code exists yet — there is no `pyproject.toml`, `src/`, or `tests/` 
 
 Dependency DAG (spec-foundation §1.2), each change gates the next:
 
-```
+```text
 add-project-foundation → add-state-model → {add-random-engine, add-llm-provider}
   → add-turn-pipeline → add-agent-runtime → add-intervention → add-session-autonomy
   → add-cli-and-sample
@@ -46,7 +46,7 @@ The engine is **state-first, not text-first**: the source of truth is a set of Y
 
 ### Planned layout (`docs/project_plan.md` §18.3)
 
-```
+```text
 src/living_narrative/
   core/       session.py, turn.py, orchestrator.py       # turn pipeline driver
   state/      models.py, store.py, diff.py, validation.py # Pydantic v2 state schemas + StateDiff

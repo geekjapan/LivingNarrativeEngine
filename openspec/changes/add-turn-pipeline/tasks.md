@@ -17,7 +17,7 @@
 
 ## 3. スロット Protocol とフェーズドライバー
 
-- [ ] 3.1 Simulate / Act / Resolve / BuildDiff / Check の入出力を表す Pydantic モデルを定義する(BuildDiff の入力は resolved events・intervention・全状態、出力は state diff 候補)
+- [ ] 3.1 Simulate / Act / Resolve / BuildDiff / Check の入出力を表す Pydantic モデルを定義する(BuildDiff の入力は resolved events・そのターンの intervention 群(リスト)・全状態、出力は state diff 候補 + 理由付き `rejected_changes` リスト(agent-runtime の State Manager が使用))
 - [ ] 3.2 Simulate / Act / Resolve / BuildDiff / Check の Protocol を定義する(D113)
 - [ ] 3.3 名前キーの辞書レジストリ(D108)を実装し、スロット実装の登録・取得を行う
 - [ ] 3.4 TurnPipeline driver(8フェーズを順序どおり呼び出すコアループ)を実装する
@@ -29,7 +29,7 @@
 - [ ] 4.1 Simulate: no-op world simulator(候補イベントを生成しない)を実装する
 - [ ] 4.2 Act: llm-provider 経由で単一キャラクターの行動候補を1件生成する trivial 実装を実装する
 - [ ] 4.3 Resolve: 行動候補・イベント候補を乱数判定なしでそのまま events.yaml へ渡す pass-through 実装を実装する
-- [ ] 4.4 BuildDiff: resolved events・そのターンの intervention・全状態から state diff 候補を生成する最小実装を実装する(旧来 Commit 内部で予定していた diff 生成ロジックをここへ移す。reveal_control の must-not-reveal 制約遵守を含む。D113)
+- [ ] 4.4 BuildDiff: resolved events・そのターンの intervention 群(リスト)・全状態から state diff 候補を生成する最小実装を実装する(旧来 Commit 内部で予定していた diff 生成ロジックをここへ移す。reveal_control の must-not-reveal 制約遵守を含む。出力の `rejected_changes` は常に空リスト。D113)
 - [ ] 4.5 Check: 常にエラーを検出しない no-op checker を実装する
 - [ ] 4.6 組み込みスロットをレジストリへデフォルト登録する初期化コードを実装する
 

@@ -105,7 +105,7 @@ Conflict Resolver は、衝突解決の結果として、順序付けられた r
 - **THEN** 生成された resolved event の `roll_ids` に当該判定の roll id が含まれる
 
 ### Requirement: State Manager の state diff 候補生成と検証
-State Manager は turn-pipeline の BuildDiff スロットの実装として登録されなければならない(SHALL、D113)。State Manager は、resolved event 列 + 当該ターンの intervention + 全状態を入力として state diff 候補を state-model の StateDiff 形式で生成しなければならない(SHALL)。生成された各 diff 変更は、生成時点で現在状態に対して検証されなければならない(SHALL)。`source_event` を持たない state diff の変更は、生成時点で拒否されなければならない(SHALL)。当該ターンで確定した `reveal_control`(must-not-reveal)により reader 可視への昇格が禁じられている事実を `target: reader_state` へ昇格させる変更候補は、state diff 候補に含めてはならない(SHALL NOT)。State Manager の出力は、採用された state diff 候補に加え、拒否された変更候補とその理由を保持する `rejected_changes` リストを持たなければならない(SHALL)。
+State Manager は turn-pipeline の BuildDiff スロットの実装として登録されなければならない(SHALL、D113)。State Manager は、resolved event 列 + 当該ターンの intervention 群(`intervention.yaml` に確定した Intervention のリスト。無介入時は空リスト)+ 全状態を入力として state diff 候補を state-model の StateDiff 形式で生成しなければならない(SHALL)。生成された各 diff 変更は、生成時点で現在状態に対して検証されなければならない(SHALL)。`source_event` を持たない state diff の変更は、生成時点で拒否されなければならない(SHALL)。当該ターンで確定した `reveal_control`(must-not-reveal)により reader 可視への昇格が禁じられている事実を `target: reader_state` へ昇格させる変更候補は、state diff 候補に含めてはならない(SHALL NOT)。State Manager の出力は、採用された state diff 候補に加え、拒否された変更候補とその理由を保持する `rejected_changes` リストを持たなければならない(SHALL)。
 
 #### Scenario: resolved event から state diff が生成される
 - **WHEN** State Manager が resolved event 列を処理する

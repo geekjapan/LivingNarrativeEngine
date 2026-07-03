@@ -67,10 +67,10 @@
 - **THEN** CLI は進行を開始せず、`--turns` と `--until` は同時指定できない旨のエラーを出力して非ゼロの exit code で終了する
 
 ### Requirement: `review` による pending diff のインタラクティブフロー
-`living-narrative review --project <path>` は、`pending_review` または `stopped_for_review` 状態の直近ターンの state diff を人間可読な形で提示し、accept(全適用)/reject(全却下・状態不変)/partial(部分適用)/edit(内容編集後に適用)/rerun(当該ターンを再実行)のいずれかをユーザーに選択させなければならない(SHALL)。全ての選択肢は、対話プロンプトに応じるだけでなく、対応する非対話フラグ(例: `--decision accept`、`--decision partial --apply <index> ...`、`--decision edit --patch <file>`、`--decision rerun`)でも指定できなければならない(SHALL)。`--apply` は session-autonomy の partial 適用契約(change のインデックス集合による選択)に合わせ、0始まりのインデックス値をカンマ区切りまたはフラグ繰り返しで受け取らなければならない(SHALL)。パスやその他のキーによる選択方式は提供しない(SHALL NOT)。
+`living-narrative review --project <path>` は、`pending_review` または `stopped_for_review` 状態の直近ターンの state diff を人間可読な形で提示し、`accept_all`(全適用)/`reject_all`(全却下・状態不変)/`partial`(部分適用)/`edit`(内容編集後に適用)/`rerun_turn`(当該ターンを再実行)のいずれかをユーザーに選択させなければならない(SHALL)。選択肢名は session-autonomy の `review.yaml` の `decision` 正準値と1:1で一致しなければならず(SHALL)、別名(`accept`/`reject` 等)を導入してはならない(MUST NOT)。全ての選択肢は、対話プロンプトに応じるだけでなく、対応する非対話フラグ(例: `--decision accept_all`、`--decision partial --apply <index> ...`、`--decision edit --patch <file>`、`--decision rerun_turn`)でも指定できなければならない(SHALL)。`--apply` は session-autonomy の partial 適用契約(change のインデックス集合による選択)に合わせ、0始まりのインデックス値をカンマ区切りまたはフラグ繰り返しで受け取らなければならない(SHALL)。パスやその他のキーによる選択方式は提供しない(SHALL NOT)。
 
-#### Scenario: accept全適用の非対話実行
-- **WHEN** `living-narrative review --project <path> --decision accept` を実行する
+#### Scenario: accept_all全適用の非対話実行
+- **WHEN** `living-narrative review --project <path> --decision accept_all` を実行する
 - **THEN** 対象ターンの state diff が全件適用され、ターンステータスが `applied` になり、対話プロンプトは表示されない
 
 #### Scenario: partial適用の非対話実行
@@ -85,7 +85,7 @@
 - **THEN** 「レビュー対象のターンはありません」旨のメッセージが出力され、exit code は 0 である
 
 ### Requirement: `status` の人間可読出力とJSON出力
-`living-narrative status --project <path>` は、現在のターン番号、pending review の有無とターンステータス、現在の `user_mode`/`autonomy_level`、world state の要約(少なくとも現在シーンと主要 world parameters)を人間可読な形式で標準出力へ表示しなければならない(SHALL)。`--json` を指定した場合、同じ情報を機械可読な JSON として標準出力へ出力しなければならない(SHALL)。
+`living-narrative status --project <path>` は、現在のターン番号、pending review の有無とターンステータス、現在の `user_mode`/`autonomy_level`、world state の要約(少なくとも現在シーンと主要 world parameters)を人間可読な形式で標準出力へ表示しなければならない(SHALL)。`--json` を指定した場合、同じ情報を機械可読な JSON として標準出力へ出力しなければならない(SHALL)。`status` の出力(人間可読・JSON とも)には、`gm_vault` の内容・`hidden_facts`・キャラクターの `secrets`/`private_mind` を、現在の `user_mode` に依らず一切含めてはならない(MUST NOT。GM 相当モードでの秘匿情報の閲覧は state ファイルの直接参照に委ね、`status` は常に開示安全な要約に限定する)。
 
 #### Scenario: 人間可読なステータス表示
 - **WHEN** `living-narrative status --project <path>` を実行する

@@ -18,7 +18,7 @@
 - memory summary・relationship graph analytics(Phase 5)。
 - 複数キャラクターの並列実行。
 - pacing/character-consistency/repeated-phrase/stale-plot checker(Phase 5)。
-- stop_for_review の実際の停止動作(session-autonomy の責務)。
+- `stopped_for_review` の実際の停止動作(session-autonomy の責務)。
 
 ## Decisions
 

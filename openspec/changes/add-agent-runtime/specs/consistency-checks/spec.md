@@ -12,7 +12,7 @@ Checker は D108 に従いレジストリ辞書へ名前キーで登録されな
 - **THEN** その finding は checker 名・severity・message・related ids を持つ
 
 ### Requirement: error 級 finding によるブロッキング
-severity `error` を持つ finding が1件でも存在する場合、checker フレームワークはそのターンを auto-apply 可能な状態として扱ってはならず(SHALL NOT)、`stop_for_review` を要求するブロッキングフラグを立てなければならない(SHALL)。stop 処理そのものの配線(session-autonomy への通知)は本 capability の対象外であり、本 capability はブロッキングフラグと finding 契約の提供までを責務とする。
+severity `error` を持つ finding が1件でも存在する場合、checker フレームワークはそのターンを auto-apply 可能な状態として扱ってはならず(SHALL NOT)、`stopped_for_review` を要求するブロッキングフラグを立てなければならない(SHALL)。stop 処理そのものの配線(session-autonomy への通知)は本 capability の対象外であり、本 capability はブロッキングフラグと finding 契約の提供までを責務とする。
 
 #### Scenario: error 級 finding が auto-apply をブロックする
 - **WHEN** いずれかの checker が severity `error` の finding を1件以上返す

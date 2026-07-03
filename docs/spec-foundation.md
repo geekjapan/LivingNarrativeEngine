@@ -28,7 +28,7 @@
 
 ### 1.2 Change 依存 DAG
 
-```
+```text
 add-project-foundation
         │
         v

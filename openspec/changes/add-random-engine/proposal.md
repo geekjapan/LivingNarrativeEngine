@@ -5,7 +5,7 @@
 ## What Changes
 
 - `project.random_seed`(文字列)から決定的 RNG を初期化する仕組みを追加する。
-- roll ごとに通番(project 内 sequence)を採番し、seed + 消費済み roll 数から RNG 状態を再構築できるようにする(resume/replay 対応)。
+- roll ごとに通番(project 内 sequence)を採番し、seed + 消費済み draw 数(`rng_draws_consumed`。roll id とは独立のカウンタ)から RNG 状態を再構築できるようにする(resume/replay 対応)。
 - ダイス記法パーサー `NdM` `NdM+K` `NdM-K`(N≤100, M≤1000)を追加する。省略可能な target 比較(結果値≥target で success)にも対応する。
 - 確率判定(base_chance + named modifiers → final_chance を [0,100] にクランプ → d100 roll → success/failure)を追加する。
 - weighted event table(重み付きエントリからの選択。条件評価は呼び出し側の責務)を追加する。

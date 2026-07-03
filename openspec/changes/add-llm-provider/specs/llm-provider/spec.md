@@ -101,11 +101,15 @@ OpenAI 互換 provider は接続エラーまたはタイムアウトが発生し
 - **THEN** provider は型付き例外を送出し、生の接続例外の詳細(秘密情報を含む可能性のある部分を除く)を呼び出し元へ伝える
 
 ### Requirement: 呼び出しメタデータの記録
-すべての LLM 呼び出しは、model 名・所要時間・token 使用量(provider から取得可能な場合)・prompt テンプレート名・prompt hash を含む呼び出しメタデータを記録し、呼び出し元が取得できるようにしなければならない (SHALL)。このメタデータは turn `meta.yaml`(spec-foundation §6)へ供給できる形式でなければならない。呼び出しが LLM プロファイル解決(D122)を経由した場合、メタデータには解決された binding key に対応するプロファイル名も追加で含まれなければならない(SHALL)。
+すべての LLM 呼び出しは、model 名・所要時間・token 使用量(provider から取得可能な場合)・prompt テンプレート名・prompt hash を含む呼び出しメタデータを記録し、呼び出し元が取得できるようにしなければならない (SHALL)。このメタデータは turn `meta.yaml`(spec-foundation §6)へ供給できる形式でなければならない。呼び出しが LLM プロファイル解決(D122)を経由した場合、メタデータには解決された binding key に対応するプロファイル名も追加で含まれなければならない(SHALL)。受け渡し機構として、provider ラッパーは呼び出しごとに構造化された `CallMetadata`(Pydantic モデル)を生成し、呼び出し元が provider ラッパー構築時に注入する recorder(`CallMetadata` を受け取る callable / Protocol)へ通知しなければならない(SHALL)。`complete()` の戻り値は検証済みモデルインスタンスのままとし、メタデータのためにシグネチャを変更してはならない(MUST NOT)。recorder への通知は、成功時だけでなく型付き例外(`StructuredOutputError`・transport エラー)の送出時にも、その時点までに判明している情報で行われなければならない(SHALL、meta.yaml が失敗ターンの呼び出しコストも記録できるようにするため)。
 
 #### Scenario: 呼び出し後にメタデータが取得できる
-- **WHEN** provider の `complete()` 呼び出しが完了する(成功・retry を含む)
-- **THEN** 呼び出し元は model 名・所要時間・prompt テンプレート名・prompt hash を含むメタデータを取得でき、token 使用量が provider から取得できた場合はそれも含まれる
+- **WHEN** recorder を注入した provider の `complete()` 呼び出しが完了する(成功・retry を含む)
+- **THEN** 注入した recorder に model 名・所要時間・prompt テンプレート名・prompt hash を含む `CallMetadata` が通知され、token 使用量が provider から取得できた場合はそれも含まれる
+
+#### Scenario: 失敗した呼び出しのメタデータも通知される
+- **WHEN** recorder を注入した provider の `complete()` が retry 上限到達で型付き例外を送出する
+- **THEN** 例外送出前に recorder へ `CallMetadata` が通知され、実際に行われた全リクエスト分の所要時間(および取得できた token 使用量)が含まれる
 
 #### Scenario: プロファイル解決経由の呼び出しでプロファイル名が記録される
 - **WHEN** binding key `character:char_001` を解決して得たプロファイルで `complete()` を呼び出す
