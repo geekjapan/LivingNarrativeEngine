@@ -32,7 +32,7 @@
 
 ## 4. `export replay`
 
-- [ ] 4.1 `living_narrative.export_replay` パッケージを作成し、turn artifact 読み込み(`meta.yaml`/`narration.md`/`intervention.yaml`/`rolls.yaml`/`events.yaml`/`state_diff.yaml`/`review.yaml`。`events.yaml` は reader 可視イベントの `Event.roll_ids` から reader 可視 roll を導出するために必須)を実装する
+- [ ] 4.1 `living_narrative.export_replay` パッケージを作成し、turn artifact 読み込み(`meta.yaml`/`narration.md`/`intervention.yaml`/`rolls.yaml`/`events.yaml`/`state_diff.yaml`、および存在する場合のみ `review.yaml`(自動適用ターンには無い)。`events.yaml` は reader 可視イベントの `Event.roll_ids` から reader 可視 roll を導出するために必須)を実装する
 - [ ] 4.2 `novel` レンダラ(本文のみ連結)を実装する
 - [ ] 4.3 `log` レンダラ(ターン見出し・intervention要約・roll要約・diff要約 + 本文)を実装する
 - [ ] 4.4 `pending_review`/`stopped_for_review`/`failed` ターンのギャップ処理(`log` スタイルのみプレースホルダ挿入、`novel` スタイルは注釈なしで省略)を実装する
