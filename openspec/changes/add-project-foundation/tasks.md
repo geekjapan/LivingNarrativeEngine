@@ -12,7 +12,7 @@
 ## 2. project.yaml スキーマ
 
 - [ ] 2.1 `living_narrative/state/models.py`(または同等の配置)に `ProjectConfig` Pydantic v2 モデルを実装する(`id`, `title`, `genre`, `tone`, `language`(既定 `"ja"`), `autonomy_level`, `user_mode`, `random_seed`, `renderer`, `llm`, `workspace`)
-- [ ] 2.2 `llm` サブモデル(`provider`, `model`, 任意 `base_url`, 任意 `timeout_seconds`(既定 `30`), 任意 `prompt_recording`(`full` | `hash_only`、既定 `"full"`)。spec-foundation D118)を実装する
+- [ ] 2.2 `llm` サブモデル(`provider`, `model`, 任意 `base_url`, 任意 `timeout_seconds`(既定 `30`、`gt=0` 制約付きで `0` 以下はロード時検証エラー), 任意 `prompt_recording`(`full` | `hash_only`、既定 `"full"`)。spec-foundation D118)を実装する
 - [ ] 2.3 `workspace` サブモデル(`root`, `state`, `runs`, `exports`)を実装する
 - [ ] 2.4 未知フィールドを警告扱いにする設定(`model_config` の extra ハンドリング + 警告ログ)を実装する
 - [ ] 2.5 単体テスト: 企画書 Appendix B 準拠の `project.yaml` が正しくロードされることを確認する
