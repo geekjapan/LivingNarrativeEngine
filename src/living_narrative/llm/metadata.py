@@ -15,6 +15,7 @@ class CallMetadata(BaseModel):
     completion_tokens: int | None = None
     total_tokens: int | None = None
     profile_name: str | None = None
+    binding_key: str | None = None
     request_count: int = Field(default=1, ge=0)
 
 
