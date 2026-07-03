@@ -1,0 +1,28 @@
+id: char_002
+name: カイ
+role: リナの幼馴染
+traits:
+  - 寡黙
+  - 忠実
+goals:
+  short_term:
+    - リナを守る
+  long_term:
+    - 過去の記憶を取り戻す
+emotions:
+  fear: 40
+  unease: 50
+knowledge:
+  knows:
+    - この駅の奥に何かがある
+  believes:
+    - 封印された施設が駅の地下に眠っている
+  does_not_know:
+    - ミラの正体
+secrets:
+  - 幼い頃にこの駅で何かを見た記憶がある
+private_mind:
+  - あの日見たものの正体を、まだリナに話せていない
+inventory: []
+constraints: {}
+status: alive

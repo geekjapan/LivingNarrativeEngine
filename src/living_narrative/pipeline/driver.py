@@ -97,6 +97,7 @@ class TurnPipeline:
         intervention_text: str | None = None,
         intervention_drafts: list[dict[str, Any]] | None = None,
         permission_table: PermissionTable | None = None,
+        rng_offset_override: int | None = None,
     ) -> TurnRunResult:
         if commit_mode not in ("auto", "review"):
             raise ValueError(f"invalid commit_mode: {commit_mode!r}")
@@ -122,7 +123,11 @@ class TurnPipeline:
             ) from exc
         durations["load"] = perf_counter() - load_started
 
-        initial_rng_offset = total_rng_draws_consumed(paths.runs)
+        initial_rng_offset = (
+            total_rng_draws_consumed(paths.runs)
+            if rng_offset_override is None
+            else rng_offset_override
+        )
         engine = RandomEngine(
             project.random_seed,
             draws_consumed=initial_rng_offset,

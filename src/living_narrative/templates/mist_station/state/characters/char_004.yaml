@@ -1,0 +1,27 @@
+id: char_004
+name: 追跡者
+role: 追跡者
+traits:
+  - 執拗
+  - 冷徹
+goals:
+  short_term:
+    - リナとカイを追う
+  long_term:
+    - 封印施設を暴く
+emotions:
+  determination: 80
+knowledge:
+  knows:
+    - リナたちがこの駅にいる
+  believes:
+    - この駅に何か重要なものが隠されている
+  does_not_know:
+    - ミラの正体
+secrets:
+  - 何者かに封印施設の情報を売ろうとしている
+private_mind:
+  - 早く見つけ出さなければ
+inventory: []
+constraints: {}
+status: alive

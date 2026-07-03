@@ -12,15 +12,61 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-## Usage
+## Quickstart
 
 ```bash
-uv run living-narrative projects/mist_station --title "霧の駅"
+uv sync
+
+uv run living-narrative init \
+  --title "霧の駅" \
+  --template mist_station \
+  --output projects/mist_station
+
+uv run living-narrative turn \
+  --project projects/mist_station/project.yaml
+
+uv run living-narrative auto \
+  --project projects/mist_station/project.yaml \
+  --turns 5
+
+uv run living-narrative export replay \
+  --project projects/mist_station/project.yaml \
+  --output projects/mist_station/workspace/exports/replay.md
+
+uv run pytest -q
 ```
 
-Creates `projects/mist_station/project.yaml` plus a minimal empty-world `workspace/`
-(state files, `runs/`, `exports/`). `add-cli-and-sample` adds the `turn`/`auto`/`export`
-commands and a fleshed-out sample world.
+`init --template` accepts `mist_station` (the "霧の駅" sample world: 4 characters, 3
+`gm_vault` hidden truths, `scene_001`) or `minimal` (an empty, schema-valid workspace;
+the default when `--template` is omitted). `--genre`/`--tone` are optional free-text
+fields written straight through to `project.yaml`.
+
+`turn` runs a single turn and prints its narration + status line. `--intervention "<free
+text>"` routes through the Intervention Interpreter (LLM); `--type <type> --target <id>
+--content "<text>"` is a direct-input path with no LLM call. `--as <user_mode>`
+temporarily overrides `user_mode` for that turn only (`project.yaml` is restored
+afterward) — `--as player_character` is rejected, since that mode requires a session
+`char_id` binding it can't express as a one-off override.
+
+`auto --turns N` advances up to N turns, stopping early if session-autonomy's stop
+conditions fire (printing which one). `auto --until scene_end` instead runs until the
+active scene ends.
+
+`review --project <path>` presents the pending/stopped-for-review turn's state diff and
+resolves it via `--decision accept_all|reject_all|partial|edit|rerun_turn` (matching
+`review.yaml`'s canonical decision values 1:1) — `partial` takes `--apply <index,...>`,
+`edit` takes `--patch <file>` (a full replacement `StateDiff` as YAML), and `rerun_turn`
+takes an optional `--replay-same-seed` to rewind the RNG to the turn's original position
+instead of continuing forward. Every decision is available non-interactively; with no
+TTY and no `--decision`, the command exits `2` rather than blocking.
+
+`status --project <path>` (add `--json` for machine-readable output) reports the current
+turn, pending-review state, `user_mode`/`autonomy_level`, and a scene/world-parameter
+summary — never `gm_vault`, `hidden_facts`, `secrets`, or `private_mind`, regardless of
+`user_mode`.
+
+Exit codes: `0` success, `1` runtime failure (a `failed` turn, provider error, nothing to
+export), `2` invalid input (bad flags, unknown template, missing project).
 
 ## LLM Providers
 
@@ -58,10 +104,10 @@ Check) and writes `workspace/runs/turn_NNNN/`:
 
 | file/dir | phase | contents |
 |---|---|---|
-| `intervention.yaml` | Intervene | this turn's interventions (always `[]` until `add-intervention`) |
+| `intervention.yaml` | Intervene | this turn's interventions (free-text via the Interpreter, or direct-input) |
 | `agent_io/act.yaml` | Act | Character Agent LLM request/response records |
 | `events.yaml` | Resolve | resolved `Event`s, project-wide unique `event_NNNN` ids |
-| `rolls.yaml` | Resolve | dice/chance/table rolls (`[]` for the built-in pass-through slot) |
+| `rolls.yaml` | Resolve | dice/chance/table rolls (World Simulator always rolls at least a background event) |
 | `narration.md` | Narrate | YAML frontmatter (`turn`/`style`/`visibility: reader`) + prose/log body |
 | `checks.yaml` | Check | checker findings (`info`/`warn`/`error`) |
 | `state_diff.yaml` | Commit | the BuildDiff candidate, `rejected_changes`, and whether it was `applied` |
@@ -74,8 +120,30 @@ no readable `meta.yaml` is treated as unresolved and blocks the next turn. A ret
 are never overwritten.
 
 Simulate/Act/Resolve/BuildDiff/Check are registry-swappable slots
-(`living_narrative.pipeline.default_registry()`); this change ships only minimal
-built-ins (no-op Simulate/Check, trivial single-character Act, pass-through Resolve, and
-an empty-diff BuildDiff) so a turn completes end-to-end with just the mock provider.
-`add-agent-runtime` replaces these with the real Character/World/Conflict/State Manager
-agents.
+(`living_narrative.pipeline.default_registry()`), backed by the real World Simulator /
+Character Agent / Conflict Resolver / State Manager / leak+continuity checkers
+(`living_narrative.agents`, `living_narrative.safety`) — a turn completes end-to-end with
+just the mock provider and no fixtures.
+
+## Export Replay
+
+`export replay --project <path> --output <file> --style novel|log` assembles every
+`applied` turn's `narration.md` into `replay.md`, purely from saved turn artifacts (no
+LLM calls; re-running produces a byte-identical file). `novel` concatenates prose only;
+`log` also annotates each turn with its interventions, reader-visible rolls (only rolls
+reachable from a `reader`-visible event's `roll_ids`), and applied diff changes.
+`pending_review`/`stopped_for_review`/`failed` turns, and `applied` turns whose
+`review.yaml` decision was `reject_all`, are gaps: `log` inserts a placeholder noting the
+status, `novel` skips them with no annotation at all. `gm_vault`, `hidden_facts`,
+`secrets`, and `private_mind` are never read by this command.
+
+## Security
+
+- API keys come only from environment variables (e.g. `OPENAI_API_KEY`); never commit
+  them to `project.yaml` or any tracked file. Use a local `.env` (already `.gitignore`d)
+  with `openai-compatible` projects.
+- A project's `workspace/` is expected to be private: turn artifacts, prompt records, and
+  `gm_vault`/`secrets`/`private_mind` all live there in plain YAML.
+- CLI commands never print or log `gm_vault`, `hidden_facts`, character `secrets`, or
+  `private_mind` (`status`, in particular, always returns a disclosure-safe summary
+  regardless of `user_mode`), and API keys never appear in error messages or artifacts.

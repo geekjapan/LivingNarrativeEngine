@@ -1,0 +1,9 @@
+- id: gm_vault_001
+  text: 駅の最深部には、かつて何かを封じるために作られた施設が眠っている。
+  reveal_condition: null
+- id: gm_vault_002
+  text: カイは幼い頃にその封印施設の一部を目撃しており、無意識のうちにその記憶に触れている。
+  reveal_condition: null
+- id: gm_vault_003
+  text: ミラは封印を代々守ってきた一族の末裔であり、リナたちを監視するためにこの駅へ来ている。
+  reveal_condition: null
