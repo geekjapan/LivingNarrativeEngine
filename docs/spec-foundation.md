@@ -126,7 +126,7 @@ session-autonomy の停止条件は state/roll の具体的フィールドから
 
 - `CharacterState.status`: `alive` | `dead` | `missing`(既定 `alive`)。`character_death` は `dead` への遷移(state diff の `op: set, path: status`)で判定する。
 - `SceneState.status`: `active` | `ended`(既定 `active`)。`scene_end` は `ended` への遷移で判定する。誰がこの diff を発行するか(World Simulator か Conflict Resolver か)は `agent-runtime` capability の責務。
-- Roll record の任意フィールド `severity`: `normal` | `critical`(既定 `normal`)。`heavy_roll_failure` は `severity == critical` の roll で判定する。`severity` は呼び出し側(Conflict Resolver)が明示的に指定する値であり、random-engine は自動判定ロジックを持たない(判定基準は agent-runtime 側の設計判断)。
+- Roll record の任意フィールド `severity`: `normal` | `critical`(既定 `normal`)。`heavy_roll_failure` は `severity == critical` かつ `outcome` が失敗を示す roll で判定する(critical な高リスク行動が成功した場合は停止しない)。`severity` は呼び出し側(Conflict Resolver)が明示的に指定する値であり、random-engine は自動判定ロジックを持たない(判定基準は agent-runtime 側の設計判断)。
 
 ---
 

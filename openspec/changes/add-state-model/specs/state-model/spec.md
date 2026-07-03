@@ -107,14 +107,18 @@
 - **THEN** `ValidationError` が送出される
 
 ### Requirement: Event モデル
-`Event` は企画書 §14.7 に対応する id/turn/type/cause/visibility/known_by/hidden_from/effects を持たなければならない(SHALL)。`known_by` と `hidden_from` は同一 character id を同時に含んではならない(SHALL)。`Event` は省略可能な `roll_ids`(当該イベントを産出した roll の id のリスト、`list[str]`、省略時は空リスト)フィールドを持たなければならない(SHALL、D121)。export-replay は reader 可視イベントが参照する `roll_ids` から roll の可視性を導出するものとし(roll 自体は visibility フィールドを持たない)、本 change はその導出ロジック自体を実装しない。
+`Event` は企画書 §14.7 に対応する id/turn/type/cause/text/visibility/known_by/hidden_from/effects を持たなければならない(SHALL)。`text` は必須の非空文字列(str)であり、イベント内容の日本語記述として Narrator 入力(narration capability)および Leak Checker の検査対象(consistency-checks capability)が消費する正本テキストである(SHALL)。`text` が欠落または空文字列の場合は `ValidationError` を送出しなければならない(SHALL)。`known_by` と `hidden_from` は同一 character id を同時に含んではならない(SHALL)。`Event` は省略可能な `roll_ids`(当該イベントを産出した roll の id のリスト、`list[str]`、省略時は空リスト)フィールドを持たなければならない(SHALL、D121)。export-replay は reader 可視イベントが参照する `roll_ids` から roll の可視性を導出するものとし(roll 自体は visibility フィールドを持たない)、本 change はその導出ロジック自体を実装しない。
 
 #### Scenario: Event の構築
-- **WHEN** 企画書 §14.7 の例のフィールド構成に相当し、`visibility` を本 spec の正準5値のいずれか(例: `scene`)に置き換えた YAML から `Event` を構築する(企画書 §14.7 の `reader_visible_result_only` は例示上の記法であり、本 spec の正準 `Visibility` enum には含まれない)
+- **WHEN** 企画書 §14.7 の例のフィールド構成に相当し(非空の `text` を含む)、`visibility` を本 spec の正準5値のいずれか(例: `scene`)に置き換えた YAML から `Event` を構築する(企画書 §14.7 の `reader_visible_result_only` は例示上の記法であり、本 spec の正準 `Visibility` enum には含まれない)
 - **THEN** バリデーションが成功する
 
 #### Scenario: known_by と hidden_from の矛盾
 - **WHEN** 同一の character id が `known_by` と `hidden_from` の両方に含まれる `Event` を構築する
+- **THEN** `ValidationError` が送出される
+
+#### Scenario: text を欠く Event は拒否される
+- **WHEN** `text` フィールドを持たない、または `text` が空文字列の YAML から `Event` を構築する
 - **THEN** `ValidationError` が送出される
 
 #### Scenario: roll_ids を伴う Event

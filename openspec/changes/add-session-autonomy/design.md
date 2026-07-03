@@ -67,5 +67,5 @@
 ## Open Questions
 
 - `major_canon_change` の「重大」判定基準(変更件数か、canon の重要度タグか)は state-model / consistency-checks capability 側の定義待ちであり、本 change では「重大度が閾値を超える」という抽象条件として扱う。閾値の具体的な算出方法は将来 change で確定する。
-- ~~`character_death`/`heavy_roll_failure`/`scene_end` の判定に必要な具体的フィールドが他 capability 側で未確定~~ → **Resolved(spec-foundation D123)**: `character_death` は state diff 中の `CharacterState.status` の `dead` への遷移、`heavy_roll_failure` は `rolls.yaml` 中の roll の `severity: critical`(Conflict Resolver が明示指定、add-agent-runtime D6)、`scene_end` は state diff 中の `SceneState.status` の `ended` への遷移で機械的に評価する。詳細は spec.md「停止条件の判定とレベル別適用」Requirement を参照。フィールド自体のスキーマ定義は add-state-model / add-random-engine の責務であり、本 change は評価ロジックのみを実装する。
+- ~~`character_death`/`heavy_roll_failure`/`scene_end` の判定に必要な具体的フィールドが他 capability 側で未確定~~ → **Resolved(spec-foundation D123)**: `character_death` は state diff 中の `CharacterState.status` の `dead` への遷移、`heavy_roll_failure` は `rolls.yaml` 中の roll の `severity: critical` かつ失敗 `outcome`(severity は Conflict Resolver が明示指定、add-agent-runtime D6。critical でも成功した roll では停止しない)、`scene_end` は state diff 中の `SceneState.status` の `ended` への遷移で機械的に評価する。詳細は spec.md「停止条件の判定とレベル別適用」Requirement を参照。フィールド自体のスキーマ定義は add-state-model / add-random-engine の責務であり、本 change は評価ロジックのみを実装する。
 - watch レベルでの「介入候補の提示」の既定オフを、プロジェクト設定で明示的にオンにできるようにするかは cli capability 側の UX 決定に委ねる。
