@@ -29,6 +29,7 @@ class ActSlot(Protocol):
         context: TurnContext,
         world_events: list[WorldEventCandidate],
         gateway: LLMGateway,
+        interventions: list[dict[str, Any]] = (),
     ) -> tuple[list[ActionCandidate], list[ActRecord]]: ...
 
 
@@ -49,6 +50,7 @@ class BuildDiffSlot(Protocol):
         context: TurnContext,
         resolved_events: list[Event],
         interventions: list[dict[str, Any]],
+        allocate_event_id: Callable[[], str] | None = None,
     ) -> BuildDiffOutput: ...
 
 

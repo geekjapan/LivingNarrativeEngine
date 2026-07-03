@@ -1,7 +1,10 @@
 """Character Agent slot implementation."""
 
+from typing import Any
+
 from living_narrative.agents.context_builder import build_character_context
 from living_narrative.agents.models import CharacterAgentOutput
+from living_narrative.intervention.router import character_directives_for
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.pipeline.models import ActionCandidate as PipelineActionCandidate
@@ -19,6 +22,7 @@ def run_character_agent(
     context: TurnContext,
     world_events: list[WorldEventCandidate],
     gateway: LLMGateway,
+    interventions: list[dict[str, Any]] = (),
 ) -> tuple[list[PipelineActionCandidate], list[ActRecord]]:
     del world_events
     actions: list[PipelineActionCandidate] = []
@@ -27,7 +31,8 @@ def run_character_agent(
     for character in context.bundle.characters:
         if character.status != CharacterStatus.ALIVE or character.id not in active_ids:
             continue
-        scoped = build_character_context(context.bundle, character.id)
+        directives = character_directives_for(interventions, character.id, context.bundle)
+        scoped = build_character_context(context.bundle, character.id, directives=directives)
         messages = [
             {"role": "system", "content": PROMPT_TEXT},
             {"role": "user", "content": scoped.model_dump_json()},

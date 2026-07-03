@@ -1,25 +1,42 @@
 """State Manager BuildDiff slot implementation."""
 
+from collections.abc import Callable
 from typing import Any
 
+from living_narrative.intervention.reveal import must_not_reveal_texts, reveal_now_sources
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import BuildDiffOutput, RejectedChange
 from living_narrative.state.diff import StateDiff, StateDiffChange
 from living_narrative.state.models import Event, Visibility
+
+# canon_edit/hidden_truth_edit (spec.md Requirement "Type別ルーティング"): a state diff target
+# per type, keyed by the collection this intervention type adds to.
+_EDIT_TARGETS = {"canon_edit": "canon", "hidden_truth_edit": "gm_vault"}
+
+
+def _default_event_id_allocator() -> Callable[[], str]:
+    """Fallback used only when a caller (e.g. a pre-existing unit test) doesn't supply one."""
+    counter = [9000]
+
+    def allocate() -> str:
+        counter[0] += 1
+        return f"event_{counter[0]:04d}"
+
+    return allocate
 
 
 def build_state_diff(
     context: TurnContext,
     resolved_events: list[Event],
     interventions: list[dict[str, Any]],
+    allocate_event_id: Callable[[], str] | None = None,
 ) -> BuildDiffOutput:
-    must_not_reveal = {
-        item.get("fact_id") or item.get("target_id")
-        for item in interventions
-        if item.get("type") == "reveal_control" and item.get("mode") == "must-not-reveal"
-    }
+    allocate_event_id = allocate_event_id or _default_event_id_allocator()
+    must_not_reveal = must_not_reveal_texts(context, interventions)
     changes: list[StateDiffChange] = []
     rejected: list[RejectedChange] = []
+    synthetic_events: list[Event] = []
+
     for event in resolved_events:
         for candidate in _changes_for_event(context, event):
             if candidate.source_event is None:
@@ -30,10 +47,100 @@ def build_state_diff(
                 rejected.append(_reject(candidate, "target id not found in current state"))
             else:
                 changes.append(candidate)
+
+    edit_counters: dict[str, int] = {}
+    for item in interventions:
+        target = _EDIT_TARGETS.get(item.get("type"))
+        if target is None:
+            continue
+        edit_counters[target] = edit_counters.get(target, 0) + 1
+        event, change = _synthetic_edit_change(
+            context, item, target, edit_counters[target], allocate_event_id
+        )
+        synthetic_events.append(event)
+        changes.append(change)
+
+    reveal_now_index = 0
+    for item, entry in reveal_now_sources(context, interventions):
+        if any(existing.text == entry.text for existing in context.bundle.reader_state):
+            continue
+        reveal_now_index += 1
+        event, change = _reveal_now_change(
+            context, item, entry, reveal_now_index, allocate_event_id
+        )
+        synthetic_events.append(event)
+        changes.append(change)
+
     return BuildDiffOutput(
         diff=StateDiff(id=f"diff_{context.turn:04d}", turn=context.turn, changes=changes),
         rejected_changes=rejected,
+        synthetic_events=synthetic_events,
     )
+
+
+def _synthetic_edit_change(
+    context: TurnContext,
+    item: dict[str, Any],
+    target: str,
+    index: int,
+    allocate_event_id: Callable[[], str],
+) -> tuple[Event, StateDiffChange]:
+    event = Event(
+        id=allocate_event_id(),
+        turn=context.turn,
+        type=item["type"],
+        cause=f"intervention:{item['id']}",
+        text=item.get("content", ""),
+        visibility=Visibility(item["visibility"]),
+    )
+    entry_id = f"{target}_{context.turn:04d}{index:02d}"
+    value: dict[str, Any] = {"id": entry_id, "text": item.get("content", "")}
+    if target == "canon":
+        value["established_turn"] = context.turn
+        value["source_event"] = event.id
+    else:
+        value["reveal_condition"] = (item.get("constraints") or {}).get("reveal_condition")
+    change = StateDiffChange(
+        target=target,
+        op="add",
+        path="",
+        value=value,
+        visibility=Visibility(item["visibility"]),
+        source_event=event.id,
+    )
+    return event, change
+
+
+def _reveal_now_change(
+    context: TurnContext,
+    item: dict[str, Any],
+    entry: Any,
+    index: int,
+    allocate_event_id: Callable[[], str],
+) -> tuple[Event, StateDiffChange]:
+    event = Event(
+        id=allocate_event_id(),
+        turn=context.turn,
+        type="reveal_control",
+        cause=f"intervention:{item['id']}",
+        text=entry.text,
+        visibility=Visibility.READER,
+    )
+    change = StateDiffChange(
+        target="reader_state",
+        op="add",
+        path="",
+        value={
+            "id": f"reader_state_{context.turn:04d}{index:02d}",
+            "text": entry.text,
+            "established_turn": context.turn,
+            "source_event": event.id,
+            "disclosed_turn": context.turn,
+        },
+        visibility=Visibility.READER,
+        source_event=event.id,
+    )
+    return event, change
 
 
 def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChange]:

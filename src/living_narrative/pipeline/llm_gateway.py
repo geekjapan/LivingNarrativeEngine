@@ -16,6 +16,7 @@ class LLMGateway:
     project: ProjectConfig
     random_seed: str = ""
     calls: list[CallMetadata] = field(default_factory=list)
+    scripted_responses: dict[str, Any] = field(default_factory=dict)
 
     def complete(
         self,
@@ -28,6 +29,7 @@ class LLMGateway:
         kwargs: dict[str, Any] = {"profile_name": profile.name}
         if profile.config.provider == "mock":
             kwargs["random_seed"] = self.random_seed
+            kwargs["scripted_responses"] = self.scripted_responses
 
         def _record(metadata: CallMetadata) -> None:
             self.calls.append(metadata.model_copy(update={"binding_key": binding_key}))

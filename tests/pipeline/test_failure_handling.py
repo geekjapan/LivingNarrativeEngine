@@ -29,7 +29,7 @@ def test_llm_provider_typed_exception_fails_act_phase(tmp_path, build_project):
     project_path = build_project(tmp_path)
     registry = default_registry()
 
-    def failing_act(context, world_events, gateway):
+    def failing_act(context, world_events, gateway, interventions=()):
         raise StructuredOutputError(
             provider_name="mock", model="mock-v1", schema_name="X", last_error="boom"
         )
