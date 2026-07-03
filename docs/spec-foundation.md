@@ -138,7 +138,7 @@ session-autonomy の停止条件は state/roll の具体的フィールドから
 - **project.yaml** — id/title/genre/tone/language/autonomy_level/user_mode/random_seed/renderer/llm(provider,model,base_url,timeout_seconds=30,prompt_recording=full|hash_only)/workspace paths(企画書 Appendix B 準拠)。commit-mode はランタイムパラメータでありスキーマに含めない(D118)
 - **LLM プロファイル(D122)** — `llm` は既定プロファイル。任意の `llm_profiles`(名前付きプロファイル辞書、各値は `llm` と同スキーマ)と `llm_bindings`(binding key → プロファイル名)で、エージェント種別・キャラクター単位に異なる LLM を割り当てられる。binding key: `narrator` | `world_simulator` | `conflict_resolver` | `state_manager` | `checker` | `interpreter` | `character_default` | `character:<char_id>`。解決順: `character:<id>` → `character_default` → 既定 `llm`(キャラクター以外は `<role>` → 既定 `llm`)。未定義プロファイル名への binding はロード時検証エラー
 - **world.yaml** — id/name/summary/laws[]/parameters{public_order, danger_level, ...}(0-100 整数)
-- **factions**(world.yaml 内 or factions.yaml)— goals/resources/relations
+- **factions.yaml**(任意)— `FactionState`(goals/resources/relations)のリスト。faction を使わないプロジェクトでは存在しなくてよく、欠落時は空コレクションとしてロードする(fail-fast の固定ファイルには含めない)
 - **characters/*.yaml** — id/name/role/traits/goals(short_term/long_term)/emotions(0-100)/knowledge(knows/believes/does_not_know)/secrets/private_mind/inventory/constraints
 - **relationships.yaml** — 有向ペア: trust/affection/tension/suspicion(0-100)+notes
 - **scenes/scene_XXX.yaml** — location/time/active_characters/mood/stakes/reader_visible_facts(list[str])/hidden_facts(構造化: id=fact_NNN, text, visibility, known_by — per-fact スコープを表現する。D115)

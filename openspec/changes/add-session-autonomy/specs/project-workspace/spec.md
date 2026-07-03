@@ -7,6 +7,8 @@
 
 モデルは任意で `stop_conditions`(停止条件のプロジェクト設定。既定値は空辞書)を持ってよい(MAY)。`stop_conditions` の各キーは `stop_condition` を除く9つの停止条件名(`character_death` / `major_canon_change` / `relationship_threshold_crossing` / `major_secret_reveal` / `checker_error` / `leak_suspicion` / `heavy_roll_failure` / `scene_end` / `target_turn_count_reached`)のいずれかでなければならず(SHALL)、値は `enabled`(bool、既定値 `true`)と任意の `threshold`(整数)を持つオブジェクトでなければならない(SHALL)。上記9条件以外のキー(`stop_condition` を含む — ユーザーの明示的停止要求は無効化できない。spec-foundation D119)はロード時検証エラーとしなければならない(SHALL)。`threshold` は閾値を持つ条件(現時点では `relationship_threshold_crossing` のみ)に対してのみ指定でき(SHALL)、閾値を持たない条件に指定された場合はロード時検証エラーとしなければならない(SHALL)。project-workspace はこのフィールドをスキーマとして保持・検証するのみであり、消費(停止条件評価。未設定時の既定値の意味論を含む)は `session-autonomy` capability の Requirement「停止条件のプロジェクト設定」が正本である。
 
+モデルは任意で `player_char_id`(文字列、spec-foundation §3 の `char_<zero-padded番号>` 形式)を持ってよい(MAY)。`user_mode` が `player_character` の場合、`player_char_id` は必須であり(SHALL)、欠落または形式不一致はロード時検証エラーとしなければならない(SHALL)。`user_mode` が `player_character` 以外の場合に `player_char_id` が指定されていたら、ロード時検証エラーとしなければならない(SHALL、無効な設定の黙殺を防ぐ)。このフィールドは `session-autonomy` の Requirement「Player Character モードの入力バインディング」がセッション開始時の `char_id` 束縛の正本として消費する。
+
 #### Scenario: 最小構成の project.yaml を読み込む
 - **WHEN** 企画書 Appendix B の `project:` インデント内容をラップキー無しでトップレベルに展開した `project.yaml` を読み込む
 - **THEN** 全フィールドが Pydantic モデルにマッピングされ、`language` 未指定の場合は `"ja"` が補完され、`stop_conditions` 未指定の場合は空辞書が補完される

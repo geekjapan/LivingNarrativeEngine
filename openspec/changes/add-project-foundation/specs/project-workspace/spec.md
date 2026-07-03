@@ -41,7 +41,7 @@
 - **THEN** ロードは成功し、未知フィールドについての警告が出力される
 
 ### Requirement: workspace ディレクトリレイアウト
-プロジェクトの workspace は企画書 Appendix C に準拠したディレクトリ構成を持たなければならない(SHALL): `workspace/state/`(`world.yaml`, `canon.yaml`, `reader_state.yaml`, `gm_vault.yaml`, `scenes/`, `characters/`, `relationships.yaml`, `timeline.yaml`, `unresolved_threads.yaml`)、`workspace/runs/`、`workspace/exports/`。
+プロジェクトの workspace は企画書 Appendix C に準拠したディレクトリ構成を持たなければならない(SHALL): `workspace/state/`(`world.yaml`, `canon.yaml`, `reader_state.yaml`, `gm_vault.yaml`, `scenes/`, `characters/`, `factions.yaml`(空リストで生成), `relationships.yaml`, `timeline.yaml`, `unresolved_threads.yaml`)、`workspace/runs/`、`workspace/exports/`。
 
 #### Scenario: init 後のディレクトリ構成
 - **WHEN** `living-narrative init` でプロジェクトを新規作成する

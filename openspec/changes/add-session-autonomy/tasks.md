@@ -2,7 +2,7 @@
 
 - [ ] 1.1 `UserMode` enum(`watcher` `assistant_gm` `full_gm` `author` `player_character` `god`)を Pydantic v2 モデルとして定義する。
 - [ ] 1.2 モードごとの権限マトリクス(許可介入タイプ集合・diff レビュー要否・gm_vault 表示可否)をデータとして定義する。
-- [ ] 1.3 `player_character` モードの `char_id` バインディングを project セッション設定に追加する。
+- [ ] 1.3 `player_character` モードの `char_id` バインディングを `project.yaml` のトップレベル任意フィールド `player_char_id`(`user_mode: player_character` 時は必須、`char_<zero-padded番号>` 形式、他モードでの指定はロード時検証エラー)として実装する(specs/project-workspace/spec.md MODIFIED Requirement)。
 - [ ] 1.4 権限マトリクスに基づく介入タイプの許可判定関数を実装し、intervention capability の Interpreter 生成時チェックへデータとして供給する(未許可介入は Interpreter が生成時に拒否 + エラー理由返却。本 capability 内で生成済み intervention を二重に却下する経路は作らない。design.md D7)。
 
 ## 2. Autonomy Level モデル
@@ -30,6 +30,7 @@
 - [ ] 5.3 edit 決定時、state diff スキーマ(spec-foundation §5.1)での再検証を実装する(検証失敗時は pending review を維持し再編集可能にする)。
 - [ ] 5.4 決定内容を `review.yaml` に記録する処理を実装する(spec.md 記載のフィールド: turn/decision/decided_at/decided_by/applied_change_indices/edit_diff/resulting_turn_status/auto_applied)。`decision: reject_all` は export-replay capability が正史除外判定に参照するマーカーである(spec-foundation D120)。
 - [ ] 5.5 決定→ターンステータス写像(accept_all/partial/edit成功→applied、reject_all→変更ゼロ件のapplied)を実装する。
+- [ ] 5.6 レビュー決定によるターン解決時に、当該ターンの intervention 群の `interventions.yaml` エントリを追記する処理を実装する(add-intervention の遅延書き込み規則。source reference は確定 event id と実際に適用された diff 内容、reject_all では適用変更なしを記録)。
 
 ## 6. Rerun セマンティクス
 

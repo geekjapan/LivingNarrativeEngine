@@ -130,11 +130,15 @@
 - **THEN** バリデーションが成功し、`roll_ids` は空リストになる
 
 ### Requirement: WorldStateBundle による workspace 全体ロード
-`StateStore.load(workspace_path)` は workspace 内の全状態ファイル(project 設定を除く spec-foundation §5 記載の全ファイル)を読み込み、単一の型付き `WorldStateBundle` を返さなければならない(SHALL)。固定7ファイル(`world.yaml`/`canon.yaml`/`reader_state.yaml`/`gm_vault.yaml`/`relationships.yaml`/`timeline.yaml`/`unresolved_threads.yaml`)のいずれかが存在しない場合、`StateStore.load()` は add-project-foundation の init が必ず生成する前提と矛盾する壊れた workspace とみなし、「バリデーションエラーの集約」要件と同じ `StateLoadError` として当該ファイルの欠落を報告して fail-fast で失敗しなければならない(SHALL、D117)。固定7ファイルが存在しファイル内のコレクションが空の場合、対応する `WorldStateBundle` のフィールドは空コレクションとしてロードを成功させなければならない(SHALL)。可変数の状態を格納するディレクトリ(`characters/`・`scenes/`)は、ディレクトリが存在しない、またはファイルが1件も無い場合でも空コレクションとしてロードを成功させなければならない(SHALL)。
+`StateStore.load(workspace_path)` は workspace 内の全状態ファイル(project 設定を除く spec-foundation §5 記載の全ファイル)を読み込み、単一の型付き `WorldStateBundle` を返さなければならない(SHALL)。固定7ファイル(`world.yaml`/`canon.yaml`/`reader_state.yaml`/`gm_vault.yaml`/`relationships.yaml`/`timeline.yaml`/`unresolved_threads.yaml`)のいずれかが存在しない場合、`StateStore.load()` は add-project-foundation の init が必ず生成する前提と矛盾する壊れた workspace とみなし、「バリデーションエラーの集約」要件と同じ `StateLoadError` として当該ファイルの欠落を報告して fail-fast で失敗しなければならない(SHALL、D117)。固定7ファイルが存在しファイル内のコレクションが空の場合、対応する `WorldStateBundle` のフィールドは空コレクションとしてロードを成功させなければならない(SHALL)。可変数の状態を格納するディレクトリ(`characters/`・`scenes/`)は、ディレクトリが存在しない、またはファイルが1件も無い場合でも空コレクションとしてロードを成功させなければならない(SHALL)。`FactionState` の格納先は `workspace/state/factions.yaml`(`FactionState` のリスト)であり(SHALL)、同ファイルは任意ファイルとして扱う: 存在しない、または空の場合でも `WorldStateBundle.factions` を空コレクションとしてロードを成功させなければならない(SHALL、faction を使わないプロジェクトを許容するため固定ファイルの fail-fast 対象には含めない)。`StateStore.save()` は `factions` コレクションを `factions.yaml` へ書き戻さなければならない(SHALL)。
 
 #### Scenario: 完全な workspace のロード
 - **WHEN** world/characters/scenes/relationships/canon/reader_state/gm_vault/timeline/unresolved_threads の各ファイルが揃った workspace を `StateStore.load()` に渡す
 - **THEN** 全フィールドが対応するモデルとして格納された `WorldStateBundle` が返る
+
+#### Scenario: factions.yaml が無い workspace のロード
+- **WHEN** `factions.yaml` が存在しない workspace を `StateStore.load()` に渡す
+- **THEN** ロードは成功し、`WorldStateBundle.factions` は空コレクションになる
 
 #### Scenario: 固定ファイルの欠落
 - **WHEN** `gm_vault.yaml` が存在しない workspace を `StateStore.load()` に渡す
