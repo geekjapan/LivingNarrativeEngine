@@ -218,15 +218,19 @@
 - **THEN** 選択された2件のみが状態に反映され、残り1件に対応する変更は反映されない
 
 ### Requirement: inverse diff の生成と保存
-`StateDiff` の適用時、各 change の逆操作(`add`↔`remove`、`set` は適用前の値を保持して `set` に戻す、`delta` は符号反転)からなる `InverseStateDiff` を生成し、適用結果とともに保存しなければならない(SHALL)。id 一致で解決するリスト要素(canon エントリ・`hidden_facts` 等)に対する `remove` change は `StateDiffChange.value` を省略できる(SHALL、対象の id のみで要素を一意特定できるため)。この場合、適用エンジンは適用直前の状態(pre-state)から削除対象要素のフル内容を読み取り、生成する `InverseStateDiff` の対応する `add` change の `value` に格納しなければならない(SHALL、Q3 recommendation B)。
+`StateDiff` の適用時、各 change の逆操作(`add`↔`remove`、`set` は適用前の値を保持して `set` に戻す、`delta` は符号反転)からなる `InverseStateDiff` を生成し、適用結果とともに保存しなければならない(SHALL)。ただし、適用時に clamp(Requirement「delta の 0-100 clamp」)が発生した `delta` change の逆操作は、符号反転 delta では適用前の値に戻らない(例: 95 に `+20` → clamp で 100、`-20` では 80 になり 95 に戻らない)ため、符号反転ではなく適用前の値を保持した `set` としなければならない(SHALL)。id 一致で解決するリスト要素(canon エントリ・`hidden_facts` 等)に対する `remove` change は `StateDiffChange.value` を省略できる(SHALL、対象の id のみで要素を一意特定できるため)。この場合、適用エンジンは適用直前の状態(pre-state)から削除対象要素のフル内容を読み取り、生成する `InverseStateDiff` の対応する `add` change の `value` に格納しなければならない(SHALL、Q3 recommendation B)。
 
 #### Scenario: add change の逆操作
 - **WHEN** `op: add, path: knowledge.knows, value: "新事実"` を含む `StateDiff` を適用する
 - **THEN** 生成される `InverseStateDiff` は同じ path に対する `op: remove, value: "新事実"` を含む
 
 #### Scenario: delta change の逆操作
-- **WHEN** `op: delta, path: emotions.fear, value: 15` を含む `StateDiff` を適用する
+- **WHEN** `op: delta, path: emotions.fear, value: 15` を含む `StateDiff` を、clamp が発生しない現在値(例: 50)に適用する
 - **THEN** 生成される `InverseStateDiff` は同じ path に対する `op: delta, value: -15` を含む
+
+#### Scenario: clamp が発生した delta change の逆操作
+- **WHEN** 現在値 95 の `emotions.fear` に `op: delta, value: +20` を含む `StateDiff` を適用する(結果は 100 に clamp される)
+- **THEN** 生成される `InverseStateDiff` は同じ path に対する `op: set, value: 95`(適用前の値)を含み、rollback 適用後の値は 95 に完全に復元される
 
 #### Scenario: value を省略した remove の逆操作
 - **WHEN** `target: canon, id: canon_005, op: remove`(`value` 省略)を含む `StateDiff` を、`canon_005` が存在する `WorldStateBundle` に適用する

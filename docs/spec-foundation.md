@@ -174,12 +174,12 @@ state_diff:
 | 4 | Act | 各キャラクターのスコープ済みコンテキスト | キャラクター行動候補(`agent_io/`) |
 | 5 | Resolve | 行動候補 + イベント候補 + 乱数 | `events.yaml` + `rolls.yaml` |
 | 6 | Narrate | reader可視イベントのみ | `narration.md` |
-| 7 | Check | narration + events + state | `checks.yaml` |
-| 8 | Commit | resolved events | `state_diff.yaml` → apply または review 待ち |
+| 7 | Check | narration + events + state diff 候補 + state | `checks.yaml` |
+| 8 | Commit | state diff 候補(BuildDiff 出力)+ Check 結果 | `state_diff.yaml` の apply または review 待ち |
 
 - turn artifact ディレクトリ: `workspace/runs/turn_NNNN/` に上記 + `meta.yaml`
   (`status`、フェーズ別所要時間、LLM 呼び出し回数、`llm_tokens_total`(取得可能分の合計、取得不能時省略)、model、prompt hash、`rng_draws_consumed`(そのターンで消費した draw 数)、pipeline version)。meta.yaml は完了マーカーとして最後に書く(D111)。
-- Simulate / Act / Resolve / **BuildDiff** / Check の5つがレジストリ差し替え可能なスロット(D108/D113)。BuildDiff は resolved events + interventions から state diff 候補を生成する(agent-runtime の State Manager が本実装。reveal_control の must-not-reveal 遵守は BuildDiff 契約に含まれる)。Commit はスロットではなく固定ロジック(BuildDiff 出力を state-model の apply へ渡す)。
+- Simulate / Act / Resolve / **BuildDiff** / Check の5つがレジストリ差し替え可能なスロット(D108/D113)。BuildDiff は resolved events + interventions から state diff 候補を生成する(agent-runtime の State Manager が本実装。reveal_control の must-not-reveal 遵守は BuildDiff 契約に含まれる)。BuildDiff は Narrate 完了後・Check 開始前に実行され、`state_diff.yaml`(候補)はこの時点で書き出される — Check(consistency-checks)は diff 候補を検査対象に含むため、BuildDiff を Check の後に回してはならない。Commit はスロットではなく固定ロジック(生成済みの BuildDiff 出力を Check 結果と commit-mode に従って state-model の apply へ渡す)。
 - **artifact は失敗時も必ず途中まで保存する**(partial artifact)。
 - 失敗ポリシー: schema 不一致 → 最大2回 retry(llm-provider 層)→ 枯渇時はターンを `failed` として記録(D110。`stopped_for_review` は「diff 生成済み・未適用」状態専用)。
   checker が error 級を検出 → auto 進行中でも停止。決して黙って握り潰さない。

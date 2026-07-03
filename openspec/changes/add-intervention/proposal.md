@@ -18,7 +18,7 @@
   - `tone_control` / `reveal_control` → Narrator 制約
   - `dice_roll_request` → Random Engine(Conflict Resolver 経由)
   - `canon_edit` / `hidden_truth_edit` → State Manager 経由の直接 state diff エントリ(D107: 直接書き換え禁止、diff 経由のみ)
-- `reveal_control` の意味論を追加する: 事実を「開示禁止(must-not-reveal)」または「即時開示(reveal-now)」としてマークする。実際の強制点は spec-foundation §6 フェーズ8(Commit)内の BuildDiff スロット(agent-runtime の State Manager が実装、turn-pipeline がスロット契約を定義。D113)であり、must-not-reveal は Reader State への昇格をブロックし、reveal-now は diff 変更として emit され Reader State へ昇格される。intervention capability の責務は BuildDiff が参照する制約データ(must-not-reveal / reveal-now マーク)を生成することのみであり、turn-pipeline 側への新規 hook 追加は不要(Modified Capabilities なし)。
+- `reveal_control` の意味論を追加する: 事実を「開示禁止(must-not-reveal)」または「即時開示(reveal-now)」としてマークする。実際の強制点は Narrate 後・Check 前に実行される BuildDiff スロット(agent-runtime の State Manager が実装、turn-pipeline がスロット契約を定義。D113)であり、must-not-reveal は Reader State への昇格をブロックし、reveal-now は diff 変更として emit され Reader State へ昇格される。intervention capability の責務は BuildDiff が参照する制約データ(must-not-reveal / reveal-now マーク)を生成することのみであり、turn-pipeline 側への新規 hook 追加は不要(Modified Capabilities なし)。
 - Intervention 履歴インデックス(`interventions.yaml`)を追加する: プロジェクト全体で累積し、各 intervention から結果として生じた event / state diff への参照(source reference)により追跡可能にする。
 
 ## Capabilities

@@ -32,7 +32,7 @@ Conflict Resolver を実装する前に、フェーズ間の入出力契約・ar
 
 ### D2: スロットは Protocol + 辞書レジストリ(D108/D113 準拠、plugin loader は作らない)
 
-Simulate / Act / Resolve / BuildDiff / Check の5つのスロットは `typing.Protocol` で入出力の形を定義し、実装は名前キーの辞書に登録する。TurnPipeline はレジストリから該当スロットを取得して呼び出すのみで、実装クラスを直接 import しない。BuildDiff は resolved events・そのターンの intervention・全状態を入力に受け取り、state diff 候補を出力するスロットであり、その契約には reveal_control の must-not-reveal 制約の遵守(読者可視スコープへの昇格を阻止すること)を含む。Commit フェーズは Resolve/Narrate/Check の完了後に BuildDiff スロットを呼び出して diff 候補を取得し、その出力を commit-mode に従って state-model の apply へ渡すだけの固定ロジックであり、スロットとしては差し替え不可能である(D113)。
+Simulate / Act / Resolve / BuildDiff / Check の5つのスロットは `typing.Protocol` で入出力の形を定義し、実装は名前キーの辞書に登録する。TurnPipeline はレジストリから該当スロットを取得して呼び出すのみで、実装クラスを直接 import しない。BuildDiff は resolved events・そのターンの intervention・全状態を入力に受け取り、state diff 候補を出力するスロットであり、その契約には reveal_control の must-not-reveal 制約の遵守(読者可視スコープへの昇格を阻止すること)を含む。TurnPipeline は BuildDiff スロットを Narrate 完了後・Check 開始前に呼び出して diff 候補を取得し、Check フェーズは narration・resolved events とともにこの state diff 候補を検査対象として受け取る(consistency-checks の checker 契約は diff 候補を入力に含むため、BuildDiff を Check の後に回すと diff 内容を検査する checker が機能しない)。Commit フェーズは Check の完了後、既に生成済みの diff 候補を commit-mode と Check 結果に従って state-model の apply へ渡すだけの固定ロジックであり、diff を生成せず、スロットとしては差し替え不可能である(D113)。
 
 - 根拠: spec-foundation D108/D113 に準拠。add-agent-runtime の State Manager が BuildDiff の本実装を提供し、Commit フェーズ内部と State Manager による二重 diff 生成を排除する。
 - 代替案: 抽象基底クラス(ABC)継承 — Protocol は構造的部分型のためテスト用スタブ実装が書きやすく、既存クラス階層に縛られない。ABC は不要な継承関係を強制するため不採用。
