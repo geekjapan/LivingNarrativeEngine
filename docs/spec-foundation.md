@@ -128,6 +128,7 @@ Event / Fact / Intervention は `visibility` を持つ:
 全ファイルは Pydantic モデルでロード時検証。未知フィールドは警告(forbid ではなく将来互換)。
 
 - **project.yaml** — id/title/genre/tone/language/autonomy_level/user_mode/random_seed/renderer/llm(provider,model,base_url,timeout_seconds=30,prompt_recording=full|hash_only)/workspace paths(企画書 Appendix B 準拠)。commit-mode はランタイムパラメータでありスキーマに含めない(D118)
+- **LLM プロファイル(D122)** — `llm` は既定プロファイル。任意の `llm_profiles`(名前付きプロファイル辞書、各値は `llm` と同スキーマ)と `llm_bindings`(binding key → プロファイル名)で、エージェント種別・キャラクター単位に異なる LLM を割り当てられる。binding key: `narrator` | `world_simulator` | `conflict_resolver` | `state_manager` | `checker` | `interpreter` | `character_default` | `character:<char_id>`。解決順: `character:<id>` → `character_default` → 既定 `llm`(キャラクター以外は `<role>` → 既定 `llm`)。未定義プロファイル名への binding はロード時検証エラー
 - **world.yaml** — id/name/summary/laws[]/parameters{public_order, danger_level, ...}(0-100 整数)
 - **factions**(world.yaml 内 or factions.yaml)— goals/resources/relations
 - **characters/*.yaml** — id/name/role/traits/goals(short/long)/emotions(0-100)/knowledge(knows/believes/does_not_know)/secrets/private_mind/inventory/constraints
@@ -199,6 +200,7 @@ state_diff:
 ## 8. LLM 契約
 
 - Provider interface: `complete(messages, response_schema) -> validated object`。
+- 複数プロファイル(D122): 1ターン内で複数の provider/model インスタンスを同時に利用できる。呼び出し側は binding key でプロファイルを解決し、呼び出しメタデータにプロファイル名・model を記録する(meta.yaml は呼び出しごとの model を保持)。mock provider の決定性はプロファイルが異なっても保たれる。
 - 全 agent 出力は Pydantic スキーマに準拠した構造化出力。検証失敗 → 修正指示付き retry(最大2回)→ 枯渇時は型付き例外を送出し、turn-pipeline がターンを `failed` として記録する(D110)。
 - Mock provider: seed 決定的・スキーマ準拠の応答を返す。全テスト・smoke test は mock で実行可能でなければならない。
 - API キーは環境変数のみ。ログ・artifact・例外メッセージに秘密情報を出さない。
@@ -232,6 +234,7 @@ state_diff:
 | D119 | stop_condition 介入は10番目の停止条件として配線し、全 autonomy レベル(watch/god 含む)で停止する | ユーザーの明示的停止要求を黙って無視しない(D107 と同精神) |
 | D120 | reject_all ターンの narration は artifact として保持するが、export-replay の正史からは除外(review.yaml の decision を参照) | 監査可能性と読者向け正史の分離 |
 | D121 | Conflict Resolver は検出した衝突を例外なく roll で解決(決定的除外ルールは将来拡張)。Event は任意の `roll_ids` を持ち、export の roll 可視性はそれを参照する reader 可視イベントから導出 | バッチ1の単純化・決定的テスト。roll 自体に visibility を持たせない |
+| D122 | LLM は名前付きプロファイル(`llm_profiles`)+ binding(`llm_bindings`)でエージェント種別・キャラクター単位に切替可能。`llm` は既定プロファイル。1ターン内の複数 provider 同時利用を正式サポート | ユーザー要件(キャラクターごと・進行役ごとに異なる LLM)。企画書 §24.4 の small/large モデル役割分担にも接続 |
 
 ## 10. 未決事項(ユーザー確認待ち・第1バッチをブロックしない)
 

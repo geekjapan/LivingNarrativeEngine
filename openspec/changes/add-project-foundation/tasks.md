@@ -18,6 +18,8 @@
 - [ ] 2.5 単体テスト: 企画書 Appendix B 準拠の `project.yaml` が正しくロードされることを確認する
 - [ ] 2.6 単体テスト: `language` 未指定時に `"ja"` が補完されることを確認する
 - [ ] 2.7 単体テスト: 未知フィールドを含む `project.yaml` がロード成功し警告を発することを確認する
+- [ ] 2.8 任意の `llm_profiles`(プロファイル名 → `llm` と同スキーマ)・`llm_bindings`(binding key → プロファイル名)フィールドを実装し、`llm_bindings` のキーを D122 の binding key 集合(`character:<char_id>` パターン含む)に限定するバリデータを追加する(spec-foundation D122)
+- [ ] 2.9 単体テスト: `llm_bindings` が未定義プロファイル名を参照する `project.yaml` がロード時検証エラーになることを確認する
 
 ## 3. ロード時検証とエラー集約
 

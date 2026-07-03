@@ -7,6 +7,17 @@
 - **WHEN** 任意の agent が LLM 応答を必要とする
 - **THEN** その agent は provider の `complete(messages, response_schema, prompt_template_name=..., **params)` のみを呼び出し、戻り値として `response_schema` のインスタンスを受け取る
 
+### Requirement: LLM プロファイル解決
+llm-provider capability は、binding key(spec-foundation D122: `narrator` | `world_simulator` | `conflict_resolver` | `state_manager` | `checker` | `interpreter` | `character_default` | `character:<char_id>`)と project 設定(`llm`・任意の `llm_profiles`・任意の `llm_bindings`。add-project-foundation のスキーマで定義)を入力とし、解決済みプロファイル(`llm` と同スキーマ)を返す resolver 関数を提供しなければならない(SHALL)。解決順序は次の通りでなければならない(SHALL、D122): binding key が `character:<char_id>` の場合、`llm_bindings["character:<char_id>"]` → `llm_bindings["character_default"]` → 既定 `llm` の順に最初に見つかったプロファイルを採用する。binding key がそれ以外のロールの場合、`llm_bindings["<role>"]` → 既定 `llm` の順に最初に見つかったプロファイルを採用する。解決された各プロファイルに対応する provider インスタンスは独立して生成・利用可能でなければならず(SHALL)、1ターン内で複数の provider/model インスタンスが同時に有効であってもよい(MAY、D122)。
+
+#### Scenario: キャラクター単位の binding が解決される
+- **WHEN** `llm_bindings["character:char_002"]` が `"large_model"` に設定されている状態で binding key `character:char_002` を解決する
+- **THEN** resolver は `llm_profiles["large_model"]` に対応するプロファイルを返す
+
+#### Scenario: binding の無いロールは既定プロファイルへフォールバックする
+- **WHEN** `llm_bindings` に `world_simulator` のエントリが存在しない状態で binding key `world_simulator` を解決する
+- **THEN** resolver は既定の `llm` プロファイルを返す
+
 ### Requirement: Provider Registry
 Provider は名前をキーとするレジストリ辞書に登録されなければならない (SHALL)(spec-foundation D108: 第1バッチはレジストリ辞書のみとし、plugin loader は実装しない)。`project.yaml` の `llm.provider` フィールドで指定された名前に対応する provider インスタンスが解決できなければならない (SHALL)。未登録の provider 名が指定された場合、エンジンは起動時に明確なエラーで失敗しなければならない (SHALL)。
 
@@ -36,10 +47,14 @@ JSON 抽出またはスキーマバリデーションが失敗した場合、pro
 - **THEN** provider ラッパーは型付き例外を送出し、その例外は最後のバリデーションエラー内容と使用した schema 名を含む
 
 ### Requirement: Mock Provider の決定性
-Mock provider は `(random_seed, response_schema, prompt hash)` の組み合わせから決定的にスキーマ準拠の値を生成しなければならない (SHALL)。同一の入力の組み合わせに対しては常に同一の出力を返さなければならない (SHALL)。
+Mock provider は `(random_seed, response_schema, prompt hash)` の組み合わせから決定的にスキーマ準拠の値を生成しなければならない (SHALL)。同一の入力の組み合わせに対しては常に同一の出力を返さなければならない (SHALL)。この決定性は呼び出しがどの LLM プロファイル(D122)経由であっても保たれなければならず(SHALL)、プロファイル名・model 名は決定性の入力に含まれない。
 
 #### Scenario: 同一入力からの再現
 - **WHEN** 同一の `random_seed`・同一の `response_schema`・同一の prompt(同一 hash)で mock provider を2回呼び出す
+- **THEN** 2回とも完全に同一の内容を持つ検証済みインスタンスが返る
+
+#### Scenario: プロファイルが異なっても決定性が保たれる
+- **WHEN** 同一の `random_seed`・同一の `response_schema`・同一の prompt(同一 hash)だが異なるプロファイル(異なる model 名)を指定して mock provider を2回呼び出す
 - **THEN** 2回とも完全に同一の内容を持つ検証済みインスタンスが返る
 
 ### Requirement: prompt hash の算出方法
@@ -86,11 +101,15 @@ OpenAI 互換 provider は接続エラーまたはタイムアウトが発生し
 - **THEN** provider は型付き例外を送出し、生の接続例外の詳細(秘密情報を含む可能性のある部分を除く)を呼び出し元へ伝える
 
 ### Requirement: 呼び出しメタデータの記録
-すべての LLM 呼び出しは、model 名・所要時間・token 使用量(provider から取得可能な場合)・prompt テンプレート名・prompt hash を含む呼び出しメタデータを記録し、呼び出し元が取得できるようにしなければならない (SHALL)。このメタデータは turn `meta.yaml`(spec-foundation §6)へ供給できる形式でなければならない。
+すべての LLM 呼び出しは、model 名・所要時間・token 使用量(provider から取得可能な場合)・prompt テンプレート名・prompt hash を含む呼び出しメタデータを記録し、呼び出し元が取得できるようにしなければならない (SHALL)。このメタデータは turn `meta.yaml`(spec-foundation §6)へ供給できる形式でなければならない。呼び出しが LLM プロファイル解決(D122)を経由した場合、メタデータには解決された binding key に対応するプロファイル名も追加で含まれなければならない(SHALL)。
 
 #### Scenario: 呼び出し後にメタデータが取得できる
 - **WHEN** provider の `complete()` 呼び出しが完了する(成功・retry を含む)
 - **THEN** 呼び出し元は model 名・所要時間・prompt テンプレート名・prompt hash を含むメタデータを取得でき、token 使用量が provider から取得できた場合はそれも含まれる
+
+#### Scenario: プロファイル解決経由の呼び出しでプロファイル名が記録される
+- **WHEN** binding key `character:char_001` を解決して得たプロファイルで `complete()` を呼び出す
+- **THEN** 呼び出しメタデータには解決されたプロファイル名が model 名と併せて含まれる
 
 ### Requirement: 秘密情報の非露出
 `api_key` を含む秘密情報は、ログ出力・保存される artifact・例外メッセージのいずれにも一切出現してはならない (SHALL NOT)。

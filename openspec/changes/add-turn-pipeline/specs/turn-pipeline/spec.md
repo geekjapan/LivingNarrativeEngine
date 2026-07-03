@@ -63,11 +63,15 @@ TurnPipeline は各 artifact ファイルを一時ファイルへ書き込んだ
 - **THEN** それ以前のフェーズ(Load〜Resolve)が生成した artifact(`intervention.yaml` `events.yaml` `rolls.yaml` 等)がディスクに保存され、ターンステータスが `failed` になり、人間可読のエラーレポートが artifact に含まれる
 
 ### Requirement: meta.yaml の内容
-`meta.yaml` は次の情報を含まなければならない(SHALL): `status`(ターンステータス。turn status の永続化先はこの meta.yaml の `status` フィールドである。D111)、フェーズごとの所要時間、LLM 呼び出し回数、`llm_tokens_total`(取得可能な範囲での合計トークン数。プロバイダーから取得できない場合はこのフィールド自体を省略する)、使用モデル名、prompt hash の一覧、`rng_draws_consumed`(そのターンで消費した乱数 draw 数)、pipeline のバージョン。
+`meta.yaml` は次の情報を含まなければならない(SHALL): `status`(ターンステータス。turn status の永続化先はこの meta.yaml の `status` フィールドである。D111)、フェーズごとの所要時間、LLM 呼び出し回数、`llm_tokens_total`(取得可能な範囲での全呼び出し合計トークン数。プロバイダーから取得できない場合はこのフィールド自体を省略する。1ターン内で複数の LLM プロファイルが使われた場合も全呼び出しの合算値とする。D122)、呼び出しごとの記録のリスト(各エントリは binding key・プロファイル名・model 名を持つ。D122: 1ターン内で複数 provider/model インスタンスが同時に利用されうるため、単一の「使用モデル名」ではなく呼び出しごとに記録する)、prompt hash の一覧、`rng_draws_consumed`(そのターンで消費した乱数 draw 数)、pipeline のバージョン。
 
 #### Scenario: meta.yamlの検証
 - **WHEN** 正常完了したターンの `meta.yaml` を読み込む
-- **THEN** `status`・8フェーズ分の所要時間・LLM呼び出し回数(0以上の整数)・使用モデル名・prompt hash 一覧・`rng_draws_consumed`・pipeline_version フィールドがすべて存在する(`llm_tokens_total` はプロバイダーから取得できた場合のみ存在する)
+- **THEN** `status`・8フェーズ分の所要時間・LLM呼び出し回数(0以上の整数)・呼び出しごとの記録(binding key・プロファイル名・model 名)のリスト・prompt hash 一覧・`rng_draws_consumed`・pipeline_version フィールドがすべて存在する(`llm_tokens_total` はプロバイダーから取得できた場合のみ存在する)
+
+#### Scenario: 複数プロファイル使用時に呼び出しごとの記録が個別に残る
+- **WHEN** あるターン内で異なる binding key を通じて解決された2つの異なるプロファイルでそれぞれ LLM 呼び出しが行われる
+- **THEN** `meta.yaml` の呼び出しごとの記録には、両方の呼び出しについてそれぞれの binding key・プロファイル名・model 名を含むエントリが個別に存在する
 
 ### Requirement: ターンステータスモデル
 TurnPipeline は各ターンの実行結果を `applied` / `pending_review` / `stopped_for_review` / `failed` のいずれか1つのステータスとして、そのターンの `meta.yaml` の `status` フィールドへ記録しなければならない(SHALL、D111: turn status の永続化先は meta.yaml)。ステータスは全ターン artifact をスキャンすることなく、そのターンの artifact のみから判別可能でなければならない。

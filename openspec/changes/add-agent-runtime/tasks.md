@@ -15,14 +15,14 @@
 
 ## 3. Character Agent
 
-- [ ] 3.1 `living_narrative.agents.character` に Character Agent を実装し、llm-provider の `complete` を通じて構造化出力を取得する
+- [ ] 3.1 `living_narrative.agents.character` に Character Agent を実装し、binding key `character:<char_id>`(D122)でプロファイル解決した上で llm-provider の `complete` を通じて構造化出力を取得する
 - [ ] 3.2 プロンプトテンプレートに知識・秘密整合性の維持を明示する(enforcement は checker 側だが、prompting 要求として明記する)
 - [ ] 3.3 mock provider を用いた決定的テスト(同一 seed で同一出力)を作成する
 - [ ] 3.4 スキーマ不一致時のリトライ・エラー伝播をテストする
 
 ## 4. World Simulator
 
-- [ ] 4.1 `living_narrative.agents.world_simulator` に時間経過・パラメータドリフト候補・勢力行動候補の生成ロジックを実装する
+- [ ] 4.1 `living_narrative.agents.world_simulator` に時間経過・パラメータドリフト候補・勢力行動候補の生成ロジックを実装する(llm-provider を呼び出す場合は binding key `world_simulator`(D122)を用いる)
 - [ ] 4.2 random-engine の weighted table を用いた背景イベント候補生成を実装する
 - [ ] 4.3 全出力候補への `visibility` 付与を実装し、欠落時に検証エラーとするテストを作成する
 - [ ] 4.4 mock provider + 固定 seed での決定的テストを作成する

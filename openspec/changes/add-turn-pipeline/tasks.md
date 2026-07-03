@@ -11,7 +11,7 @@
 
 - [ ] 2.1 `intervention.yaml` `events.yaml` `rolls.yaml` `checks.yaml` `state_diff.yaml` の書き込み(Pydantic モデル → YAML safe_dump)を実装する
 - [ ] 2.2 `agent_io/` ディレクトリへの Act フェーズ入出力の書き込みを実装する
-- [ ] 2.3 `meta.yaml` の書き込み(`status`、フェーズごとの所要時間、LLM 呼び出し回数、`llm_tokens_total`(取得可能分の合計、取得不能時省略)、モデル名、prompt hash 一覧、`rng_draws_consumed`、pipeline_version)を、そのターンの全 artifact 書き込みが完了した最後に実装する(D111)
+- [ ] 2.3 `meta.yaml` の書き込み(`status`、フェーズごとの所要時間、LLM 呼び出し回数、`llm_tokens_total`(取得可能分の全呼び出し合計、取得不能時省略)、呼び出しごとの記録(binding key・プロファイル名・model 名。D122)のリスト、prompt hash 一覧、`rng_draws_consumed`、pipeline_version)を、そのターンの全 artifact 書き込みが完了した最後に実装する(D111)
 - [ ] 2.4 例外発生時にそれまでに構築済みの artifact を破棄せず保存する部分永続化ロジックを実装する
 - [ ] 2.5 人間可読のエラーレポート形式(フェーズ名・例外種別・メッセージ)を定義し `failed` ステータス時に artifact へ含める
 

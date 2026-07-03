@@ -34,6 +34,8 @@
 
 理由: capability spec の各 Requirement をテスト可能な形にするには、agent 境界での型を先に固定する必要がある。state-model の Event/StateDiff を再利用することで二重スキーマ化を避ける(DRY)。
 
+各 agent の llm-provider `complete()` 呼び出しは、spec-foundation D122 の binding key(Character Agent: `character:<char_id>`、World Simulator: `world_simulator`、Conflict Resolver: `conflict_resolver`、State Manager: `state_manager`)を用いてプロファイルを解決した上で行う。プロファイル解決自体は `add-llm-provider` の resolver(D122)に委譲し、本 change は各 agent がどの binding key を用いるかのみを固定する。
+
 代替案: 各 agent が自由形式の dict を返し、Conflict Resolver / State Manager 側で緩く解釈する案は却下。構造化出力検証(§8)の恩恵を失い、スコープ違反の検出も後手に回る。
 
 ### D2: スコープ済みコンテキスト構築を WorldStateBundle 上の純粋関数にする

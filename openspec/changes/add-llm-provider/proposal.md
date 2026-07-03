@@ -7,6 +7,7 @@
 ## What Changes
 
 - Provider protocol `complete(messages, response_schema: type[BaseModel], **params) -> BaseModel` を定義し、provider を名前キーのレジストリ辞書に登録する(D108: plugin loader は作らない)。
+- LLM プロファイル resolver を実装する(spec-foundation D122): binding key(`narrator` | `world_simulator` | `conflict_resolver` | `state_manager` | `checker` | `interpreter` | `character_default` | `character:<char_id>`)と project 設定(`llm`・`llm_profiles`・`llm_bindings`)から解決済みプロファイルを返す。1ターン内で複数 provider/model インスタンスの同時利用をサポートする。呼び出しメタデータには解決されたプロファイル名を追加で記録し、mock provider の決定性はプロファイルが異なっても保たれる。
 - 構造化出力の共通ラッパーを実装する: LLM 応答から JSON を抽出 → Pydantic でバリデーション → 失敗時はバリデーションエラー内容を含む修正指示付きで最大2回まで retry → それでも失敗したら型付き例外を送出する(未検証データを決して返さない)。
 - Mock provider を実装する: `(seed, schema, prompt hash)` から決定的にスキーマ準拠の値を生成する。テスト fixture からロードした scripted/canned response で特定シナリオを再現できる。全テストスイートおよび smoke test はネットワークなしで mock provider のみで実行可能とする。
 - OpenAI 互換 provider を実装する: `openai` SDK + 設定可能な `base_url`(OpenAI API 本体・Ollama・LM Studio を1実装で担う)。`api_key` は環境変数からのみ取得する。接続/タイムアウトエラーは最大2回のバックオフ付き transient retry の後、型付き例外を送出する。リクエストタイムアウトは `project.yaml` の `llm.timeout_seconds`(add-project-foundation のスキーマ定義、既定30秒)から取得する。
@@ -27,7 +28,7 @@
 
 - LiteLLM の採用(spec-foundation D104 により不採用)。
 - ストリーミング応答。
-- 複数モデルのルーティング/フォールバック戦略。
+- 複数モデルの動的ルーティング/フォールバック戦略(失敗時の自動切替等)。静的な binding key → プロファイル解決(D122)は本 change の範囲に含まれる。
 - コスト予算管理(Phase 9)。
 - 画像・音声生成 provider。
 - 非同期(async)API(本 change ではバッチ1として同期のみ。design.md の Open Questions を参照)。
