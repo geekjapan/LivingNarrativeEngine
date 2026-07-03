@@ -13,7 +13,7 @@
 - [ ] 2.2 未解決ターンが残っている場合のブロックとエラー出力を実装する
 - [ ] 2.3 `--intervention` フラグ(自由文 → Intervention Interpreter 経由)を実装する
 - [ ] 2.4 `--type` + 構造化フラグ(直接入力パス)を実装し、`--intervention` との同時指定エラーを実装する
-- [ ] 2.5 `--as <mode>` によるターン限定の `user_mode` 一時上書きを実装する
+- [ ] 2.5 `--as <mode>` によるターン限定の `user_mode` 一時上書きを実装する(`--as player_character` は明示的エラーとする)
 - [ ] 2.6 `auto` サブコマンド(`--project` `--turns N`)を実装し、session-autonomy の停止条件判定に従って進行・早期停止する
 - [ ] 2.7 `auto --until scene_end` を実装し、`--turns` との同時指定エラーを実装する
 - [ ] 2.8 `turn`/`auto` の pytest(標準出力内容、ブロック、介入反映、排他フラグエラー、早期停止、scene_end 停止)を書く
@@ -22,7 +22,7 @@
 
 - [ ] 3.1 `review` サブコマンド(pending diff の人間可読提示)を実装する
 - [ ] 3.2 `--decision accept|reject|rerun` の非対話フラグを実装する
-- [ ] 3.3 `--decision partial --apply <path...>` の非対話フラグを実装する
+- [ ] 3.3 `--decision partial --apply <index...>`(0始まりインデックスのカンマ区切り/繰り返し指定)の非対話フラグを実装する
 - [ ] 3.4 `--decision edit --patch <file>` の非対話フラグを実装する
 - [ ] 3.5 pending 対象が存在しない場合の正常終了(exit code 0)パスを実装する
 - [ ] 3.6 TTY 無し・決定フラグ不足時の即時エラー終了(ブロッキング禁止)を実装する
@@ -53,16 +53,16 @@
 - [ ] 5.8 `mist_station` テンプレートとして `init` から生成できるよう配線する
 - [ ] 5.9 サンプル世界データの pytest(スキーマ検証、隠し真実とキャラクターの関連付け検証)を書く
 
-## 6. 10ターンスモークテスト
+## 6. 20ターンスモークテスト
 
-- [ ] 6.1 固定 `random_seed` + 決定的な mock provider 応答セットを用意する
+- [ ] 6.1 固定 `random_seed` + 決定的な mock provider 応答セットを20ターン分用意する
 - [ ] 6.2 ターン3・6向けの構造化直接入力介入(design.md D4)をテストフィクスチャとして用意する
-- [ ] 6.3 `tests/smoke/test_mist_station_10_turns.py` を作成し、10ターン完走を検証する
+- [ ] 6.3 `tests/smoke/test_mist_station_20_turns.py` を作成し、20ターン完走(MVP成功条件の範囲上限)を検証する
 - [ ] 6.4 ターン3・6の介入が翌ターンの narration/state に反映されることを検証する
 - [ ] 6.5 roll が `rolls.yaml` に記録されることを検証する
 - [ ] 6.6 state diff の保存・適用を検証する
-- [ ] 6.7 10ターンを通じて error 級 leak 検出が発生しないことを検証する
-- [ ] 6.8 5ターン目終了時点からの resume で6〜10ターン目が完走することを検証する
+- [ ] 6.7 20ターンを通じて error 級 leak 検出が発生しないことを検証する
+- [ ] 6.8 5ターン目終了時点からの resume で6〜20ターン目が完走することを検証する
 - [ ] 6.9 `export replay` により `replay.md` が生成され、隠し真実3件の文言が一切含まれないことを検証する
 
 ## 7. README・仕上げ

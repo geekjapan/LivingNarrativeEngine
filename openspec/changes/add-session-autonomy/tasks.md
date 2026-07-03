@@ -3,7 +3,7 @@
 - [ ] 1.1 `UserMode` enum(`watcher` `assistant_gm` `full_gm` `author` `player_character` `god`)を Pydantic v2 モデルとして定義する。
 - [ ] 1.2 モードごとの権限マトリクス(許可介入タイプ集合・diff レビュー要否・gm_vault 表示可否)をデータとして定義する。
 - [ ] 1.3 `player_character` モードの `char_id` バインディングを project セッション設定に追加する。
-- [ ] 1.4 権限マトリクスに基づく介入タイプの許可判定関数を実装する(未許可介入は拒否 + エラー理由返却)。
+- [ ] 1.4 権限マトリクスに基づく介入タイプの許可判定関数を実装し、intervention capability の Interpreter 生成時チェックへデータとして供給する(未許可介入は Interpreter が生成時に拒否 + エラー理由返却。本 capability 内で生成済み intervention を二重に却下する経路は作らない。design.md D7)。
 
 ## 2. Autonomy Level モデル
 
@@ -18,29 +18,31 @@
 
 ## 4. 停止条件評価
 
-- [ ] 4.1 9条件(character_death, major_canon_change, relationship_threshold_crossing, major_secret_reveal, checker_error, leak_suspicion, heavy_roll_failure, scene_end, target_turn_count_reached)の判定関数を実装する。
-- [ ] 4.2 プロジェクト設定(enable/disable、閾値)の読み込みとデフォルト値フォールバックを実装する。
-- [ ] 4.3 レベル別適用ルール(assist/auto は全条件、watch/god は checker_error・scene_end・target_turn_count_reached のみ)を実装する。
-- [ ] 4.4 停止条件評価の呼び出しをターンパイプラインの Check→Commit 境界(design.md D2)に統合する。
+- [ ] 4.1 10条件(character_death, major_canon_change, relationship_threshold_crossing, major_secret_reveal, checker_error, leak_suspicion, heavy_roll_failure, scene_end, target_turn_count_reached, stop_condition)の判定関数を実装する(spec-foundation D119)。
+- [ ] 4.2 プロジェクト設定(enable/disable、閾値)の読み込みとデフォルト値フォールバックを実装する。`stop_condition` は enable/disable の対象外とする(常に有効)。
+- [ ] 4.3 レベル別適用ルール(assist/auto は全10条件、watch/god は checker_error・scene_end・target_turn_count_reached・stop_condition の4条件のみ)を実装する。
+- [ ] 4.4 停止条件評価の呼び出しをターンパイプラインの Check→Commit 境界(design.md D2)に統合する。`stop_condition` は当該ターンで確定した `stop_condition` 介入の有無を判定材料とする。
 
 ## 5. GM レビューゲート
 
 - [ ] 5.1 pending state diff の保持・提示データ構造を実装する。
-- [ ] 5.2 accept_all / reject_all / partial / edit / rerun_turn の各決定処理を実装する。
-- [ ] 5.3 edit 決定時、state diff スキーマ(spec-foundation §5.1)での再検証を実装する。
-- [ ] 5.4 決定内容を `review.yaml` に記録する処理を実装する。
+- [ ] 5.2 accept_all / reject_all / partial / edit / rerun_turn の各決定処理を実装する。`partial`/`edit`/`rerun_turn` はターンパイプラインのフェーズ実行を経由せず、state-model の diff 適用 API と add-turn-pipeline が公開する事後操作向けユーティリティを直接呼び出す(design.md D8、turn-pipeline grill Q4 裁定)。
+- [ ] 5.3 edit 決定時、state diff スキーマ(spec-foundation §5.1)での再検証を実装する(検証失敗時は pending review を維持し再編集可能にする)。
+- [ ] 5.4 決定内容を `review.yaml` に記録する処理を実装する(spec.md 記載のフィールド: turn/decision/decided_at/decided_by/applied_change_indices/edit_diff/resulting_turn_status/auto_applied)。`decision: reject_all` は export-replay capability が正史除外判定に参照するマーカーである(spec-foundation D120)。
+- [ ] 5.5 決定→ターンステータス写像(accept_all/partial/edit成功→applied、reject_all→変更ゼロ件のapplied)を実装する。
 
 ## 6. Rerun セマンティクス
 
 - [ ] 6.1 既定(新規シーケンス消費)での rerun 実行を実装する。
 - [ ] 6.2 `--replay-same-seed` 指定時の乱数消費数巻き戻しを実装する。
-- [ ] 6.3 破棄された旧ターン artifact の非削除・監査可能な保持を実装する。
+- [ ] 6.3 破棄された旧ターン artifact を `turn_NNNN_discarded_<attempt連番>` へリネームして保持する処理を実装する(spec-foundation §6 D112、design.md D6。add-turn-pipeline が公開するユーティリティを利用し、命名契約を独自に分岐させない)。
+- [ ] 6.4 破棄対象ターンに属する `interventions.yaml` エントリへ `superseded_by_rerun: true` を付与する処理を実装する(design.md D6、add-intervention との調整事項の確定分)。
 
 ## 7. Resume
 
-- [ ] 7.1 ワークスペースから最終適用ターン番号を検出する処理を実装する。
+- [ ] 7.1 ワークスペースから最終適用ターン番号を検出する処理を実装する(`turn_NNNN` のみ対象、`turn_NNNN_discarded_*` は除外)。
 - [ ] 7.2 pending review の有無を検出する処理を実装する。
-- [ ] 7.3 `meta.yaml` の rng 消費数を累積し、乱数エンジンの状態を再構築する処理を実装する。
+- [ ] 7.3 現存する `turn_NNNN/meta.yaml` と全ての `turn_NNNN_discarded_*/meta.yaml` の rng 消費数を合算し、乱数エンジンの状態を再構築する処理を実装する(design.md D6)。
 - [ ] 7.4 pending-review-first ルール(他操作より resume 時の pending review 提示を優先)を実装する。
 
 ## 8. Auto N ターンループ
@@ -63,6 +65,7 @@
 - [ ] 10.5 auto ループが checker_error 等の停止条件で正しく停止することを検証するテストを書く(mock provider 使用)。
 - [ ] 10.6 rerun の既定(新規シーケンス)と `--replay-same-seed`(同一シーケンス)双方の乱数結果を検証するテストを書く。
 - [ ] 10.7 god モードの編集が常に diff として記録されることを検証するテストを書く。
+- [ ] 10.8 rerun で破棄された `turn_NNNN_discarded_*` の rng 消費数が resume の累積計算に含まれることを検証するテストを書く(design.md D6)。
 
 ## 11. ドキュメント
 

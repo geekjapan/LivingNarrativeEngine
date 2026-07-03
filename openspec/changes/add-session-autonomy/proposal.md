@@ -40,5 +40,5 @@
 - 新規コード: `src/living_narrative/session/`(`mode.py` `autonomy.py` `stop_conditions.py` `review.py` `resume.py` 相当。企画書 §18.3 のディレクトリ構成に準拠)。
 - 新規 artifact: 各 `workspace/runs/turn_NNNN/review.yaml`。
 - 既存 artifact への影響: `meta.yaml` の rng 消費数を resume/rerun が読み取る(add-random-engine 定義済み)。
-- 統合ポイント: turn pipeline の Intervene フェーズ(player_character 入力ルーティング)、Check→Commit 境界(停止条件評価点)。
-- 依存する将来 change: `add-cli-and-sample`(mode/level の CLI フラグ、レビューゲート・resume・auto ループのレンダリング)。
+- 統合ポイント: turn pipeline の Intervene フェーズ(player_character 入力ルーティング)、Check→Commit 境界(停止条件評価点)。GM レビューゲートの事後操作(`partial`/`edit`/`rerun_turn`)はターンパイプラインのフェーズ実行を経由せず、state-model の diff 適用 API と turn-pipeline が公開する事後操作向けユーティリティを直接呼び出す(design.md D8)。
+- 依存する将来 change: `add-cli-and-sample`(mode/level の CLI フラグ、レビューゲート・resume・auto ループのレンダリング。`export-replay` は `review.yaml` の `decision` フィールドを参照して `reject_all` ターンの narration を読者向け正史から除外する — spec-foundation D120)。

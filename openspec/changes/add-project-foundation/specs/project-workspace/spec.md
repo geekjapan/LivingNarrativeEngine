@@ -12,17 +12,17 @@
 - **THEN** 未整形・lint 違反があれば非ゼロ終了コードで報告される
 
 ### Requirement: CI パイプライン
-リポジトリは GitHub Actions のワークフローを持ち、push および pull request で `uv sync` → `ruff check` → `pytest` を順に実行しなければならない(SHALL)。いずれかのステップが失敗した場合、後続ステップの成否によらず CI 全体を失敗として報告しなければならない(SHALL)。
+リポジトリは GitHub Actions のワークフローを持ち、push および pull request で `uv sync` → `ruff check` → `ruff format --check` → `pytest` を順に実行しなければならない(SHALL)。いずれかのステップが失敗した場合、後続ステップの成否によらず CI 全体を失敗として報告しなければならない(SHALL)。
 
 #### Scenario: CI がテスト失敗を検知する
 - **WHEN** pull request に `pytest` が失敗するコード変更が含まれる
 - **THEN** CI ワークフローは失敗ステータスを報告する
 
 ### Requirement: project.yaml スキーマ
-`project.yaml` のスキーマは Pydantic v2 モデルを単一正本としなければならない(SHALL、spec-foundation D105)。モデルは少なくとも次のフィールドを持たなければならない(SHALL): `id`, `title`, `genre`, `tone`, `language`(既定値 `"ja"`), `autonomy_level`, `user_mode`, `random_seed`, `renderer`, `llm`(`provider`, `model`, 任意の `base_url`), `workspace`(`root`, `state`, `runs`, `exports` の各パス)。
+`project.yaml` のスキーマは Pydantic v2 モデルを単一正本としなければならない(SHALL、spec-foundation D105)。モデルは少なくとも次のフィールドを持たなければならない(SHALL): `id`, `title`, `genre`, `tone`, `language`(既定値 `"ja"`), `autonomy_level`, `user_mode`, `random_seed`, `renderer`, `llm`(`provider`, `model`, 任意の `base_url`, 任意の `timeout_seconds`(既定値 `30`), 任意の `prompt_recording`(`full` | `hash_only` の enum、既定値 `"full"`)), `workspace`(`root`, `state`, `runs`, `exports` の各パス)。`llm.timeout_seconds`/`llm.prompt_recording` は `add-llm-provider` capability が LLM 呼び出し時に消費する設定値であり(spec-foundation D118)、本 change ではスキーマフィールドとして保持するのみで消費ロジックは実装しない。`project.yaml` ファイルの YAML ルートはこれらのフィールドを直接キーとして持たなければならない(SHALL)。企画書 Appendix B の `project:` というインデントはドキュメント上のグルーピング表記であり、実ファイルではラップキーとしない。`id` は spec-foundation §3 の `<type>_<zero-padded番号>` 規約の対象外の自由形式文字列であり(project id はこの規約が列挙する ID 種別に含まれない)、フォーマット検証を課してはならない(SHALL NOT)。`autonomy_level` は spec-foundation §3 の `autonomy_level` 正準 enum(`manual`/`assist`/`auto`/`watch`/`god`)の、`user_mode` は同じく `user_mode` 正準 enum(`watcher`/`assistant_gm`/`full_gm`/`author`/`player_character`/`god`)の、いずれかの値でなければならない(SHALL)。
 
 #### Scenario: 最小構成の project.yaml を読み込む
-- **WHEN** 企画書 Appendix B に準拠した `project.yaml` を読み込む
+- **WHEN** 企画書 Appendix B の `project:` インデント内容をラップキー無しでトップレベルに展開した `project.yaml` を読み込む
 - **THEN** 全フィールドが Pydantic モデルにマッピングされ、`language` 未指定の場合は `"ja"` が補完される
 
 ### Requirement: project.yaml ロード時検証とエラー集約
@@ -44,11 +44,11 @@
 - **THEN** 生成された workspace は上記の全ディレクトリ・ファイルを含む
 
 ### Requirement: init コマンドによるプロジェクト作成
-`living-narrative init` コマンドは、必須オプション(少なくとも `--title`)を受け取り、指定した出力先にプロジェクトディレクトリと `project.yaml`、workspace 一式を生成しなければならない(SHALL)。生成する state ファイルの内容は、後続 change が本格的なテンプレートで置き換え可能な最小の空ワールド構成でよい。
+`living-narrative init` コマンドは、必須オプション(少なくとも `--title`)を受け取り、指定した出力先にプロジェクトディレクトリと `project.yaml`、workspace 一式を生成しなければならない(SHALL)。生成する state ファイルの内容は、後続 change が本格的なテンプレートで置き換え可能な最小の空ワールド構成でよい。`--title` 以外の `project.yaml` フィールドは次の固定既定値を用いなければならない(SHALL): `id` は `--title` から生成する ASCII 英数字とハイフンのみの slug(ASCII で表現できない場合は固定文字列 `"project"` にフォールバックする)、`genre`/`tone` は空文字列、`autonomy_level` は `"manual"`、`user_mode` は `"watcher"`、`random_seed` は実行のたびに一意な自動生成値、`renderer` は `"novel"`、`llm.provider` は `"mock"`、`llm.model` は `"mock-v1"`、`workspace.root`/`state`/`runs`/`exports` は企画書 Appendix B と同じ相対パス(`workspace`, `workspace/state`, `workspace/runs`, `workspace/exports`)。
 
 #### Scenario: 新規プロジェクトの作成
 - **WHEN** 存在しない出力先パスを指定して `living-narrative init --title "霧の駅"` を実行する
-- **THEN** コマンドは成功し、`project.yaml` の `title` に `"霧の駅"` が設定され、workspace レイアウトが規定どおり生成される
+- **THEN** コマンドは成功し、`project.yaml` の `title` に `"霧の駅"` が設定され、`llm.provider` に `"mock"` が設定され、workspace レイアウトが規定どおり生成される
 
 ### Requirement: 既存ディレクトリへの上書き拒否
 `living-narrative init` は、出力先ディレクトリが既に存在し中身が空でない場合、生成処理を実行せずエラーで終了しなければならない(SHALL)。
@@ -72,8 +72,8 @@
 - **THEN** 読み込みは失敗し、検証レポートに `gm_vault.yaml` の欠落が含まれる
 
 ### Requirement: 秘密情報の非露出
-project 読み込み・`init` に関わるいかなるログ出力・例外メッセージ・エラーレポートも、LLM API キー等の秘密情報の値を含んではならない(SHALL、spec-foundation §8)。API キーは環境変数からのみ取得しなければならない(SHALL)。
+project 読み込み・`init` に関わるいかなるログ出力・例外メッセージ・エラーレポート・検証レポートも、`.env`/環境変数由来の API キー等の秘密情報の値を含んではならない(SHALL、spec-foundation §8)。本 change は `project.yaml` ロード時に環境変数から API キーを読み取ったり、その有無を検証したりする機能を実装しない(SHALL NOT)。LLM provider に対する API キーの取得元(環境変数のみ)・有無検証・接続時のエラー処理は `add-llm-provider` capability の責務である。
 
-#### Scenario: LLM API キー未設定時のエラーメッセージ
-- **WHEN** LLM provider に API キーが必要な設定で、環境変数が未設定のままプロジェクトを読み込む
-- **THEN** エラーメッセージは「環境変数が未設定である」旨を示すが、キーの値そのものは一切出力しない
+#### Scenario: llm 設定を含む project.yaml の検証エラー
+- **WHEN** `llm.provider` 等のフィールド値が不正な `project.yaml` を読み込み、検証エラーレポートを生成する
+- **THEN** エラーレポートには当該フィールドの検証エラー理由のみが含まれ、`.env`/環境変数から取得されうる API キー等の秘密情報の値は一切含まれない

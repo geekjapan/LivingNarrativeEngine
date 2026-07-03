@@ -1,17 +1,8 @@
 # cli
 
+`init` サブコマンドの完全な契約(`--genre`/`--tone`/`--template`/`--output`、テンプレートレジストリ、未登録テンプレート名のエラー処理を含む)は `project-workspace` capability の Requirement「init コマンドによるプロジェクト作成」(MODIFIED、`specs/project-workspace/spec.md` 参照)を正本とし、本 spec には重複定義しない。
+
 ## ADDED Requirements
-
-### Requirement: `init` によるプロジェクト新規作成とテンプレート検証
-`living-narrative init --title <str> --genre <str> --tone <str> --template <name> --output <dir>` は、指定した `--output` ディレクトリに spec-foundation §2/§5・企画書 Appendix B/C 準拠の `project.yaml` とワークスペース(`workspace/state/` 以下の全ファイル、`workspace/runs/`、`workspace/exports/`)を生成しなければならない(SHALL)。`--template` には `mist_station`(サンプル世界「霧の駅」)と `minimal`(空のたたき台)の2種を指定できる。`mist_station` テンプレートは、世界「霧の駅」(舞台: 霧に包まれた旧市街の地下駅)、4キャラクター(リナ・カイ・ミラ・追跡者)、`gm_vault` に隠し真実3件(封印施設の存在・カイの部分的知識・ミラの正体)、`scene_001`(初期状況: リナとカイが地下駅で足音を聞く)を含まなければならない(SHALL)。未登録のテンプレート名を指定した場合、CLI は既定テンプレートへフォールバックせず、明示的なエラーメッセージと非ゼロの exit code で終了しなければならない(SHALL)。
-
-#### Scenario: mist_stationテンプレートでのプロジェクト生成
-- **WHEN** `living-narrative init --title "霧の駅" --genre mystery_fantasy --tone quiet_ominous --template mist_station --output projects/mist_station` を実行する
-- **THEN** `projects/mist_station/project.yaml` と `workspace/state/characters/` 配下に4キャラクター分のファイル、`workspace/state/gm_vault.yaml` に隠し真実3件、`workspace/state/scenes/scene_001.yaml` が生成される
-
-#### Scenario: 未登録テンプレート名でのエラー
-- **WHEN** `living-narrative init --template unknown_template --output projects/foo` を実行する
-- **THEN** CLI は既定テンプレートへフォールバックせず、テンプレートが存在しない旨の人間可読エラーを出力して非ゼロの exit code で終了する
 
 ### Requirement: `turn` による単一ターン実行と標準出力仕様
 `living-narrative turn --project <path>` は、指定プロジェクトの次のターンを1回実行し、`narration.md` の本文を標準出力へ日本語で出力しなければならない(SHALL)。出力には、少なくともターン番号・ターンステータス(`applied`/`pending_review`/`stopped_for_review`/`failed`)を示すステータス行を含めなければならない(SHALL)。CLI 自体はターン実行のビジネスロジック(state diff 計算、可視性判定、乱数消費等)を実装せず、turn-pipeline capability の公開 API 呼び出し結果をそのまま出力に整形するのみでなければならない(SHALL)。
@@ -43,11 +34,15 @@
 - **THEN** CLI はターンを実行せず、`--intervention` と `--type` は同時指定できない旨のエラーを出力して非ゼロの exit code で終了する
 
 ### Requirement: `turn` の `--as` によるモード一時上書き
-`living-narrative turn --project <path> --as <user_mode>` は、当該ターンに限り `project.yaml` の `user_mode` を指定値へ一時的に上書きしなければならない(SHALL)。プロジェクトファイル自体の `user_mode` は変更してはならない(MUST NOT)。
+`living-narrative turn --project <path> --as <user_mode>` は、当該ターンに限り `project.yaml` の `user_mode` を指定値へ一時的に上書きしなければならない(SHALL)。プロジェクトファイル自体の `user_mode` は変更してはならない(MUST NOT)。`--as` に `player_character` を指定した場合、CLI は上書きを実行せず明示的なエラーで終了しなければならない(SHALL): `player_character` モードはセッション開始時の `char_id` 紐付けを前提とし(session-autonomy 準拠)、単発ターンの一時上書きでは紐付け先を表現できないため。
 
 #### Scenario: 一時的なGod Mode昇格
-- **WHEN** `user_mode: assist_gm` のプロジェクトで `living-narrative turn --project <path> --as god --type canon_edit ...` を実行する
-- **THEN** 当該ターンは `god` の権限で intervention の permission 判定を通過し、実行後の `project.yaml` の `user_mode` は `assist_gm` のまま変化しない
+- **WHEN** `user_mode: assistant_gm` のプロジェクトで `living-narrative turn --project <path> --as god --type canon_edit ...` を実行する
+- **THEN** 当該ターンは `god` の権限で intervention の permission 判定を通過し、実行後の `project.yaml` の `user_mode` は `assistant_gm` のまま変化しない
+
+#### Scenario: `--as player_character` はエラーになる
+- **WHEN** `living-narrative turn --project <path> --as player_character` を実行する
+- **THEN** CLI はターンを実行せず、`player_character` への一時上書きはサポートされない旨のエラーを出力して非ゼロの exit code で終了する
 
 ### Requirement: `auto` による複数ターン自動進行
 `living-narrative auto --project <path> --turns N` は、session-autonomy の停止条件判定に従って最大 N ターンを自律進行しなければならない(SHALL)。停止条件に該当した場合、指定ターン数に達する前でも進行を止め、標準出力に停止理由を示さなければならない(SHALL)。
@@ -72,15 +67,15 @@
 - **THEN** CLI は進行を開始せず、`--turns` と `--until` は同時指定できない旨のエラーを出力して非ゼロの exit code で終了する
 
 ### Requirement: `review` による pending diff のインタラクティブフロー
-`living-narrative review --project <path>` は、`pending_review` または `stopped_for_review` 状態の直近ターンの state diff を人間可読な形で提示し、accept(全適用)/reject(全却下・状態不変)/partial(部分適用)/edit(内容編集後に適用)/rerun(当該ターンを再実行)のいずれかをユーザーに選択させなければならない(SHALL)。全ての選択肢は、対話プロンプトに応じるだけでなく、対応する非対話フラグ(例: `--decision accept`、`--decision partial --apply <path> ...`、`--decision edit --patch <file>`、`--decision rerun`)でも指定できなければならない(SHALL)。
+`living-narrative review --project <path>` は、`pending_review` または `stopped_for_review` 状態の直近ターンの state diff を人間可読な形で提示し、accept(全適用)/reject(全却下・状態不変)/partial(部分適用)/edit(内容編集後に適用)/rerun(当該ターンを再実行)のいずれかをユーザーに選択させなければならない(SHALL)。全ての選択肢は、対話プロンプトに応じるだけでなく、対応する非対話フラグ(例: `--decision accept`、`--decision partial --apply <index> ...`、`--decision edit --patch <file>`、`--decision rerun`)でも指定できなければならない(SHALL)。`--apply` は session-autonomy の partial 適用契約(change のインデックス集合による選択)に合わせ、0始まりのインデックス値をカンマ区切りまたはフラグ繰り返しで受け取らなければならない(SHALL)。パスやその他のキーによる選択方式は提供しない(SHALL NOT)。
 
 #### Scenario: accept全適用の非対話実行
 - **WHEN** `living-narrative review --project <path> --decision accept` を実行する
 - **THEN** 対象ターンの state diff が全件適用され、ターンステータスが `applied` になり、対話プロンプトは表示されない
 
 #### Scenario: partial適用の非対話実行
-- **WHEN** `living-narrative review --project <path> --decision partial --apply path=knowledge.knows` のように diff の一部パスのみ指定して実行する
-- **THEN** 指定したパスの変更のみが適用され、残りの変更は未適用のまま state diff に記録される
+- **WHEN** state diff が3件の change を含むターンで `living-narrative review --project <path> --decision partial --apply 0,2` を実行する
+- **THEN** インデックス0と2の change のみが適用され、インデックス1は未適用のまま state diff に記録される
 
 ### Requirement: `review` の pending 不在時の挙動
 `living-narrative review --project <path>` は、`pending_review`/`stopped_for_review` のターンが存在しない場合、レビュー対象が無い旨を標準出力に示して正常終了(exit code 0)しなければならない(SHALL)。エラーとして扱ってはならない(MUST NOT)。
@@ -111,13 +106,13 @@
 - **WHEN** 存在しないプロジェクトパスを指定して `living-narrative status --project projects/does_not_exist/project.yaml` を実行する
 - **THEN** exit code は `2` であり、標準エラー出力にプロジェクトが見つからない旨の人間可読メッセージが出力される
 
-### Requirement: サンプル世界での10ターンスモークテスト
-`mist_station` テンプレートと mock provider・固定 `random_seed` を用いた10ターンの smoke test は、企画書 §21.4 の MVP 成功条件を回帰的に検証しなければならない(SHALL)。当該 smoke test は決定的でなければならず(SHALL)、少なくとも次のすべてを検証しなければならない(SHALL): (1) 10ターンが `failed` にならず完走すること、(2) ターン3・ターン6で与えた介入がそれぞれ翌ターンの narration/state に反映されること、(3) 各ターンで少なくとも1件以上の roll が `rolls.yaml` に記録されるターンが存在すること、(4) state diff が保存され、review or auto-apply を経て適用されること、(5) 10ターンを通じて error 級の情報リーク検出(leak checker)が発生しないこと、(6) 途中(例: 5ターン目)でプロセスを終了した状態から `resume` して残りのターンを完走できること、(7) `living-narrative export replay` で `replay.md` が生成され、`gm_vault` の隠し真実3件のいずれの文言も含まれないこと。
+### Requirement: サンプル世界での20ターンスモークテスト
+`mist_station` テンプレートと mock provider・固定 `random_seed` を用いた20ターンの smoke test は、企画書 §21.4 の MVP 成功条件(サンプル世界を10〜20ターン破綻せず進められる)のうち範囲の上限を回帰的に検証しなければならない(SHALL)。当該 smoke test は決定的でなければならず(SHALL)、少なくとも次のすべてを検証しなければならない(SHALL): (1) 20ターンが `failed` にならず完走すること、(2) ターン3・ターン6で与えた介入がそれぞれ翌ターンの narration/state に反映されること、(3) 各ターンで少なくとも1件以上の roll が `rolls.yaml` に記録されるターンが存在すること、(4) state diff が保存され、review or auto-apply を経て適用されること、(5) 20ターンを通じて error 級の情報リーク検出(leak checker)が発生しないこと、(6) 途中(例: 5ターン目)でプロセスを終了した状態から `resume` して残りのターンを完走できること、(7) `living-narrative export replay` で `replay.md` が生成され、`gm_vault` の隠し真実3件のいずれの文言も含まれないこと。
 
-#### Scenario: 10ターン完走とMVP成功条件の一括検証
-- **WHEN** 固定 seed・mock provider で `mist_station` テンプレートから生成したプロジェクトに対し、ターン3・6で介入を与えつつ `living-narrative auto --turns 10` 相当の処理を実行する
+#### Scenario: 20ターン完走とMVP成功条件の一括検証
+- **WHEN** 固定 seed・mock provider で `mist_station` テンプレートから生成したプロジェクトに対し、ターン3・6で介入を与えつつ `living-narrative auto --turns 20` 相当の処理を実行する
 - **THEN** 上記(1)〜(7)のすべての検証項目が満たされることを pytest で確認できる
 
 #### Scenario: 中断からのresume
 - **WHEN** 5ターン完了時点でプロセスを終了させ、同一プロジェクトに対して再度ターン実行コマンドを呼び出す
-- **THEN** ターン6から実行が再開され、1〜5ターン目の artifact・state は変更されない
+- **THEN** ターン6から実行が再開され、6〜20ターン目が完走し、1〜5ターン目の artifact・state は変更されない

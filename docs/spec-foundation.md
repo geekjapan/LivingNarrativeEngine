@@ -79,7 +79,8 @@ branch/rollback の UI(データ形式のみ将来対応可能に保つ)。
 ## 3. ID・命名規約
 
 - ID は `<type>_<zero-padded番号>`: `char_001` `faction_001` `scene_001` `world_001`
-  `event_0001` `int_0001` `roll_0001` `diff_0001` `thread_001`
+  `event_0001` `int_0001` `roll_0001` `diff_0001` `thread_001` `fact_001`
+- 例外: relationship は独自 id を持たず、有向複合キー `<from_id>__<to_id>`(例 `char_001__char_002`)で特定する(D116)
 - ターン番号は 1 始まりの整数。turn artifact ディレクトリは `turn_0001` 形式。
 - diff / event / roll / intervention はターンを跨いで一意(プロジェクト内通番)。
 - capability・ドキュメントファイル名は kebab-case、Python は PEP8。
@@ -126,12 +127,12 @@ Event / Fact / Intervention は `visibility` を持つ:
 スキーマ詳細は `state-model` spec が正本。ここでは形と役割のみ規定する。
 全ファイルは Pydantic モデルでロード時検証。未知フィールドは警告(forbid ではなく将来互換)。
 
-- **project.yaml** — id/title/genre/tone/language/autonomy_level/user_mode/random_seed/renderer/llm(provider,model,base_url)/workspace paths(企画書 Appendix B 準拠)
+- **project.yaml** — id/title/genre/tone/language/autonomy_level/user_mode/random_seed/renderer/llm(provider,model,base_url,timeout_seconds=30,prompt_recording=full|hash_only)/workspace paths(企画書 Appendix B 準拠)。commit-mode はランタイムパラメータでありスキーマに含めない(D118)
 - **world.yaml** — id/name/summary/laws[]/parameters{public_order, danger_level, ...}(0-100 整数)
 - **factions**(world.yaml 内 or factions.yaml)— goals/resources/relations
 - **characters/*.yaml** — id/name/role/traits/goals(short/long)/emotions(0-100)/knowledge(knows/believes/does_not_know)/secrets/private_mind/inventory/constraints
 - **relationships.yaml** — 有向ペア: trust/affection/tension/suspicion(0-100)+notes
-- **scenes/scene_XXX.yaml** — location/time/active_characters/mood/stakes/reader_visible_facts/hidden_facts
+- **scenes/scene_XXX.yaml** — location/time/active_characters/mood/stakes/reader_visible_facts(list[str])/hidden_facts(構造化: id=fact_NNN, text, visibility, known_by — per-fact スコープを表現する。D115)
 - **canon.yaml** — 確定事実のリスト(id, text, established_turn, source_event)
 - **reader_state.yaml** — 読者開示済み事実のリスト(同上+開示ターン)
 - **gm_vault.yaml** — 隠された真実(id, text, reveal_condition?)
@@ -176,10 +177,12 @@ state_diff:
 | 8 | Commit | resolved events | `state_diff.yaml` → apply または review 待ち |
 
 - turn artifact ディレクトリ: `workspace/runs/turn_NNNN/` に上記 + `meta.yaml`
-  (所要時間、LLM 呼び出し回数、model、prompt hash、rng 消費数)。
+  (`status`、フェーズ別所要時間、LLM 呼び出し回数、`llm_tokens_total`(取得可能分の合計、取得不能時省略)、model、prompt hash、`rng_draws_consumed`(そのターンで消費した draw 数)、pipeline version)。meta.yaml は完了マーカーとして最後に書く(D111)。
+- Simulate / Act / Resolve / **BuildDiff** / Check の5つがレジストリ差し替え可能なスロット(D108/D113)。BuildDiff は resolved events + interventions から state diff 候補を生成する(agent-runtime の State Manager が本実装。reveal_control の must-not-reveal 遵守は BuildDiff 契約に含まれる)。Commit はスロットではなく固定ロジック(BuildDiff 出力を state-model の apply へ渡す)。
 - **artifact は失敗時も必ず途中まで保存する**(partial artifact)。
-- 失敗ポリシー: schema 不一致 → 最大2回 retry → `stop_for_review`。
+- 失敗ポリシー: schema 不一致 → 最大2回 retry(llm-provider 層)→ 枯渇時はターンを `failed` として記録(D110。`stopped_for_review` は「diff 生成済み・未適用」状態専用)。
   checker が error 級を検出 → auto 進行中でも停止。決して黙って握り潰さない。
+- `failed` ターンの再試行および rerun_turn は、旧 artifact ディレクトリを `turn_NNNN_discarded_<n>` へ退避してから新規ディレクトリで実行する(上書き禁止・監査可能性維持。RNG 消費数の累積は退避分も合算。D112)。
 
 ---
 
@@ -196,7 +199,7 @@ state_diff:
 ## 8. LLM 契約
 
 - Provider interface: `complete(messages, response_schema) -> validated object`。
-- 全 agent 出力は Pydantic スキーマに準拠した構造化出力。検証失敗 → 修正指示付き retry(最大2回)→ 失敗時 stop_for_review。
+- 全 agent 出力は Pydantic スキーマに準拠した構造化出力。検証失敗 → 修正指示付き retry(最大2回)→ 枯渇時は型付き例外を送出し、turn-pipeline がターンを `failed` として記録する(D110)。
 - Mock provider: seed 決定的・スキーマ準拠の応答を返す。全テスト・smoke test は mock で実行可能でなければならない。
 - API キーは環境変数のみ。ログ・artifact・例外メッセージに秘密情報を出さない。
 - prompt は artifact に hash + テンプレート名で記録(全文保存はオプション、既定 on。秘匿情報を含むため workspace は private 前提)。
@@ -217,6 +220,18 @@ state_diff:
 | D107 | state 変更は全て state diff 経由(直接書き換え禁止。God Mode も diff を発行) | 監査可能性・rollback・review の一貫性 |
 | D108 | 拡張点は Protocol + レジストリ(provider/renderer/exporter/checker) | Phase 4+ の plugin 化に備えるが、第1バッチではレジストリ辞書のみ(plugin loader は作らない) |
 | D109 | unresolved_threads / branch はデータ形式のみ第1バッチで定義、運用機能は Phase 5 | 前方互換のため形式だけ先に固定 |
+| D110 | LLM 構造化出力の retry 枯渇はターン `failed`。`stopped_for_review` は「diff 生成済み・未適用」専用 | ステータスの意味論を一貫させる。Act 失敗時点では diff が存在しない |
+| D111 | meta.yaml に `status` / `llm_tokens_total` / `rng_draws_consumed` を含め、完了マーカーとして最後に書く | ステータス永続化先の一元化、コスト追跡(企画書§24.4)、resume の RNG 再構築 |
+| D112 | failed 再試行 / rerun_turn は旧 artifact を `turn_NNNN_discarded_<n>` へ退避(上書き禁止) | 監査可能性。rolls.yaml の新旧混在を防ぐ。RNG 累積は退避分も合算 |
+| D113 | BuildDiff を5番目のスロットとし、State Manager がその実装。Commit は固定ロジック | State Manager と Commit の二重 diff 生成を排除。reveal_control の強制点を BuildDiff 契約に一本化 |
+| D114 | 介入タイプ×user_mode 権限マトリクスの正本は session-autonomy。intervention は普遍不変条件(canon_edit/hidden_truth_edit→full_gm/god)+プラガブル判定(既定許可)のみ | 権限の意味情報は企画書§8(モード定義)由来であり session-autonomy の責務。DAG 順序とも整合 |
+| D115 | Scene.hidden_facts は構造化(id=fact_NNN, text, visibility, known_by)。reader_visible_facts は list[str] のまま | per-fact スコープがないと §4.3 不変条件(本人が見てよい hidden_facts)が実装不能 |
+| D116 | relationship の対象特定は複合キー `<from_id>__<to_id>`(独自 id なし) | ペアが自然キー。二重 id による重複リスク回避 |
+| D117 | 必須7 state ファイルの欠落は StateStore.load でも fail-fast(空ファイルは空コレクション) | init が必ず生成する以上、欠落=壊れた workspace。「黙って握り潰さない」原則 |
+| D118 | commit-mode は turn 実行 API のランタイムパラメータ(project.yaml に入れない)。`llm.timeout_seconds`/`llm.prompt_recording` は project.yaml `llm` に正式追加 | commit-mode は session-autonomy が置換する暫定物でありスキーマ汚染を避ける。timeout 等はプロジェクト毎の永続設定 |
+| D119 | stop_condition 介入は10番目の停止条件として配線し、全 autonomy レベル(watch/god 含む)で停止する | ユーザーの明示的停止要求を黙って無視しない(D107 と同精神) |
+| D120 | reject_all ターンの narration は artifact として保持するが、export-replay の正史からは除外(review.yaml の decision を参照) | 監査可能性と読者向け正史の分離 |
+| D121 | Conflict Resolver は検出した衝突を例外なく roll で解決(決定的除外ルールは将来拡張)。Event は任意の `roll_ids` を持ち、export の roll 可視性はそれを参照する reader 可視イベントから導出 | バッチ1の単純化・決定的テスト。roll 自体に visibility を持たせない |
 
 ## 10. 未決事項(ユーザー確認待ち・第1バッチをブロックしない)
 
