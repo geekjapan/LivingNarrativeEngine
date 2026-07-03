@@ -5,6 +5,7 @@ description = "Living Narrative Engine — state-first, LLM-driven interactive n
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "openai>=1.0",
     "pydantic>=2.0",
     "pyyaml>=6.0",
     "typer>=0.12",
