@@ -8,7 +8,7 @@ from pydantic import AfterValidator
 
 
 def validate_prefixed_id(prefix: str, value: str) -> str:
-    if not re.fullmatch(rf"{re.escape(prefix)}_0\d{{2,}}", value):
+    if not re.fullmatch(rf"{re.escape(prefix)}_\d{{3,}}", value):
         raise ValueError(f"expected {prefix}_<zero-padded number>")
     return value
 
