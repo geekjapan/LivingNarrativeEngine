@@ -2963,7 +2963,7 @@ projects/mist_station/
 # Appendix D. 最初の開発コマンド案
 
 ```bash
-uv sync --extra dev
+uv sync
 
 uv run living-narrative init \
   --template mist_station \
