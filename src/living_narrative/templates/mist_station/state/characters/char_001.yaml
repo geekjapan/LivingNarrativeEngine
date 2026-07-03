@@ -1,0 +1,27 @@
+id: char_001
+name: リナ
+role: 主人公
+traits:
+  - 好奇心旺盛
+  - 慎重
+goals:
+  short_term:
+    - カイと共に安全に駅を抜ける
+  long_term:
+    - 霧の正体を知る
+emotions:
+  fear: 30
+  curiosity: 60
+knowledge:
+  knows:
+    - 霧の駅には奇妙な噂がある
+  believes: []
+  does_not_know:
+    - 封印施設の存在
+secrets: []
+private_mind:
+  - カイの様子がいつもと違う気がする
+inventory:
+  - 懐中電灯
+constraints: {}
+status: alive

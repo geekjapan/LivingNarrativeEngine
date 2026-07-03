@@ -1,0 +1,48 @@
+- from: char_001
+  to: char_002
+  trust: 80
+  affection: 70
+  tension: 10
+  suspicion: 5
+  notes:
+    - 幼馴染として長年信頼してきた
+- from: char_002
+  to: char_001
+  trust: 85
+  affection: 75
+  tension: 15
+  suspicion: 5
+  notes:
+    - リナを守ることを自分の役目だと感じている
+- from: char_001
+  to: char_003
+  trust: 20
+  affection: 10
+  tension: 40
+  suspicion: 60
+  notes:
+    - 初対面で素性が読めない相手
+- from: char_003
+  to: char_001
+  trust: 30
+  affection: 15
+  tension: 35
+  suspicion: 25
+  notes:
+    - 監視対象として観察している
+- from: char_002
+  to: char_003
+  trust: 15
+  affection: 5
+  tension: 45
+  suspicion: 65
+  notes:
+    - どこか見覚えがある気がして落ち着かない
+- from: char_004
+  to: char_001
+  trust: 0
+  affection: 0
+  tension: 70
+  suspicion: 80
+  notes:
+    - 追跡対象として狙いを定めている

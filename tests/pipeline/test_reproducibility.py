@@ -46,3 +46,30 @@ def test_rerunning_same_project_dir_is_deterministic(tmp_path, build_project):
     second_events = (second.turn_dir / "events.yaml").read_text(encoding="utf-8")
 
     assert first_events == second_events
+
+
+def test_rng_offset_override_is_used_instead_of_the_on_disk_cumulative_scan(
+    tmp_path, build_project, monkeypatch
+):
+    """``rng_offset_override`` (added for session-autonomy's ``rerun_turn
+    --replay-same-seed``) must reach ``RandomEngine`` directly, bypassing
+    ``total_rng_draws_consumed``'s on-disk scan entirely."""
+    from living_narrative.pipeline import driver as driver_module
+
+    project_path = build_project(tmp_path)
+    captured: dict[str, int] = {}
+    real_engine = driver_module.RandomEngine
+
+    class SpyRandomEngine(real_engine):
+        def __init__(self, random_seed, draws_consumed=0, next_roll_number=1):
+            captured["draws_consumed"] = draws_consumed
+            super().__init__(
+                random_seed, draws_consumed=draws_consumed, next_roll_number=next_roll_number
+            )
+
+    monkeypatch.setattr(driver_module, "RandomEngine", SpyRandomEngine)
+    monkeypatch.setattr(driver_module, "total_rng_draws_consumed", lambda runs_dir: 999_999)
+
+    TurnPipeline().run(project_path, rng_offset_override=777)
+
+    assert captured["draws_consumed"] == 777

@@ -1,0 +1,22 @@
+id: scene_001
+location: 霧の駅・地下ホーム
+time: 夜
+active_characters:
+  - char_001
+  - char_002
+mood: 静かな緊張感
+stakes: 足音の正体を確かめられなければ、逃げ場を失うかもしれない
+reader_visible_facts:
+  - ホームには濃い霧が立ち込めている。
+  - どこからか、規則正しい足音が近づいてくる。
+hidden_facts:
+  - id: fact_001
+    text: 足音の主は、封印施設を探る追跡者である。
+    visibility: scene
+    known_by: []
+  - id: fact_002
+    text: カイは、この足音に聞き覚えがあるような気がしている。
+    visibility: character
+    known_by:
+      - char_002
+status: active

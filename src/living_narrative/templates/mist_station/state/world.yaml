@@ -1,0 +1,10 @@
+id: world_001
+name: 霧の駅
+summary: 旧市街の地下に眠る廃駅。夜ごと霧が満ち、正体不明の足音が響くという噂がある。
+laws:
+  - 濃い霧の夜、駅の最深部への立ち入りは禁忌とされている
+  - 駅で聞いた足音の正体を語ってはならない、という古い言い伝えがある
+parameters:
+  public_order: 40
+  danger_level: 55
+  mystery_level: 70

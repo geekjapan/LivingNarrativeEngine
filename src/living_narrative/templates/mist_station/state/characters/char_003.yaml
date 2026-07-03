@@ -1,0 +1,26 @@
+id: char_003
+name: ミラ
+role: 謎の女性
+traits:
+  - 物静か
+  - 観察眼が鋭い
+goals:
+  short_term:
+    - リナたちの動向を見極める
+  long_term:
+    - 封印を維持する
+emotions:
+  caution: 70
+knowledge:
+  knows:
+    - 封印施設の存在
+  believes: []
+  does_not_know: []
+secrets:
+  - 実は封印施設を守る一族の末裔である
+private_mind:
+  - この子たちに真実を知られるわけにはいかない
+inventory:
+  - 古い鍵
+constraints: {}
+status: alive

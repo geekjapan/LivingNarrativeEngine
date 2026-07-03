@@ -2,6 +2,7 @@
 
 import json
 import random
+from enum import Enum
 from pathlib import Path
 from typing import Any, Literal, get_args, get_origin
 
@@ -111,6 +112,9 @@ def generate_value(
             else:
                 values[name] = generate_value(field.annotation, random_seed, prompt_hash, name)
         return values
+    if isinstance(annotation, type) and issubclass(annotation, Enum):
+        members = list(annotation)
+        return members[rng.randrange(len(members))].value
     if origin is Literal:
         return args[0]
     if origin in (list, set, tuple):
