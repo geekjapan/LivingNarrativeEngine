@@ -43,12 +43,13 @@
 - [ ] 5.6 Narrator に mood / tone_control 制約値を guidance として渡す呼び出しインターフェースを実装する
 - [ ] 5.7 `narration.md` のフロントマター(`turn` / `style` / `visibility: reader`)+本文の書き出しを実装する
 - [ ] 5.8 Narrate フェーズを TurnPipeline に接続する
+- [ ] 5.9 BuildDiff フェーズを Narrate フェーズ完了後・Check フェーズ開始前の位置で TurnPipeline に接続する。resolved events・そのターンの intervention 群(リスト)・全状態を BuildDiff スロットへ渡して呼び出し、state diff 候補と `rejected_changes` を取得する処理を実装する(BuildDiff の呼び出しはここで行い、Commit フェーズからは呼び出さない。取得した state diff 候補は Check フェーズの入力として渡す。D113)
 
 ## 6. ターンステータスと Commit フェーズ
 
 - [ ] 6.1 ターンステータス列挙(`applied` / `pending_review` / `stopped_for_review` / `failed`)を定義し artifact へ記録する
-- [ ] 6.2 Check フェーズの error 級検出結果に基づき `stopped_for_review` へ遷移させ、Commit の diff 適用をスキップするロジックを実装する
-- [ ] 6.3 Commit フェーズ: BuildDiff スロットを呼び出して state diff 候補を取得し state-model の diff 適用インターフェースへ渡す処理を実装する(diff 自体の生成は行わない。D113)
+- [ ] 6.2 Check フェーズを TurnPipeline に接続する。Check フェーズの入力には narration・resolved events に加え、5.9 で BuildDiff スロットが生成した state diff 候補を含める。Check フェーズの error 級検出結果に基づき `stopped_for_review` へ遷移させ、Commit の diff 適用をスキップするロジックを実装する
+- [ ] 6.3 Commit フェーズ: 5.9 で BuildDiff スロットが生成し Check フェーズへ渡された state diff 候補を受け取り、state-model の diff 適用インターフェースへ渡す処理を実装する(Commit フェーズは BuildDiff スロットを呼び出さず、diff 自体の生成も行わない。D113)
 - [ ] 6.4 commit-mode ランタイムパラメータ(`auto` | `review`。ターン実行 API 呼び出し時に渡される。D118)の読み込みと、`auto` → 即時適用 / `review` → `pending_review` 据え置きの分岐を実装する
 
 ## 7. テスト

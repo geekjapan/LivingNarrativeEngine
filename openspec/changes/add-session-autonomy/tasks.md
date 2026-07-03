@@ -26,7 +26,7 @@
 ## 5. GM レビューゲート
 
 - [ ] 5.1 pending state diff の保持・提示データ構造を実装する。
-- [ ] 5.2 accept_all / reject_all / partial / edit / rerun_turn の各決定処理を実装する。`partial`/`edit`/`rerun_turn` はターンパイプラインのフェーズ実行を経由せず、state-model の diff 適用 API と add-turn-pipeline が公開する事後操作向けユーティリティを直接呼び出す(design.md D8、turn-pipeline grill Q4 裁定)。
+- [ ] 5.2 accept_all / reject_all / partial / edit / rerun_turn の各決定処理を実装する。`partial`/`edit` はターンパイプラインのフェーズ実行を経由せず、state-model の diff 適用 API と add-turn-pipeline が公開する事後操作向けユーティリティを直接呼び出す(design.md D8、turn-pipeline grill Q4 裁定)。`rerun_turn` は旧 attempt の退避(`turn_NNNN_discarded_<n>` へのリネーム)と `review.yaml` への決定記録のみをこの事後操作として直接呼び出しで完結させ、新しい attempt は通常のターン実行として TurnPipeline の8フェーズ全体(Load〜Commit)を経由して実行する(design.md D8)。
 - [ ] 5.3 edit 決定時、state diff スキーマ(spec-foundation §5.1)での再検証を実装する(検証失敗時は pending review を維持し再編集可能にする)。
 - [ ] 5.4 決定内容を `review.yaml` に記録する処理を実装する(spec.md 記載のフィールド: turn/decision/decided_at/decided_by/applied_change_indices/edit_diff/resulting_turn_status/auto_applied)。`decision: reject_all` は export-replay capability が正史除外判定に参照するマーカーである(spec-foundation D120)。
 - [ ] 5.5 決定→ターンステータス写像(accept_all/partial/edit成功→applied、reject_all→変更ゼロ件のapplied)を実装する。

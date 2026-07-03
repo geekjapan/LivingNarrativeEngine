@@ -67,7 +67,7 @@
 - **THEN** CLI は進行を開始せず、`--turns` と `--until` は同時指定できない旨のエラーを出力して非ゼロの exit code で終了する
 
 ### Requirement: `review` による pending diff のインタラクティブフロー
-`living-narrative review --project <path>` は、`pending_review` または `stopped_for_review` 状態の直近ターンの state diff を人間可読な形で提示し、`accept_all`(全適用)/`reject_all`(全却下・状態不変)/`partial`(部分適用)/`edit`(内容編集後に適用)/`rerun_turn`(当該ターンを再実行)のいずれかをユーザーに選択させなければならない(SHALL)。選択肢名は session-autonomy の `review.yaml` の `decision` 正準値と1:1で一致しなければならず(SHALL)、別名(`accept`/`reject` 等)を導入してはならない(MUST NOT)。全ての選択肢は、対話プロンプトに応じるだけでなく、対応する非対話フラグ(例: `--decision accept_all`、`--decision partial --apply <index> ...`、`--decision edit --patch <file>`、`--decision rerun_turn`)でも指定できなければならない(SHALL)。`--apply` は session-autonomy の partial 適用契約(change のインデックス集合による選択)に合わせ、0始まりのインデックス値をカンマ区切りまたはフラグ繰り返しで受け取らなければならない(SHALL)。パスやその他のキーによる選択方式は提供しない(SHALL NOT)。
+`living-narrative review --project <path>` は、`pending_review` または `stopped_for_review` 状態の直近ターンの state diff を人間可読な形で提示し、`accept_all`(全適用)/`reject_all`(全却下・状態不変)/`partial`(部分適用)/`edit`(内容編集後に適用)/`rerun_turn`(当該ターンを再実行)のいずれかをユーザーに選択させなければならない(SHALL)。選択肢名は session-autonomy の `review.yaml` の `decision` 正準値と1:1で一致しなければならず(SHALL)、別名(`accept`/`reject` 等)を導入してはならない(MUST NOT)。全ての選択肢は、対話プロンプトに応じるだけでなく、対応する非対話フラグ(例: `--decision accept_all`、`--decision partial --apply <index> ...`、`--decision edit --patch <file>`、`--decision rerun_turn`)でも指定できなければならない(SHALL)。`--apply` は session-autonomy の partial 適用契約(change のインデックス集合による選択)に合わせ、0始まりのインデックス値をカンマ区切りまたはフラグ繰り返しで受け取らなければならない(SHALL)。パスやその他のキーによる選択方式は提供しない(SHALL NOT)。`--decision rerun_turn` は、追加で任意フラグ `--replay-same-seed` を受け付けなければならない(SHALL): 指定時は session-autonomy の Requirement「Rerun の乱数消費セマンティクス」における同一シード再現(当該ターン開始前の乱数消費数までの巻き戻し)を呼び出し、指定しない場合は同 Requirement の既定挙動(ターン開始前の状態から新しい乱数シーケンス位置での再実行)に従わなければならない(SHALL)。`--replay-same-seed` は `--decision rerun_turn` との組み合わせでのみ有効であり、`--decision rerun_turn` を伴わずに指定された場合、CLI は再実行を行わずエラーを出力して非ゼロの exit code で終了しなければならない(SHALL)。
 
 #### Scenario: accept_all全適用の非対話実行
 - **WHEN** `living-narrative review --project <path> --decision accept_all` を実行する
@@ -76,6 +76,14 @@
 #### Scenario: partial適用の非対話実行
 - **WHEN** state diff が3件の change を含むターンで `living-narrative review --project <path> --decision partial --apply 0,2` を実行する
 - **THEN** インデックス0と2の change のみが適用され、インデックス1は破棄される。`state_diff.yaml` は適用された change のみを含む内容に更新され(決定前の diff は `state_diff_pre_review.yaml` として保持。session-autonomy の GM レビューゲート契約)、選択内容は `review.yaml` の `applied_change_indices` から追跡できる
+
+#### Scenario: rerun_turnの同一シード再現を非対話で指定する
+- **WHEN** `living-narrative review --project <path> --decision rerun_turn --replay-same-seed` を実行する
+- **THEN** CLI は session-autonomy の同一シード再現セマンティクスを呼び出し、当該ターン開始前の乱数消費数まで巻き戻した上で新しい attempt を実行する。対話プロンプトは表示されない
+
+#### Scenario: --replay-same-seedを`--decision rerun_turn`なしで指定するとエラーになる
+- **WHEN** `living-narrative review --project <path> --decision accept_all --replay-same-seed` を実行する
+- **THEN** CLI は再実行を行わず、`--replay-same-seed` は `--decision rerun_turn` と併用する場合のみ有効である旨のエラーを出力して非ゼロの exit code で終了する
 
 ### Requirement: `review` の pending 不在時の挙動
 `living-narrative review --project <path>` は、`pending_review`/`stopped_for_review` のターンが存在しない場合、レビュー対象が無い旨を標準出力に示して正常終了(exit code 0)しなければならない(SHALL)。エラーとして扱ってはならない(MUST NOT)。

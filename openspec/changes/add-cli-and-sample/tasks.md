@@ -22,6 +22,7 @@
 
 - [ ] 3.1 `review` サブコマンド(pending diff の人間可読提示)を実装する
 - [ ] 3.2 `--decision accept_all|reject_all|rerun_turn`(`review.yaml` decision 正準値と1:1)の非対話フラグを実装する
+- [ ] 3.2b `--decision rerun_turn --replay-same-seed`(session-autonomy の同一シード再現セマンティクス呼び出し)を実装し、`rerun_turn` を伴わない `--replay-same-seed` 指定をエラーにする
 - [ ] 3.3 `--decision partial --apply <index...>`(0始まりインデックスのカンマ区切り/繰り返し指定)の非対話フラグを実装する
 - [ ] 3.4 `--decision edit --patch <file>` の非対話フラグを実装する
 - [ ] 3.5 pending 対象が存在しない場合の正常終了(exit code 0)パスを実装する
