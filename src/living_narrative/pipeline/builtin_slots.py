@@ -37,6 +37,7 @@ def builtin_act(
     context: TurnContext,
     world_events: list[WorldEventCandidate],
     gateway: LLMGateway,
+    interventions: list[dict[str, Any]] = (),
 ) -> tuple[list[ActionCandidate], list[ActRecord]]:
     """Generates one action candidate for a single alive character via llm-provider."""
     alive = [c for c in context.bundle.characters if c.status == CharacterStatus.ALIVE]
@@ -107,6 +108,7 @@ def builtin_build_diff(
     context: TurnContext,
     resolved_events: list[Event],
     interventions: list[dict[str, Any]],
+    allocate_event_id: Callable[[], str] | None = None,
 ) -> BuildDiffOutput:
     """Minimal implementation: proposes no state changes (agent-runtime's State Manager
     replaces this with the real diff-generation logic; nothing here can leak a

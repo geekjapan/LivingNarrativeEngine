@@ -4,8 +4,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Literal
+from typing import Any, Literal
 
+from living_narrative.intervention.history import append_history, build_history_entries
+from living_narrative.intervention.ids import make_intervention_id_allocator
+from living_narrative.intervention.permissions import PermissionTable
+from living_narrative.intervention.router import resolve_tone_control
+from living_narrative.intervention.service import run_intervene_phase
 from living_narrative.narration.context import build_narrator_context
 from living_narrative.narration.narrator import narrate
 from living_narrative.pipeline.context import TurnContext
@@ -86,6 +91,9 @@ class TurnPipeline:
         renderer_style: str | None = None,
         mood_override: str | None = None,
         tone_control: str | None = None,
+        intervention_text: str | None = None,
+        intervention_drafts: list[dict[str, Any]] | None = None,
+        permission_table: PermissionTable | None = None,
     ) -> TurnRunResult:
         if commit_mode not in ("auto", "review"):
             raise ValueError(f"invalid commit_mode: {commit_mode!r}")
@@ -129,7 +137,25 @@ class TurnPipeline:
 
         try:
             with _timed_phase("intervene", durations, current_phase):
-                intervention_file = InterventionFile(turn=turn, interventions=[])
+                allocate_intervention_id = make_intervention_id_allocator(paths.runs)
+                intervene_result = run_intervene_phase(
+                    gateway=gateway,
+                    turn=turn,
+                    user_role=project.user_mode,
+                    allocate_id=allocate_intervention_id,
+                    permission_table=permission_table,
+                    free_text=intervention_text,
+                    direct_drafts=intervention_drafts,
+                )
+                intervention_file = InterventionFile(
+                    turn=turn,
+                    interventions=[
+                        item.model_dump(mode="json") for item in intervene_result.interventions
+                    ],
+                    rejections=[
+                        item.model_dump(mode="json") for item in intervene_result.rejections
+                    ],
+                )
                 write_intervention(turn_dir, intervention_file)
 
             with _timed_phase("simulate", durations, current_phase):
@@ -147,7 +173,7 @@ class TurnPipeline:
 
             with _timed_phase("act", durations, current_phase):
                 action_candidates, act_records = self.registry.get("act")(
-                    context, world_events, gateway
+                    context, world_events, gateway, intervention_file.interventions
                 )
                 write_agent_io(turn_dir, act_records)
                 write_agent_io_component(
@@ -179,17 +205,25 @@ class TurnPipeline:
 
             with _timed_phase("narrate", durations, current_phase):
                 style = renderer_style or project.renderer
-                narrator_context = build_narrator_context(context, resolved_events)
+                narrator_context = build_narrator_context(
+                    context, resolved_events, intervention_file.interventions
+                )
                 mood = mood_override if mood_override is not None else _active_scene_mood(bundle)
+                effective_tone_control = resolve_tone_control(
+                    intervention_file.interventions, tone_control
+                )
                 narration = narrate(
-                    narrator_context, style=style, mood=mood, tone_control=tone_control
+                    narrator_context, style=style, mood=mood, tone_control=effective_tone_control
                 )
                 write_narration(turn_dir, turn, narration.style, narration.text)
 
             with _timed_phase("build_diff", durations, current_phase):
                 build_diff_output = self.registry.get("build_diff")(
-                    context, resolved_events, intervention_file.interventions
+                    context, resolved_events, intervention_file.interventions, allocate_event_id
                 )
+                if build_diff_output.synthetic_events:
+                    resolved_events = [*resolved_events, *build_diff_output.synthetic_events]
+                    write_events(turn_dir, resolved_events)
                 write_agent_io_component(
                     turn_dir,
                     "build_diff",
@@ -223,6 +257,11 @@ class TurnPipeline:
                 write_state_diff(
                     turn_dir, build_diff_output.diff, build_diff_output.rejected_changes, applied
                 )
+                if status == TurnStatus.APPLIED and intervention_file.interventions:
+                    history_entries = build_history_entries(
+                        intervention_file.interventions, resolved_events, build_diff_output.diff
+                    )
+                    append_history(paths.root / "interventions.yaml", history_entries)
         except Exception as exc:  # noqa: BLE001 - must never swallow: recorded as `failed`
             status = TurnStatus.FAILED
             error = ErrorReport(

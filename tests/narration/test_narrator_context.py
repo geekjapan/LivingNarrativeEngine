@@ -50,3 +50,30 @@ def test_hidden_facts_and_gm_only_events_are_excluded(tmp_path, build_project):
     assert "秘密の出来事" not in [e.text for e in narrator_context.reader_visible_events]
     assert "公開の出来事" in [e.text for e in narrator_context.reader_visible_events]
     assert narrator_context.scene_reader_visible_facts == ["駅は静まり返っている"]
+
+
+def test_must_not_reveal_intervention_filters_matching_reader_visible_content(
+    tmp_path, build_project
+):
+    project_path = build_project(tmp_path, reader_visible_facts=["秘密の手がかりがある"])
+    events = [
+        Event(
+            id="event_0001",
+            turn=1,
+            type="public",
+            text="秘密の手がかりがある",
+            visibility=Visibility.READER,
+        )
+    ]
+    interventions = [
+        {
+            "type": "reveal_control",
+            "target_id": "秘密の手がかりがある",
+            "constraints": {"mode": "must-not-reveal"},
+        }
+    ]
+
+    narrator_context = build_narrator_context(_context(project_path, events), events, interventions)
+
+    assert narrator_context.scene_reader_visible_facts == []
+    assert narrator_context.reader_visible_events == []

@@ -5,16 +5,17 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from living_narrative.state.diff import StateDiff, StateDiffChange
-from living_narrative.state.models import CharacterId, Visibility
+from living_narrative.state.models import CharacterId, Event, Visibility
 
 CheckSeverity = Literal["info", "warn", "error"]
 
 
 class InterventionFile(BaseModel):
-    """``intervention.yaml``; always empty here (add-intervention fills ``interventions`` in)."""
+    """``intervention.yaml``: the turn's confirmed interventions, plus any permission rejections."""
 
     turn: int
     interventions: list[dict[str, Any]] = Field(default_factory=list)
+    rejections: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class WorldEventCandidate(BaseModel):
@@ -62,6 +63,7 @@ class RejectedChange(BaseModel):
 class BuildDiffOutput(BaseModel):
     diff: StateDiff
     rejected_changes: list[RejectedChange] = Field(default_factory=list)
+    synthetic_events: list[Event] = Field(default_factory=list)
 
 
 class CheckResult(BaseModel):

@@ -8,12 +8,25 @@ from living_narrative.pipeline.models import WorldEventCandidate
 from living_narrative.random.tables import WeightedEntry
 from living_narrative.state.models import Visibility
 
+# world_directive/event_injection become world event candidates verbatim (spec.md Requirement
+# "Type別ルーティング"): they *are* what the World Simulator should propose this turn.
+_WORLD_DIRECT_TYPES = frozenset({"world_directive", "event_injection"})
+
 
 def simulate_world(
     context: TurnContext,
     interventions: list[dict[str, Any]],
 ) -> list[WorldEventCandidate]:
-    del interventions
+    directive_events = [
+        _world_event_from_intervention(item)
+        for item in interventions
+        if item.get("type") in _WORLD_DIRECT_TYPES
+    ]
+    dice_events = [
+        _dice_roll_event(context, item)
+        for item in interventions
+        if item.get("type") == "dice_roll_request"
+    ]
     entries = [
         WeightedEntry(name="静かな時間が流れる", weight=3),
         WeightedEntry(name="遠くで不穏な物音がする", weight=1),
@@ -35,7 +48,7 @@ def simulate_world(
             )
         ],
     )
-    return [
+    background_candidates = [
         WorldEventCandidate(
             type="background_event",
             cause="world_simulator",
@@ -46,3 +59,34 @@ def simulate_world(
         )
         for event in output.background_events
     ]
+    return [*directive_events, *dice_events, *background_candidates]
+
+
+def _world_event_from_intervention(item: dict[str, Any]) -> WorldEventCandidate:
+    target = item.get("target") or {}
+    return WorldEventCandidate(
+        type=item["type"],
+        cause=f"intervention:{item['id']}",
+        text=item["content"],
+        visibility=item["visibility"],
+        effects=dict(item.get("constraints") or {}),
+        target_id=target.get("id"),
+    )
+
+
+def _dice_roll_event(context: TurnContext, item: dict[str, Any]) -> WorldEventCandidate:
+    constraints = item.get("constraints") or {}
+    notation = constraints.get("notation", "1d100")
+    roll = context.random_engine.roll_dice(
+        notation,
+        turn=context.turn,
+        target=constraints.get("target"),
+        label=f"intervention:{item['id']}",
+    )
+    return WorldEventCandidate(
+        type="dice_roll_request",
+        cause=f"intervention:{item['id']}",
+        text=item.get("content", notation),
+        visibility=item["visibility"],
+        effects={"_roll": roll.model_dump(mode="json")},
+    )

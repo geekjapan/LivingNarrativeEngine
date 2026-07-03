@@ -17,7 +17,8 @@ from living_narrative.state.models import (
 )
 
 
-def _context() -> TurnContext:
+def _context(characters=None) -> TurnContext:
+    characters = characters or [CharacterState(id="char_001", name="Aoi", role="detective")]
     project = ProjectConfig(
         id="p",
         title="P",
@@ -34,13 +35,13 @@ def _context() -> TurnContext:
     )
     bundle = WorldStateBundle(
         world=WorldState(id="world_001", name="World", summary="Summary"),
-        characters=[CharacterState(id="char_001", name="Aoi", role="detective")],
+        characters=characters,
         scenes=[
             SceneState(
                 id="scene_001",
                 location="駅",
                 time="夜",
-                active_characters=["char_001"],
+                active_characters=[c.id for c in characters],
             )
         ],
     )
@@ -96,3 +97,25 @@ def test_character_agent_schema_error_propagates():
 
     with pytest.raises(StructuredOutputError):
         run_character_agent(_context(), [], BadGateway())
+
+
+def test_character_directive_reaches_only_its_target_characters_context():
+    context = _context(
+        characters=[
+            CharacterState(id="char_001", name="Aoi", role="detective"),
+            CharacterState(id="char_002", name="Ren", role="suspect"),
+        ]
+    )
+    gateway = LLMGateway(project=context.project, random_seed="seed")
+    intervention = {
+        "id": "int_0001",
+        "type": "character_directive",
+        "target": {"kind": "character", "id": "char_001"},
+        "content": "怪しい男に気づく",
+    }
+
+    _, records = run_character_agent(context, [], gateway, [intervention])
+
+    by_character = {record.character_id: record.input_context["directives"] for record in records}
+    assert by_character["char_001"] == [intervention]
+    assert by_character["char_002"] == []
