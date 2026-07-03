@@ -44,7 +44,7 @@
 
 `rerun_turn` はさらに、破棄対象ターンに属する `interventions.yaml`(add-intervention 定義)の該当エントリへ `superseded_by_rerun: true` を付与しなければならない(SHALL)。add-intervention の「Intervention 履歴インデックス」要件は、rerun による事後の追記・訂正方法を「session-autonomy との調整事項」として明示的に対象外としており、本 D6 がその調整を確定する。このフラグはエントリの source reference が新しい attempt の結果を指さなくなったことを示す監査マーカーであり、エントリ自体は削除・上書きしない。
 
-一方、add-random-engine の RNG 状態は `random_seed` と「これまでに消費した draw 数」のみから再構築される単調増加カウンタであり、rerun の既定(新規シーケンス消費)は破棄された attempt が消費した draw を巻き戻さない(Requirement「Rerun の乱数消費セマンティクス」)。したがって resume が計算する「乱数エンジンの消費済み draw 数」の累積は、`turn_NNNN`(現存する最新 attempt)だけでなく、同一ターン番号に対して破棄された全 `turn_NNNN_discarded_*` の rng 消費数も合算しなければならない(SHALL)。`--replay-same-seed` 指定時に巻き戻す「当該ターン開始前の乱数消費数」も同じ規則で、対象ターンより前の全ターン(discarded 分を含む)の累積で算出する。
+一方、add-random-engine の RNG 状態は `random_seed` と「これまでに消費した draw 数」のみから再構築される単調増加カウンタであり、rerun の既定(新規シーケンス消費)は破棄された attempt が消費した draw を巻き戻さない(Requirement「Rerun の乱数消費セマンティクス」)。したがって resume が計算する「乱数エンジンの消費済み draw 数」の累積は、`turn_NNNN`(現存する最新 attempt)だけでなく、同一ターン番号に対して破棄された全 `turn_NNNN_discarded_*` の rng 消費数も合算しなければならない(SHALL)。`--replay-same-seed` 指定時に巻き戻す「当該ターン開始前の乱数消費数」も同じ規則で、対象ターンより前の全ターン(discarded 分を含む)の累積で算出する(対象ターン番号自身の破棄済み attempt の消費数は含めない)。一方、既定 rerun(巻き戻しなし)の続き位置は「これまでに実際に消費された全 draw 数」であり、対象ターンより前の全ターンの累積に加えて、対象ターン番号自身の破棄済み `turn_NNNN_discarded_*`(直前に破棄した attempt を含む)の消費数も合算する。
 
 **代替案**: 破棄 attempt を削除せず `turn_NNNN` のまま上書きする案は、監査可能性の要件(旧 artifact 保持)と直接矛盾するため不採用。破棄 attempt を rng 累積計算から除外する案は、rerun の既定「新規シーケンス消費」の前提(旧 attempt の draw は巻き戻さない)と矛盾し、resume 後の draw 結果が非中断実行と一致しなくなるため不採用。共有契約を本 capability 側で独自に再定義する案(命名規則を session-autonomy 固有のものとして扱う)は、failed ターン再試行(add-turn-pipeline)との命名衝突・二重実装を招くため不採用。
 

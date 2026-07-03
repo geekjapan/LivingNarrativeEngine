@@ -44,6 +44,7 @@
 - [ ] 7.2 pending review の有無を検出する処理を実装する。
 - [ ] 7.3 現存する `turn_NNNN/meta.yaml` と全ての `turn_NNNN_discarded_*/meta.yaml` の rng 消費数を合算し、乱数エンジンの状態を再構築する処理を実装する(design.md D6)。
 - [ ] 7.4 pending-review-first ルール(他操作より resume 時の pending review 提示を優先)を実装する。
+- [ ] 7.5 project 内一意 id カウンタ(`event_NNNN`・`diff_NNNN`・`roll_NNNN`・`int_NNNN`)の次番号を、現存する全 `turn_NNNN` と全 `turn_NNNN_discarded_*` の該当 artifact(`events.yaml`・`state_diff.yaml`/`state_diff_pre_review.yaml`・`rolls.yaml`・`intervention.yaml`)およびプロジェクト全体の `interventions.yaml` の走査から復元する処理を実装する(draw 数や他カウンタからの導出は行わない)。
 
 ## 8. Auto N ターンループ
 
@@ -67,6 +68,7 @@
 - [ ] 10.7 god モードの編集が常に diff として記録されることを検証するテストを書く。
 - [ ] 10.8 rerun で破棄された `turn_NNNN_discarded_*` の rng 消費数が resume の累積計算に含まれることを検証するテストを書く(design.md D6)。
 - [ ] 10.9 `character_death`(state diff の CharacterState.status: dead 遷移)・`heavy_roll_failure`(rolls.yaml の severity: critical かつ失敗 outcome。critical な成功 roll では停止しないことを含む)・`scene_end`(state diff の SceneState.status: ended 遷移)の具体的フィールド評価を検証するテストを書く(spec-foundation D123)。
+- [ ] 10.10 resume 後に生成される event / diff / roll / intervention の id が、破棄済み attempt を含む既存の最大 id の次番号から採番され、id の再利用が発生しないことを検証するテストを書く。
 
 ## 11. ドキュメント
 
