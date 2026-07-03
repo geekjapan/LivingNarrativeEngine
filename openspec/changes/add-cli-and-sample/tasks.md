@@ -32,14 +32,14 @@
 
 ## 4. `export replay`
 
-- [ ] 4.1 `living_narrative.export_replay` パッケージを作成し、turn artifact 読み込み(`narration.md`/`intervention.yaml`/`rolls.yaml`/`state_diff.yaml`)を実装する
+- [ ] 4.1 `living_narrative.export_replay` パッケージを作成し、turn artifact 読み込み(`meta.yaml`/`narration.md`/`intervention.yaml`/`rolls.yaml`/`events.yaml`/`state_diff.yaml`/`review.yaml`。`events.yaml` は reader 可視イベントの `Event.roll_ids` から reader 可視 roll を導出するために必須)を実装する
 - [ ] 4.2 `novel` レンダラ(本文のみ連結)を実装する
 - [ ] 4.3 `log` レンダラ(ターン見出し・intervention要約・roll要約・diff要約 + 本文)を実装する
 - [ ] 4.4 `pending_review`/`stopped_for_review`/`failed` ターンのギャッププレースホルダ挿入を実装する
 - [ ] 4.5 reader 可視性フィルタ(gm_vault/hidden_facts/secrets/private_mind を一切読み込まない)を実装する
 - [ ] 4.6 出力先ディレクトリの自動作成と、applied ターンが1件も無い場合のエラー終了を実装する
 - [ ] 4.7 `export replay` CLI サブコマンドを実装し、`--project` `--output` `--style` を配線する
-- [ ] 4.8 export-replay の pytest(novel/log 出力内容、再実行時のバイト単位一致、ギャップ表記、可視性フィルタ、エラー終了)を書く
+- [ ] 4.8 export-replay の pytest(novel/log 出力内容、再実行時のバイト単位一致、ギャップ表記、可視性フィルタ、reader 可視イベントの `roll_ids` 経由の roll フィルタ(`gm_only` イベントのみが参照する roll が除外されること)、エラー終了)を書く
 
 ## 5. サンプル世界「霧の駅」
 

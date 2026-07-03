@@ -5,11 +5,11 @@ Session Autonomy は企画書 §8 の6ユーザーモード(`watcher` `assistant
 
 | user_mode | 許可される介入タイプ(部分集合) | diff レビュー | gm_vault 表示 |
 |---|---|---|---|
-| `watcher` | なし(介入不可) | 対象外(ユーザー起因の介入がないため) | 不可 |
+| `watcher` | なし(介入不可。自律進行の停止は intervention ではなく CLI の実行制御(auto ループの中断・目標ターン数)による) | 対象外(ユーザー起因の介入がないため) | 不可 |
 | `assistant_gm` | `scene_directive` `character_directive` `world_directive` `pacing_control` `tone_control` `reveal_control` `stop_condition` | 必須(停止条件到達時) | 可 |
 | `full_gm` | `assistant_gm` の全て + `event_injection` `probability_bias` `hidden_truth_edit` `canon_edit` `dice_roll_request` `scene_pivot` `relationship_edit` `memory_edit` | 必須(autonomy level に従う頻度で) | 可 |
-| `author` | `scene_directive` `tone_control` `pacing_control`(演出・文体・視点・伏線・感情線の指定用途に限定) | 必須 | 不可 |
-| `player_character` | `character_directive`(本人の `char_id` 宛のみ) | 必須 | 不可 |
+| `author` | `scene_directive` `tone_control` `pacing_control`(演出・文体・視点・伏線・感情線の指定用途に限定)+ `stop_condition`(明示的停止要求。D119) | 必須 | 不可 |
+| `player_character` | `character_directive`(本人の `char_id` 宛のみ)+ `stop_condition`(明示的停止要求。D119) | 必須 | 不可 |
 | `god` | 全介入タイプ + Canon/世界法則/秘密/パラメータ/乱数結果への直接編集 | レビュー自体をバイパスする(Requirement「God Mode の diff/ログ強制」を参照) | 可 |
 
 本マトリクスは type→user_mode 許可関係の正本であり(SHALL、spec-foundation D114)、intervention capability の Interpreter が行う生成時チェック(D114 のいう「プラガブル判定」フック)へデータとして供給されなければならない(SHALL)。権限判定の実施点は当該生成時チェック一箇所のみであり、Session Autonomy は Interpreter が既に生成した intervention を受け取った後で本マトリクスを再評価し二重に却下する経路を持ってはならない(SHALL NOT)。モードに許可されていない介入タイプが要求された場合、Interpreter は本マトリクスの判定結果に基づいて生成そのものを拒否し、拒否理由を含むエラーを返さなければならない(SHALL、実施は intervention capability の責務、判定データは本 capability が供給する)。本マトリクスは intervention capability の Role Permission Hook(少なくとも `canon_edit`/`hidden_truth_edit` を `full_gm`/`god` のみへロックする)が持つ値と矛盾してはならない(SHALL、design.md D7)。

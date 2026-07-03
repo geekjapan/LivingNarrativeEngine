@@ -61,7 +61,7 @@
 - [ ] 7.6 未解決ターンが存在する場合に次ターン実行がブロックされることを検証するテストを書く
 - [ ] 7.7 Narrator 入力に GM Vault / hidden_facts が含まれないことを検証するテストを書く
 - [ ] 7.8 `novel` / `log` renderer それぞれの出力形式と、未登録 renderer 名でのエラー送出を検証するテストを書く
-- [ ] 7.9 `failed` ターンを再実行した際に旧 artifact ディレクトリが `turn_NNNN_discarded_<n>` へ退避され、新規実行後の `meta.yaml` の `rng_draws_consumed` が退避分を含めた累積値になることを検証するテストを書く(D112)
+- [ ] 7.9 `failed` ターンを再実行した際に旧 artifact ディレクトリが `turn_NNNN_discarded_<n>` へ退避され、新旧それぞれの `meta.yaml` の `rng_draws_consumed` が各 attempt 単体の消費数のみを記録すること(退避分の合算値ではない)、および累積消費数が現存 `turn_NNNN` と `turn_NNNN_discarded_*` の合算として二重計上なく算出できることを検証するテストを書く(D112、「次ターン番号の決定と未解決ターンによるブロック」要件)
 
 ## 8. ドキュメント
 
