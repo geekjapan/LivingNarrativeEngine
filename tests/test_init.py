@@ -56,6 +56,19 @@ def test_mist_station_template_generates_four_characters_and_gm_vault(tmp_path):
     assert any(scene.id == "scene_001" for scene in bundle.scenes)
 
 
+@pytest.mark.parametrize("template", ["minimal", "mist_station"])
+def test_factions_yaml_is_always_generated_with_an_empty_list(tmp_path, template):
+    # project-workspace/spec.md (add-project-foundation): factions.yaml is part of the
+    # workspace layout unconditionally, regardless of --template.
+    output = tmp_path / "proj"
+
+    create_project(output, title="x", template=template)
+
+    factions_path = output / "workspace" / "state" / "factions.yaml"
+    assert factions_path.is_file()
+    assert yaml.safe_load(factions_path.read_text(encoding="utf-8")) == []
+
+
 def test_unknown_template_name_raises_and_creates_nothing(tmp_path):
     output = tmp_path / "proj"
 

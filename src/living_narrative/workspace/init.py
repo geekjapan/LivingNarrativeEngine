@@ -76,6 +76,12 @@ def create_project(
     for subdir in STATE_SUBDIRS:
         (state_dir / subdir).mkdir(parents=True, exist_ok=True)
     shutil.copytree(template_dir, state_dir, dirs_exist_ok=True)
+    # project-workspace/spec.md (add-project-foundation): factions.yaml is always
+    # generated with an empty list, regardless of template (a template may still ship
+    # its own non-empty factions.yaml, which wins here).
+    factions_path = state_dir / "factions.yaml"
+    if not factions_path.exists():
+        factions_path.write_text("[]\n", encoding="utf-8")
 
     (output_dir / "workspace" / "runs").mkdir(parents=True, exist_ok=True)
     (output_dir / "workspace" / "exports").mkdir(parents=True, exist_ok=True)
