@@ -54,7 +54,7 @@
 
 ### D8: GM レビューゲート事後操作の実行境界(turn-pipeline の外側)
 
-`partial`/`edit`/`rerun_turn` はターンの実行そのものではなく、既に `pending_review`/`stopped_for_review` として確定した既存ターンに対する事後操作である。add-turn-pipeline の design.md D4 が明示する恒久インターフェース(Commit フェーズが「apply するか否かの bool」を受け取るのみ)を変更しない移行方針を尊重し、これらの事後操作は turn-pipeline のフェーズ実行を経由せず、本 capability が (1) state-model の diff 適用 API(partial apply・rollback 等、既存)を直接呼び出し、(2) add-turn-pipeline が公開する事後操作向けユーティリティ(次ターン番号の決定ロジック、`turn_NNNN_discarded_<n>` への退避処理、`meta.yaml` のステータス更新。design.md D6 参照)を直接呼び出す、という2系統の直接呼び出しのみで完結させる(turn-pipeline grill Q4 の裁定案Bを採用)。`review.yaml` の書き込みも本 capability 自身が担当する。
+`partial`/`edit`/`rerun_turn` はターンの実行そのものではなく、既に `pending_review`/`stopped_for_review` として確定した既存ターンに対する事後操作である。add-turn-pipeline の design.md D4 が明示する恒久インターフェース(Commit フェーズが「apply するか否かの bool」を受け取るのみ)を変更しない移行方針を尊重し、これらの事後操作は turn-pipeline のフェーズ実行を経由せず、本 capability が (1) state-model の diff 適用 API(partial apply・rollback 等、既存)を直接呼び出し、(2) add-turn-pipeline が公開する事後操作向けユーティリティ(次ターン番号の決定ロジック、`turn_NNNN_discarded_<n>` への退避処理、`meta.yaml` のステータス更新。design.md D6 参照)を直接呼び出す、という2系統の直接呼び出しのみで完結させる(turn-pipeline grill Q4 の裁定案Bを採用)。`review.yaml` の書き込みも本 capability 自身が担当する。ただし `rerun_turn` の「事後操作」に該当するのは退避処理と決定記録までであり、退避後に行う新しい attempt の実行は事後操作ではなく通常のターン実行として TurnPipeline の8フェーズ全体を経由する(events・narration・checks・state diff は本 capability が再生成するのではなく、パイプラインの再実行によって生成される)。
 
 **代替案**: add-turn-pipeline に専用の事後操作 API(例: `finalize_pending_turn`)を新設させる案は、D4 の「インターフェースを変えない」という移行方針と衝突し、turn-pipeline の責務を「1ターンを1回、順序どおり実行する」ことから逸脱させるため不採用。
 

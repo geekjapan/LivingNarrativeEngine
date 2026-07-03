@@ -10,11 +10,11 @@ Narrator への入力は spec-foundation §4.3 の不変条件2に従い、Reade
 - **THEN** Narrator に渡されるコンテキストに当該 `hidden_facts` および `gm_only` イベントの内容が一切含まれない
 
 ### Requirement: 日本語散文生成
-Narrator は `project.language` に従って物語散文を生成しなければならない(SHALL)。本 change の対象プロジェクトでは `project.language` が日本語(`ja`)の場合、出力は日本語散文でなければならない。
+Narrator は `project.language` に従って物語散文を生成しなければならない(SHALL)。本 change の対象プロジェクトでは `project.language` が日本語(`ja`)の場合、出力は日本語散文でなければならない。テストにおける機械的な最小判定基準は「`narration.md` の本文が空でなく、ひらがな・カタカナ・CJK 統合漢字のいずれかの文字を1文字以上含む」こととする(SHALL、openspec/config.yaml の testability ルールに対応する判定基準。散文としての品質・自然さの評価は機械判定の対象外とし、GM review gate に委ねる)。
 
 #### Scenario: 日本語プロジェクトでの出力
 - **WHEN** `project.language` が `ja` のプロジェクトで Narrate フェーズを実行する
-- **THEN** `narration.md` に書き出される本文が日本語散文である
+- **THEN** `narration.md` に書き出される本文は空でなく、ひらがな・カタカナ・CJK 統合漢字のいずれかの文字を1文字以上含む(日本語散文の機械的最小判定基準)
 
 ### Requirement: renderer レジストリと出力形式選択
 Narrator は D108 のレジストリ方式で登録された renderer を介して出力形式を選択しなければならない(SHALL)。本 change では `novel`(既定)と `log`(ターン/イベント箇条書き形式)の2種類の renderer を提供する。renderer は `project.renderer` によって選択され、呼び出し単位で上書き可能でなければならない。

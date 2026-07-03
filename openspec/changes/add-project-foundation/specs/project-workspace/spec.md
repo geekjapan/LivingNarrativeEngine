@@ -48,7 +48,7 @@
 - **THEN** 生成された workspace は上記の全ディレクトリ・ファイルを含む
 
 ### Requirement: init コマンドによるプロジェクト作成
-`living-narrative init` コマンドは、必須オプション(少なくとも `--title`)を受け取り、指定した出力先にプロジェクトディレクトリと `project.yaml`、workspace 一式を生成しなければならない(SHALL)。生成する state ファイルの内容は、後続 change が本格的なテンプレートで置き換え可能な最小の空ワールド構成でよい。`--title` 以外の `project.yaml` フィールドは次の固定既定値を用いなければならない(SHALL): `id` は `--title` から生成する ASCII 英数字とハイフンのみの slug(ASCII で表現できない場合は固定文字列 `"project"` にフォールバックする)、`genre`/`tone` は空文字列、`autonomy_level` は `"manual"`、`user_mode` は `"watcher"`、`random_seed` は実行のたびに一意な自動生成値、`renderer` は `"novel"`、`llm.provider` は `"mock"`、`llm.model` は `"mock-v1"`、`workspace.root`/`state`/`runs`/`exports` は企画書 Appendix B と同じ相対パス(`workspace`, `workspace/state`, `workspace/runs`, `workspace/exports`)。
+`living-narrative init` コマンドは、必須オプション(少なくとも `--title`)を受け取り、指定した出力先にプロジェクトディレクトリと `project.yaml`、workspace 一式を生成しなければならない(SHALL)。生成する state ファイルの内容は、後続 change が本格的なテンプレートで置き換え可能な最小の空ワールド構成でよい。`--title` 以外の `project.yaml` フィールドは次の固定既定値を用いなければならない(SHALL): `id` は `--title` から生成する ASCII 英数字とハイフンのみの slug(ASCII で表現できない場合は固定文字列 `"project"` にフォールバックする)、`genre`/`tone` は空文字列、`autonomy_level` は `"manual"`、`user_mode` は `"assistant_gm"`(`watcher` は `manual` と組み合わせると add-session-autonomy の Mode × Level 正規化により警告付きで `watch` へ変換されるため、正規化されない有効な既定ペアを用いる)、`random_seed` は実行のたびに一意な自動生成値、`renderer` は `"novel"`、`llm.provider` は `"mock"`、`llm.model` は `"mock-v1"`、`workspace.root`/`state`/`runs`/`exports` は企画書 Appendix B と同じ相対パス(`workspace`, `workspace/state`, `workspace/runs`, `workspace/exports`)。
 
 #### Scenario: 新規プロジェクトの作成
 - **WHEN** 存在しない出力先パスを指定して `living-narrative init --title "霧の駅"` を実行する

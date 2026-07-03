@@ -22,7 +22,7 @@
 - **THEN** `ValidationError` が送出される
 
 ### Requirement: World / Faction モデル
-`WorldState` は id/name/summary/laws(文字列リスト)/parameters を持たなければならない(SHALL)。`parameters` の各値は 0 以上 100 以下の整数でなければならない(SHALL)。`FactionState` は id/name/public_face/goals/resources/relations(faction_id をキーとする hostility 等の数値)を持たなければならない(SHALL)。`resources` および `relations` の各数値も 0 以上 100 以下の整数でなければならない(SHALL)。
+`WorldState` は id/name/summary/laws(文字列リスト)/parameters を持たなければならない(SHALL)。`parameters` の各値は 0 以上 100 以下の整数でなければならない(SHALL)。`FactionState` は id/name/public_face/goals/resources/relations を持たなければならない(SHALL)。`relations` は faction id をキー、当該勢力への敵対度を表す単一の整数を値とする flat な辞書(`dict[str, int]`)でなければならず(SHALL)、ネストした関係オブジェクト(複数パラメータを持つ構造)であってはならない(MUST NOT、複数次元の勢力間関係は第1バッチの対象外)。`resources` および `relations` の各数値も 0 以上 100 以下の整数でなければならない(SHALL)。
 
 #### Scenario: parameters が範囲内
 - **WHEN** `danger_level: 40` のように 0-100 の整数で `WorldState.parameters` を構築する
@@ -144,11 +144,15 @@
 - **THEN** `StateLoadError` が送出され、両ファイルのパスとフィールドパスを含むエラー一覧が含まれる
 
 ### Requirement: 未知フィールドの警告
-状態ファイルに定義済みモデルに存在しないフィールドが含まれる場合、`StateStore.load()` はロードを失敗させてはならず(MUST NOT)、当該ファイルパスとフィールド名を含む警告を発生させなければならない(SHALL)。
+状態ファイルに定義済みモデルに存在しないフィールドが含まれる場合、`StateStore.load()` はロードを失敗させてはならず(MUST NOT)、当該ファイルパスとフィールド名を含む警告を発生させなければならない(SHALL)。ロードされた未知フィールドはモデル上に保持され(SHALL)、`StateStore.save()` はこれを破棄せずそのままファイルへ書き戻さなければならない(SHALL、前方互換ラウンドトリップでのデータ損失禁止)。保存時、未知フィールドは定義済みフィールドの後にキー名の辞書順で出力しなければならない(SHALL、「保存時の atomic write と安定キー順序」要件の再現性を維持するため)。
 
 #### Scenario: 未知フィールドを含む YAML のロード
 - **WHEN** `CharacterState` に定義されていない `favorite_color` フィールドを含む `characters/char_001.yaml` をロードする
 - **THEN** ロードは成功し、`char_001.yaml` と `favorite_color` を含む警告ログが出力される
+
+#### Scenario: 未知フィールドは保存時に保持される
+- **WHEN** `favorite_color` を含む `characters/char_001.yaml` をロードし、そのまま `StateStore.save()` する
+- **THEN** 保存後の `char_001.yaml` にも `favorite_color` が元の値のまま含まれる
 
 ### Requirement: 保存時の atomic write と安定キー順序
 `StateStore.save()` は保存対象ファイルごとに一時ファイルへ書き込んだ後にリネームすることで書き込みを原子的に行わなければならない(SHALL)。YAML 出力のキー順序はモデルのフィールド定義順に固定し、同一データを複数回保存した場合に出力バイト列が一致しなければならない(SHALL)。
@@ -177,7 +181,7 @@
 - **THEN** 検証エラーとなる
 
 ### Requirement: StateDiff の適用(アトミック / reject 時状態不変)
-`StateDiff` の適用は1ターン分の `changes` 全体を単位としてアトミックに行われなければならない(SHALL)。いずれか1つの change が適用時エラー(対象不在・型不一致等)になった場合、適用済みの変更を含め全ての変更を巻き戻し、適用前の状態を完全に保持しなければならない(SHALL)。id 一致で解決するリスト要素(例: `hidden_facts`・canon エントリ等)に対する `remove` change が指定した id または値が適用直前の状態に存在しない場合も同じ適用時エラーとして扱わなければならず(SHALL)、これを検出するための独立した事前存在確認バリデーションフェーズを設けてはならず(MUST NOT)、値/id が存在しないことを黙って no-op として許容してもならない(MUST NOT、Q3 recommendation B)。
+`StateDiff` の適用は1ターン分の `changes` 全体を単位としてアトミックに行われなければならない(SHALL)。`target: relationship` の change を適用する際、`RelationshipState` は独自の id フィールドを持たないため(D116)、適用エンジンは change の `id`(複合キー `<from_id>__<to_id>`)を `__` で分解し、`from` と `to` の両フィールドが一致するリスト要素を対象として特定しなければならない(SHALL)。id フィールドを持つ他のリスト要素(canon エントリ・`hidden_facts` 等)の `id` 一致解決とは異なる特別規則であることに注意する。いずれか1つの change が適用時エラー(対象不在・型不一致等)になった場合、適用済みの変更を含め全ての変更を巻き戻し、適用前の状態を完全に保持しなければならない(SHALL)。id 一致で解決するリスト要素(例: `hidden_facts`・canon エントリ等)に対する `remove` change が指定した id または値が適用直前の状態に存在しない場合も同じ適用時エラーとして扱わなければならず(SHALL)、これを検出するための独立した事前存在確認バリデーションフェーズを設けてはならず(MUST NOT)、値/id が存在しないことを黙って no-op として許容してもならない(MUST NOT、Q3 recommendation B)。
 
 #### Scenario: 全 change が成功
 - **WHEN** 全 change が有効な `StateDiff` を `WorldStateBundle` に適用する
@@ -190,6 +194,10 @@
 #### Scenario: remove 対象の id が存在しない
 - **WHEN** `target: canon, id: canon_099, op: remove`(現在の canon エントリに `canon_099` が存在しない)を含む `StateDiff` を適用する
 - **THEN** 適用は reject され、`WorldStateBundle` は適用前と完全に一致する状態を保つ
+
+#### Scenario: relationship change は複合キーの分解で要素を特定する
+- **WHEN** `target: relationship, id: char_001__char_002, op: delta, path: trust, value: 10` を含む `StateDiff` を、`from: char_001, to: char_002` の `RelationshipState` が存在する `WorldStateBundle` に適用する
+- **THEN** `from: char_001` かつ `to: char_002` の要素の `trust` のみが変更され、逆向き(`from: char_002, to: char_001`)の関係性は変更されない
 
 ### Requirement: delta の 0-100 clamp
 0-100 範囲を持つ数値フィールド(emotions / relationship の trust・affection・tension・suspicion / world parameters / faction の resources・relations)への `delta` 適用結果が範囲外になる場合、値を 0 または 100 に clamp しなければならない(SHALL)。この場合、適用結果(apply report)に元の計算値と clamp が発生した旨を記録しなければならない(SHALL)。

@@ -32,7 +32,7 @@
 
 - [ ] 4.1 workspace レイアウト定義(必須ディレクトリ・必須ファイル一覧)を定数として実装する
 - [ ] 4.2 最小の空ワールドテンプレート(state ファイル一式の最小内容)を実装する
-- [ ] 4.3 `living-narrative` typer app のエントリポイントを作成し、`init` サブコマンドを実装する(`--title` 必須オプション、出力先パス)。`--title` 以外のフィールドは spec の固定既定値(id: title から生成した slug、genre/tone: 空文字列、autonomy_level: `manual`、user_mode: `watcher`、random_seed: 自動生成、renderer: `novel`、llm.provider: `mock`、llm.model: `mock-v1`、workspace: Appendix B 準拠の相対パス)を用いる
+- [ ] 4.3 `living-narrative` typer app のエントリポイントを作成し、`init` サブコマンドを実装する(`--title` 必須オプション、出力先パス)。`--title` 以外のフィールドは spec の固定既定値(id: title から生成した slug、genre/tone: 空文字列、autonomy_level: `manual`、user_mode: `assistant_gm`、random_seed: 自動生成、renderer: `novel`、llm.provider: `mock`、llm.model: `mock-v1`、workspace: Appendix B 準拠の相対パス)を用いる
 - [ ] 4.4 既存の空でない出力先ディレクトリに対する上書き拒否ロジックを実装する
 - [ ] 4.5 単体テスト: `init` 実行後に workspace レイアウトが規定どおり生成されることを確認する
 - [ ] 4.6 単体テスト: 既存ディレクトリへの `init` がエラーになり、既存ファイルが変更されないことを確認する

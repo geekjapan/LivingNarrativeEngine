@@ -47,7 +47,7 @@ add-intervention       (interpreter は llm-provider、適用は pipeline)
         v
 add-session-autonomy   (stop condition / review gate / resume)
         v
-add-cli-and-sample     (CLI 完成、サンプル世界、10ターン smoke test)
+add-cli-and-sample     (CLI 完成、サンプル世界、20ターン smoke test)
 ```
 
 ### 1.3 第1バッチに含めないもの(非ゴール)
@@ -131,7 +131,7 @@ Event / Fact / Intervention は `visibility` を持つ:
 - **LLM プロファイル(D122)** — `llm` は既定プロファイル。任意の `llm_profiles`(名前付きプロファイル辞書、各値は `llm` と同スキーマ)と `llm_bindings`(binding key → プロファイル名)で、エージェント種別・キャラクター単位に異なる LLM を割り当てられる。binding key: `narrator` | `world_simulator` | `conflict_resolver` | `state_manager` | `checker` | `interpreter` | `character_default` | `character:<char_id>`。解決順: `character:<id>` → `character_default` → 既定 `llm`(キャラクター以外は `<role>` → 既定 `llm`)。未定義プロファイル名への binding はロード時検証エラー
 - **world.yaml** — id/name/summary/laws[]/parameters{public_order, danger_level, ...}(0-100 整数)
 - **factions**(world.yaml 内 or factions.yaml)— goals/resources/relations
-- **characters/*.yaml** — id/name/role/traits/goals(short/long)/emotions(0-100)/knowledge(knows/believes/does_not_know)/secrets/private_mind/inventory/constraints
+- **characters/*.yaml** — id/name/role/traits/goals(short_term/long_term)/emotions(0-100)/knowledge(knows/believes/does_not_know)/secrets/private_mind/inventory/constraints
 - **relationships.yaml** — 有向ペア: trust/affection/tension/suspicion(0-100)+notes
 - **scenes/scene_XXX.yaml** — location/time/active_characters/mood/stakes/reader_visible_facts(list[str])/hidden_facts(構造化: id=fact_NNN, text, visibility, known_by — per-fact スコープを表現する。D115)
 - **canon.yaml** — 確定事実のリスト(id, text, established_turn, source_event)

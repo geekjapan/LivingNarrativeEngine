@@ -7,10 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 No source code exists yet — there is no `pyproject.toml`, `src/`, or `tests/` directory. The repository is currently a fully spec'd-out, pre-implementation project driven by **OpenSpec**. Before writing or editing any code, read (in this order):
 
 1. `docs/project_plan.md` — the product vision/pitch ("企画書"). Motivational, not normative; long (3000+ lines, numbered `# N.` sections).
-2. `docs/spec-foundation.md` — the **normative** shared contract for the whole first implementation batch (tech stack, ID conventions, information-scope model, data model shapes, turn-pipeline phases, decision log D101–D109). If anything conflicts with `project_plan.md`, `spec-foundation.md` wins.
-3. `openspec/changes/<name>/proposal.md` + `specs/` + `design.md` + `tasks.md` — per-capability requirements. Not every change is fully drafted yet (see below).
+2. `docs/spec-foundation.md` — the **normative** shared contract for the whole first implementation batch (tech stack, ID conventions, information-scope model, data model shapes, turn-pipeline phases, decision log D101–D122). If anything conflicts with `project_plan.md`, `spec-foundation.md` wins.
+3. `openspec/changes/<name>/proposal.md` + `specs/` + `design.md` + `tasks.md` — per-capability requirements. All 9 changes are fully drafted (see below).
 
-**`AGENTS.md` is stale**: it describes a generic JS/TS project (camelCase, `npm test`, `src/`+`tests/`+`assets/`). The actual confirmed stack (locked in `spec-foundation.md` §2 and decision log D101–D109) is **Python 3.12+**, not JS/TS. Follow `spec-foundation.md` for stack/conventions, not `AGENTS.md`, whenever they disagree. `AGENTS.md`'s generic advice (shallow module paths, test-per-behavior, imperative commit subjects, no speculative scaffolding) still applies.
+**`AGENTS.md` is stale**: it describes a generic JS/TS project (camelCase, `npm test`, `src/`+`tests/`+`assets/`). The actual confirmed stack (locked in `spec-foundation.md` §2 and decision log D101–D122) is **Python 3.12+**, not JS/TS. Follow `spec-foundation.md` for stack/conventions, not `AGENTS.md`, whenever they disagree. `AGENTS.md`'s generic advice (shallow module paths, test-per-behavior, imperative commit subjects, no speculative scaffolding) still applies.
 
 ### OpenSpec change status (`openspec/changes/`)
 
@@ -58,7 +58,7 @@ src/living_narrative/
   exporters/  markdown.py                                  # replay.md (novel outline etc. are later phases)
   safety/     leak_check.py, continuity_check.py
   web/        (not built in the first batch — CLI only, D101)
-examples/mist_station/   # sample world used by the 10-turn smoke test
+examples/mist_station/   # sample world used by the 20-turn smoke test
 ```
 
 ### Capability map (spec-foundation §1.1) → change that introduces it
@@ -94,9 +94,11 @@ Agents are never given omniscience. Every fact/event/intervention carries a `vis
 
 Direct state mutation is forbidden, including in "God Mode" — every change is a `StateDiff` (`add|remove|set|delta`, dot-path, visibility, `source_event`), applied atomically per turn, reject leaves state unchanged, partial apply is a subset of changes, and an inverse diff is stored for rollback (spec-foundation §5.1).
 
-### Key locked decisions (spec-foundation §9, D101–D109)
+### Key locked decisions (spec-foundation §9, D101–D122)
 
 CLI-only in batch 1, no web UI (D101); `typer` for the CLI (D102); YAML files are the source of truth, no DB (D103); `openai` SDK + configurable `base_url` for OpenAI-compatible/Ollama/LM Studio, LiteLLM rejected as unneeded (D104); Pydantic v2 is the single schema source of truth (D105); narrative content is Japanese-first, code/identifiers are English (D106); all state mutation goes through diffs, no exceptions (D107); extension points are `Protocol` + a plain registry dict, no plugin loader yet (D108); `unresolved_threads`/branching get a data format now, no runtime behavior until Phase 5 (D109).
+
+D110–D122 (added during the Phase 0 self-grill) lock further details: LLM retry exhaustion → turn `failed` (D110); turn status persists in `meta.yaml`, written last as completion marker (D111); failed/rerun attempts are preserved as `turn_NNNN_discarded_<n>`, never overwritten (D112); diff generation is the BuildDiff slot implemented by State Manager (D113); the intervention-permission matrix's source of truth is session-autonomy (D114); `hidden_facts` are structured per-fact objects (D115); relationships are identified by the composite key `<from_id>__<to_id>` (D116); missing fixed state files fail fast on load (D117); commit-mode is a runtime parameter, not project.yaml schema (D118); `stop_condition` halts all autonomy levels including god (D119); `reject_all` turns keep artifacts but are excluded from replay export (D120); conflicts always resolve via rolls and events carry `roll_ids` (D121); named LLM profiles + bindings allow per-agent/per-character models (D122). See spec-foundation §9 for the full table.
 
 ### Naming/ID conventions (spec-foundation §3)
 
