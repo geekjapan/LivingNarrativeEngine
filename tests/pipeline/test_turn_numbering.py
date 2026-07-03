@@ -70,7 +70,7 @@ def test_failed_turn_is_retried_at_same_number_with_discarded_dir_and_rng_accoun
     discarded_meta = yaml.safe_load((discarded_dir / "meta.yaml").read_text(encoding="utf-8"))
     second_meta = yaml.safe_load((second.turn_dir / "meta.yaml").read_text(encoding="utf-8"))
 
-    assert discarded_meta["rng_draws_consumed"] == 1
-    assert second_meta["rng_draws_consumed"] == 1
+    assert discarded_meta["rng_draws_consumed"] == 2
+    assert second_meta["rng_draws_consumed"] == 2
 
-    assert total_rng_draws_consumed(second.turn_dir.parent) == 2
+    assert total_rng_draws_consumed(second.turn_dir.parent) == 4

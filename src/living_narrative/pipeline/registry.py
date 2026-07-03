@@ -20,9 +20,9 @@ class SlotRegistry:
 
 
 def default_registry() -> SlotRegistry:
-    """A fresh registry pre-loaded with the built-in minimal slots."""
-    from living_narrative.pipeline.builtin_slots import register_builtin_slots
+    """A fresh registry pre-loaded with the agent-runtime slots."""
+    from living_narrative.agents.slots import register_agent_runtime_slots
 
     registry = SlotRegistry()
-    register_builtin_slots(registry)
+    register_agent_runtime_slots(registry)
     return registry

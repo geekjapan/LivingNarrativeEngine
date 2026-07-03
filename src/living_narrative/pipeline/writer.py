@@ -49,6 +49,10 @@ def write_agent_io(turn_dir: Path, records: list[ActRecord]) -> None:
     )
 
 
+def write_agent_io_component(turn_dir: Path, name: str, data: Any) -> None:
+    _atomic_write_yaml(turn_dir / "agent_io" / f"{name}.yaml", data)
+
+
 def write_events(turn_dir: Path, events: list[Event]) -> None:
     _atomic_write_yaml(
         turn_dir / "events.yaml", [event.model_dump(mode="json") for event in events]
@@ -73,7 +77,8 @@ def make_roll_recorder(turn_dir: Path) -> Callable[[Roll], None]:
 
 def write_checks(turn_dir: Path, results: list[CheckResult]) -> None:
     _atomic_write_yaml(
-        turn_dir / "checks.yaml", [result.model_dump(mode="json") for result in results]
+        turn_dir / "checks.yaml",
+        {"findings": [result.model_dump(mode="json") for result in results]},
     )
 
 

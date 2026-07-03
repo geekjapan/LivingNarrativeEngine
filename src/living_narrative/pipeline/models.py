@@ -27,6 +27,7 @@ class WorldEventCandidate(BaseModel):
     known_by: list[CharacterId] = Field(default_factory=list)
     hidden_from: list[CharacterId] = Field(default_factory=list)
     effects: dict[str, Any] = Field(default_factory=dict)
+    target_id: str | None = None
 
 
 class ActionCandidate(BaseModel):
@@ -34,6 +35,11 @@ class ActionCandidate(BaseModel):
 
     character_id: CharacterId
     action_text: str = Field(min_length=1)
+    kind: Literal["action", "dialogue", "inner_reaction"] = "action"
+    visibility: Visibility = Visibility.READER
+    target_id: str | None = None
+    effects: dict[str, Any] = Field(default_factory=dict)
+    source_index: int | None = None
 
 
 class ActRecord(BaseModel):
@@ -43,6 +49,7 @@ class ActRecord(BaseModel):
     prompt_template_name: str
     request: list[dict[str, Any]]
     response: dict[str, Any]
+    input_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class RejectedChange(BaseModel):
@@ -61,6 +68,7 @@ class CheckResult(BaseModel):
     severity: CheckSeverity
     message: str
     source: str | None = None
+    related_ids: list[str] = Field(default_factory=list)
 
 
 class ErrorReport(BaseModel):

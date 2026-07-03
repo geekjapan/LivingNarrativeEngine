@@ -1,0 +1,83 @@
+"""Scope-safe context construction."""
+
+from typing import Any
+
+from pydantic import BaseModel
+
+from living_narrative.agents.models import CharacterAgentInput
+from living_narrative.state.models import CharacterId, Event, Visibility, WorldStateBundle
+
+DEFAULT_EVENT_LIMIT = 20
+
+
+class WorldContext(BaseModel):
+    bundle: WorldStateBundle
+    requires_visibility: bool = True
+
+
+def build_character_context(
+    bundle: WorldStateBundle,
+    character_id: CharacterId,
+    *,
+    events: list[Event] | None = None,
+    directives: list[dict[str, Any]] | None = None,
+    event_limit: int = DEFAULT_EVENT_LIMIT,
+) -> CharacterAgentInput:
+    character = _find_character(bundle, character_id)
+    scene_facts = []
+    for scene in bundle.scenes:
+        if character_id not in scene.active_characters:
+            continue
+        scene_facts.extend(scene.reader_visible_facts)
+        scene_facts.extend(
+            fact.text
+            for fact in scene.hidden_facts
+            if fact.visibility == Visibility.READER or character_id in fact.known_by
+        )
+
+    scoped_events = [
+        event for event in events or [] if _event_visible_to_character(event, character_id)
+    ][-event_limit:]
+    relationships = [
+        relationship
+        for relationship in bundle.relationships
+        if relationship.from_ == character_id or relationship.to == character_id
+    ]
+    character_directives = [
+        directive
+        for directive in directives or []
+        if directive.get("character_id") in (None, character_id)
+        or directive.get("target_id") == character_id
+    ]
+    return CharacterAgentInput(
+        character_id=character_id,
+        scoped_state=character.model_copy(deep=True),
+        visible_events=scoped_events,
+        visible_facts=[
+            *character.knowledge.knows,
+            *scene_facts,
+        ],
+        relationships=relationships,
+        directives=character_directives,
+    )
+
+
+def build_world_context(bundle: WorldStateBundle) -> WorldContext:
+    return WorldContext(bundle=bundle.model_copy(deep=True))
+
+
+def _find_character(bundle: WorldStateBundle, character_id: CharacterId):
+    for character in bundle.characters:
+        if character.id == character_id:
+            return character
+    raise ValueError(f"character not found: {character_id}")
+
+
+def _event_visible_to_character(event: Event, character_id: CharacterId) -> bool:
+    if character_id in event.hidden_from:
+        return False
+    if event.visibility in {Visibility.READER, Visibility.SCENE, Visibility.CANON}:
+        return True
+    if event.visibility == Visibility.CHARACTER:
+        return character_id in event.known_by
+    return False
