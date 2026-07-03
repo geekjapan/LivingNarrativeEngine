@@ -10,11 +10,12 @@ from typing import Any
 import yaml
 
 from living_narrative.intervention.history import append_history, build_history_entries
-from living_narrative.pipeline.status import TurnStatus
-from living_narrative.pipeline.turn_numbering import discard_turn_directory
 from living_narrative.state.diff import StateDiff, apply_state_diff, save_apply_artifacts
 from living_narrative.state.models import Event, UserMode
 from living_narrative.state.store import StateStore
+
+UNRESOLVED_STATUS_VALUES = {"pending_review", "stopped_for_review"}
+APPLIED_STATUS = "applied"
 
 
 class ReviewDecision(StrEnum):
@@ -30,15 +31,19 @@ class PendingReview:
     turn: int
     turn_dir: Path
     diff: StateDiff
-    status: TurnStatus
+    status: Any
 
 
 @dataclass(frozen=True)
 class ReviewResult:
     decision: ReviewDecision
-    resulting_turn_status: TurnStatus | None
+    resulting_turn_status: Any | None
     turn_dir: Path
     discarded_turn_dir: Path | None = None
+
+
+class ReviewStateError(ValueError):
+    pass
 
 
 def _atomic_write_yaml(path: Path, data: Any) -> None:
@@ -72,7 +77,7 @@ def write_review_yaml(
     decided_by: UserMode | str,
     applied_change_indices: list[int] | None = None,
     edit_diff: StateDiff | None = None,
-    resulting_turn_status: TurnStatus | None = None,
+    resulting_turn_status: Any | None = None,
     auto_applied: bool = False,
 ) -> None:
     decision = ReviewDecision(decision)
@@ -88,15 +93,17 @@ def write_review_yaml(
     if edit_diff is not None:
         data["edit_diff"] = edit_diff.model_dump(mode="json")
     if resulting_turn_status is not None:
-        data["resulting_turn_status"] = resulting_turn_status.value
+        data["resulting_turn_status"] = getattr(
+            resulting_turn_status, "value", resulting_turn_status
+        )
     _atomic_write_yaml(turn_dir / "review.yaml", data)
 
 
-def update_meta_status(turn_dir: Path, status: TurnStatus) -> None:
+def update_meta_status(turn_dir: Path, status: Any) -> None:
     path = turn_dir / "meta.yaml"
     data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
     data = data or {}
-    data["status"] = status.value
+    data["status"] = getattr(status, "value", status)
     _atomic_write_yaml(path, data)
 
 
@@ -134,9 +141,18 @@ def resolve_review(
     selected_change_indices: set[int] | None = None,
     edited_diff: StateDiff | dict[str, Any] | None = None,
 ) -> ReviewResult:
+    from living_narrative.pipeline.turn_numbering import read_turn_status
+
     decision = ReviewDecision(decision)
+    status = read_turn_status(turn_dir)
+    status_value = getattr(status, "value", None)
+    if status_value not in UNRESOLVED_STATUS_VALUES:
+        found = status.value if status is not None else "missing"
+        raise ReviewStateError(f"turn {turn_dir.name} is not pending review; status={found}")
     original_diff = read_artifact_diff(turn_dir)
     if decision == ReviewDecision.RERUN_TURN:
+        from living_narrative.pipeline.turn_numbering import discard_turn_directory
+
         write_review_yaml(
             turn_dir,
             turn=original_diff.turn,
@@ -185,8 +201,8 @@ def resolve_review(
         decided_by=decided_by,
         applied_change_indices=sorted(selected) if selected is not None else None,
         edit_diff=applied_diff if decision == ReviewDecision.EDIT else None,
-        resulting_turn_status=TurnStatus.APPLIED,
+        resulting_turn_status=APPLIED_STATUS,
     )
-    update_meta_status(turn_dir, TurnStatus.APPLIED)
+    update_meta_status(turn_dir, APPLIED_STATUS)
     _append_deferred_history(workspace_root, turn_dir, applied_diff)
-    return ReviewResult(decision, TurnStatus.APPLIED, turn_dir)
+    return ReviewResult(decision, APPLIED_STATUS, turn_dir)
