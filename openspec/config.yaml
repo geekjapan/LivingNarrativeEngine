@@ -1,20 +1,31 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Product: Living Narrative Engine — 物語世界を状態遷移として自律進行させ、
+  ユーザーが観測・介入・再利用できる介入型ナラティブシミュレーション基盤。
+  企画書: docs/project_plan.md(ビジョン正本)/ 共有契約: docs/spec-foundation.md(仕様正本)
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Tech stack: Python 3.12+, uv, Pydantic v2, PyYAML(safe), typer, pytest, ruff.
+  LLM: openai SDK + configurable base_url (OpenAI-compatible / Ollama / LM Studio) + deterministic mock provider.
+  First implementation batch has NO web UI, NO database — state の正本は workspace 内の YAML ファイル。
+
+  Core principles:
+  - 正本は本文ではなく状態(world/character/scene/canon/reader/gm_vault)+イベントログ+介入ログ+乱数ログ+state diff。
+  - ユーザー介入は Intervention Event として構造化保存する(監査可能)。
+  - 情報スコープ分離: エージェントに全知を与えない。Narrator は reader-visible のみ、
+    Character agent は当該キャラクターの知識のみを受け取る。
+  - 乱数は seed 管理された制御された不確実性。全 roll をログし再現可能にする。
+  - state 変更は必ず state diff を経由し、review/apply/reject/rollback 可能。
+
+  Conventions:
+  - Code/identifiers in English; narrative content Japanese-first (configurable per project).
+  - ID conventions, information scopes, turn pipeline steps, diff format: see docs/spec-foundation.md.
+  - 2-space indent for YAML/Markdown. kebab-case for capability names and doc filenames.
+
+rules:
+  proposal:
+    - Include a "Non-Goals" section
+    - State dependencies on other changes explicitly (DAG)
+  specs:
+    - Reference shared contracts in docs/spec-foundation.md instead of restating them
+    - Every requirement must be testable without a web UI
