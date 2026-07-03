@@ -1,0 +1,98 @@
+import pytest
+
+from living_narrative.agents.character import PROMPT_TEXT, run_character_agent
+from living_narrative.agents.models import CharacterAgentOutput
+from living_narrative.llm.errors import StructuredOutputError
+from living_narrative.pipeline.context import TurnContext
+from living_narrative.pipeline.llm_gateway import LLMGateway
+from living_narrative.random.engine import RandomEngine
+from living_narrative.state.models import (
+    CharacterState,
+    LLMConfig,
+    ProjectConfig,
+    SceneState,
+    WorkspaceConfig,
+    WorldState,
+    WorldStateBundle,
+)
+
+
+def _context() -> TurnContext:
+    project = ProjectConfig(
+        id="p",
+        title="P",
+        genre="g",
+        tone="t",
+        autonomy_level="auto",
+        user_mode="watcher",
+        random_seed="seed",
+        renderer="novel",
+        llm=LLMConfig(provider="mock", model="mock-default"),
+        workspace=WorkspaceConfig(root=".", state="state", runs="runs", exports="exports"),
+        llm_profiles={"large": LLMConfig(provider="mock", model="mock-large")},
+        llm_bindings={"character:char_001": "large"},
+    )
+    bundle = WorldStateBundle(
+        world=WorldState(id="world_001", name="World", summary="Summary"),
+        characters=[CharacterState(id="char_001", name="Aoi", role="detective")],
+        scenes=[
+            SceneState(
+                id="scene_001",
+                location="駅",
+                time="夜",
+                active_characters=["char_001"],
+            )
+        ],
+    )
+    return TurnContext(
+        turn=1,
+        project=project,
+        paths=None,
+        bundle=bundle,
+        random_engine=RandomEngine("seed"),
+    )
+
+
+def test_character_agent_uses_character_binding_key():
+    context = _context()
+    gateway = LLMGateway(project=context.project, random_seed="seed")
+
+    run_character_agent(context, [], gateway)
+
+    assert gateway.calls[0].binding_key == "character:char_001"
+    assert gateway.calls[0].model == "mock-large"
+
+
+def test_character_agent_prompt_mentions_secret_consistency():
+    assert "private minds" in PROMPT_TEXT
+    assert "unknown events" in PROMPT_TEXT
+
+
+def test_character_agent_is_deterministic_with_same_seed():
+    first_context = _context()
+    second_context = _context()
+
+    first, _ = run_character_agent(
+        first_context, [], LLMGateway(project=first_context.project, random_seed="seed")
+    )
+    second, _ = run_character_agent(
+        second_context, [], LLMGateway(project=second_context.project, random_seed="seed")
+    )
+
+    assert first == second
+
+
+def test_character_agent_schema_error_propagates():
+    class BadGateway:
+        calls = []
+
+        def complete(self, binding_key, messages, response_schema, prompt_template_name):
+            raise StructuredOutputError(
+                provider_name="mock",
+                model="mock",
+                schema_name=CharacterAgentOutput.__name__,
+                last_error="bad",
+            )
+
+    with pytest.raises(StructuredOutputError):
+        run_character_agent(_context(), [], BadGateway())

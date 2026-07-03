@@ -25,6 +25,7 @@ from living_narrative.pipeline.writer import (
     build_meta_dict,
     make_roll_recorder,
     write_agent_io,
+    write_agent_io_component,
     write_checks,
     write_events,
     write_intervention,
@@ -135,18 +136,44 @@ class TurnPipeline:
                 world_events = self.registry.get("simulate")(
                     context, intervention_file.interventions
                 )
+                write_agent_io_component(
+                    turn_dir,
+                    "simulate",
+                    {
+                        "input": {"interventions": intervention_file.interventions},
+                        "output": [item.model_dump(mode="json") for item in world_events],
+                    },
+                )
 
             with _timed_phase("act", durations, current_phase):
                 action_candidates, act_records = self.registry.get("act")(
                     context, world_events, gateway
                 )
                 write_agent_io(turn_dir, act_records)
+                write_agent_io_component(
+                    turn_dir,
+                    "act_candidates",
+                    [item.model_dump(mode="json") for item in action_candidates],
+                )
 
             with _timed_phase("resolve", durations, current_phase):
                 allocate_event_id = make_event_id_allocator(paths.runs)
                 record_roll = make_roll_recorder(turn_dir)
                 resolved_events = self.registry.get("resolve")(
                     context, world_events, action_candidates, allocate_event_id, record_roll
+                )
+                write_agent_io_component(
+                    turn_dir,
+                    "resolve",
+                    {
+                        "input": {
+                            "world_events": [item.model_dump(mode="json") for item in world_events],
+                            "action_candidates": [
+                                item.model_dump(mode="json") for item in action_candidates
+                            ],
+                        },
+                        "output": [item.model_dump(mode="json") for item in resolved_events],
+                    },
                 )
                 write_events(turn_dir, resolved_events)
 
@@ -163,10 +190,20 @@ class TurnPipeline:
                 build_diff_output = self.registry.get("build_diff")(
                     context, resolved_events, intervention_file.interventions
                 )
+                write_agent_io_component(
+                    turn_dir,
+                    "build_diff",
+                    build_diff_output.model_dump(mode="json"),
+                )
 
             with _timed_phase("check", durations, current_phase):
                 check_results = self.registry.get("check")(
                     context, narration.text, resolved_events, build_diff_output.diff
+                )
+                write_agent_io_component(
+                    turn_dir,
+                    "check",
+                    [item.model_dump(mode="json") for item in check_results],
                 )
                 write_checks(turn_dir, check_results)
 
