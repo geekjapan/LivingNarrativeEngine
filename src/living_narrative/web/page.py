@@ -1,5 +1,5 @@
 """Single static HTML page for the web UI (docs/issues/020 skeleton, 021-022 story pane +
-controls, 023 intervention input).
+controls, 023 intervention input, 025 diff-review panel).
 
 Deliberately no build step / frontend framework: one inline page, vanilla ``fetch``. Whether to
 bring in a framework is a call for a later Track B issue once the surface grows.
@@ -61,6 +61,19 @@ INDEX_HTML = """\
   .gm-timeline-entry .badge { margin-right: 0.3rem; }
   #gm-turn-detail pre { white-space: pre-wrap; font-size: 0.8rem; background: #f5f5f5;
     padding: 0.5rem; border-radius: 4px; }
+  .badge-error { background: #c62828; }
+  .badge-warn { background: #ef6c00; }
+  .badge-info { background: #1565c0; }
+  #review-panel { display: none; border: 1px solid #ef6c00; border-radius: 6px;
+    padding: 0.75rem 1rem; margin: 0.75rem 0; }
+  #review-panel.open { display: block; }
+  #review-panel h3 { margin-top: 0; }
+  #review-panel table { width: 100%; border-collapse: collapse; margin: 0.5rem 0;
+    font-size: 0.85rem; }
+  #review-panel th, #review-panel td { border-bottom: 1px solid #eee; padding: 0.3rem 0.4rem;
+    text-align: left; }
+  .review-finding { padding: 0.2rem 0; font-size: 0.85rem; }
+  .review-finding .badge { margin-right: 0.4rem; }
 </style>
 </head>
 <body>
@@ -77,11 +90,6 @@ INDEX_HTML = """\
     <input id="auto-turns" type="number" min="1" value="5">
     <button id="auto-button" disabled>auto実行</button>
     <button id="stop-button" disabled>停止</button>
-  </div>
-  <div class="group">
-    <span>review:</span>
-    <button id="review-accept-button" disabled>accept_all</button>
-    <button id="review-reject-button" disabled>reject_all</button>
   </div>
   <div class="group">
     <button id="gm-toggle-button" disabled>GMビュー</button>
@@ -121,6 +129,21 @@ INDEX_HTML = """\
   <div id="intervention-history"></div>
 </div>
 <p id="status"></p>
+<div id="review-panel">
+  <h3>レビュー待ち: turn <span id="review-turn"></span> [<span id="review-status"></span>]</h3>
+  <div id="review-checks"></div>
+  <table>
+    <thead>
+      <tr><th></th><th>target</th><th>path</th><th>op</th><th>value</th><th>visibility</th></tr>
+    </thead>
+    <tbody id="review-changes-body"></tbody>
+  </table>
+  <div class="group">
+    <button id="review-accept-button">accept_all</button>
+    <button id="review-reject-button">reject_all</button>
+    <button id="review-partial-button">選択のみ適用</button>
+  </div>
+</div>
 <div id="characters"></div>
 <h2>Story</h2>
 <div id="story"></div>
@@ -151,6 +174,12 @@ const autoButton = document.getElementById("auto-button");
 const stopButton = document.getElementById("stop-button");
 const reviewAcceptButton = document.getElementById("review-accept-button");
 const reviewRejectButton = document.getElementById("review-reject-button");
+const reviewPartialButton = document.getElementById("review-partial-button");
+const reviewPanelEl = document.getElementById("review-panel");
+const reviewTurnEl = document.getElementById("review-turn");
+const reviewStatusEl = document.getElementById("review-status");
+const reviewChecksEl = document.getElementById("review-checks");
+const reviewChangesBodyEl = document.getElementById("review-changes-body");
 const statusEl = document.getElementById("status");
 const charactersEl = document.getElementById("characters");
 const storyEl = document.getElementById("story");
@@ -213,6 +242,48 @@ function renderInterventionHistory(interventionsData) {
 function visibilityBadge(visibility) {
   const cls = visibility ? `badge-${visibility}` : "badge-unknown";
   return `<span class="badge ${cls}">${visibility || "unknown"}</span>`;
+}
+
+function severityBadge(severity) {
+  const cls = severity ? `badge-${severity}` : "badge-unknown";
+  return `<span class="badge ${cls}">${severity || "unknown"}</span>`;
+}
+
+function renderReview(review) {
+  reviewPanelEl.classList.toggle("open", review.pending);
+  if (!review.pending) {
+    reviewChangesBodyEl.innerHTML = "";
+    reviewChecksEl.innerHTML = "";
+    return;
+  }
+  reviewTurnEl.textContent = review.turn;
+  reviewStatusEl.textContent = review.status || "";
+  reviewChecksEl.innerHTML =
+    (review.checks || [])
+      .map(
+        (f) =>
+          `<div class="review-finding">${severityBadge(f.severity)} ${f.message || ""}</div>`
+      )
+      .join("") || "<p>チェック指摘なし</p>";
+  reviewChangesBodyEl.innerHTML = (review.changes || [])
+    .map(
+      (c) => `<tr>
+        <td><input type="checkbox" class="review-change-checkbox" data-index="${c.index}"></td>
+        <td>${c.target}${c.id ? ":" + c.id : ""}</td>
+        <td>${c.path || ""}</td>
+        <td>${c.op}</td>
+        <td>${JSON.stringify(c.value).replace(/</g, "&lt;")}</td>
+        <td>${visibilityBadge(c.visibility)}</td>
+      </tr>`
+    )
+    .join("");
+}
+
+async function loadReview() {
+  const name = currentProject();
+  if (!name) return;
+  const res = await fetch(`/api/project/${encodeURIComponent(name)}/review`);
+  renderReview(await res.json());
 }
 
 function renderGmCharacters(characters) {
@@ -348,18 +419,21 @@ async function loadProjects() {
 async function refresh() {
   const name = currentProject();
   if (!name) return;
-  const [statusRes, turnsRes, runStatusRes, permissionsRes, interventionsRes] = await Promise.all([
-    fetch(`/api/project/${encodeURIComponent(name)}/status`),
-    fetch(`/api/project/${encodeURIComponent(name)}/turns`),
-    fetch(`/api/project/${encodeURIComponent(name)}/run_status`),
-    fetch(`/api/project/${encodeURIComponent(name)}/permissions`),
-    fetch(`/api/project/${encodeURIComponent(name)}/interventions`),
-  ]);
+  const [statusRes, turnsRes, runStatusRes, permissionsRes, interventionsRes, reviewRes] =
+    await Promise.all([
+      fetch(`/api/project/${encodeURIComponent(name)}/status`),
+      fetch(`/api/project/${encodeURIComponent(name)}/turns`),
+      fetch(`/api/project/${encodeURIComponent(name)}/run_status`),
+      fetch(`/api/project/${encodeURIComponent(name)}/permissions`),
+      fetch(`/api/project/${encodeURIComponent(name)}/interventions`),
+      fetch(`/api/project/${encodeURIComponent(name)}/review`),
+    ]);
   const status = await statusRes.json();
   const turns = await turnsRes.json();
   const runStatus = await runStatusRes.json();
   const permissions = await permissionsRes.json();
   const interventionsData = await interventionsRes.json();
+  renderReview(await reviewRes.json());
 
   turnCountEl.textContent = `(turn ${status.current_turn})`;
   statusEl.textContent =
@@ -382,8 +456,6 @@ async function refresh() {
     .join("");
 
   const reviewPending = status.pending_review;
-  reviewAcceptButton.disabled = !reviewPending;
-  reviewRejectButton.disabled = !reviewPending;
   turnButton.disabled = runStatus.running || reviewPending;
   autoButton.disabled = runStatus.running || reviewPending;
   stopButton.disabled = !runStatus.running;
@@ -491,19 +563,28 @@ interventionDraftButton.addEventListener("click", async () => {
   }
 });
 
-async function submitReview(decision) {
+async function submitReview(decision, selectedIndexes) {
   const name = currentProject();
   if (!name) return;
+  const body = { decision };
+  if (selectedIndexes) body.selected_indexes = selectedIndexes;
   await fetch(`/api/project/${encodeURIComponent(name)}/review`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision }),
+    body: JSON.stringify(body),
   });
   await refresh();
 }
 
 reviewAcceptButton.addEventListener("click", () => submitReview("accept_all"));
 reviewRejectButton.addEventListener("click", () => submitReview("reject_all"));
+reviewPartialButton.addEventListener("click", () => {
+  const selectedIndexes = Array.from(
+    document.querySelectorAll(".review-change-checkbox:checked")
+  ).map((el) => parseInt(el.dataset.index, 10));
+  if (selectedIndexes.length === 0) return;
+  submitReview("partial", selectedIndexes);
+});
 
 gmToggleButton.addEventListener("click", async () => {
   gmOpen = !gmOpen;

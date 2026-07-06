@@ -211,10 +211,12 @@ def test_review_with_no_pending_turn_is_409(tmp_path, build_project):
 
 
 def test_review_rejects_unsupported_decisions_over_the_api(tmp_path, build_project):
+    """``partial`` is exposed over the API as of docs/issues/025 — ``edit``/``rerun_turn``
+    (which need a hand-edited diff / RNG replay, no web surface for either) still are not."""
     project_path = build_project(tmp_path)
     _write_stopped_for_review_turn(project_path, turn=1)
 
-    response = _client(tmp_path).post("/api/project/project/review", json={"decision": "partial"})
+    response = _client(tmp_path).post("/api/project/project/review", json={"decision": "edit"})
 
     assert response.status_code == 400
 

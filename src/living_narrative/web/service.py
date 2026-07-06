@@ -33,6 +33,7 @@ __all__ = [
     "NoPendingReviewError",
     "PermissionsInfo",
     "ProjectNotFoundError",
+    "ReviewInfo",
     "RunStatus",
     "TurnNarration",
     "collect_narration",
@@ -44,6 +45,7 @@ __all__ = [
     "get_gm_world",
     "get_interventions",
     "get_permissions",
+    "get_review_status",
     "get_run_status",
     "get_status",
     "list_projects",
@@ -219,12 +221,19 @@ def collect_structured_narration(project_yaml: Path, from_turn: int) -> list[Tur
     return entries
 
 
-def submit_review(project_yaml: Path, decision: ReviewDecision | str) -> ReviewResult:
+def submit_review(
+    project_yaml: Path,
+    decision: ReviewDecision | str,
+    *,
+    selected_indices: set[int] | None = None,
+) -> ReviewResult:
     """Resolve the pending-review turn via the existing ``session.review.resolve_review``.
 
-    Only ``accept_all``/``reject_all`` are exposed over the API for now (021-022 scope) — the
-    richer ``partial``/``edit``/``rerun_turn`` decisions stay CLI-only until a future issue adds
-    a diff-review UI (issue 025 in ``docs/plan/feature-dag.md``).
+    ``accept_all``/``reject_all``/``partial`` are exposed over the API (docs/issues/025) —
+    ``partial`` forwards ``selected_indices`` verbatim to ``resolve_review``'s
+    ``selected_change_indices``, the same primitive the CLI's ``review --decision partial
+    --apply`` uses (``cli/review.py``). The richer ``edit``/``rerun_turn`` decisions stay
+    CLI-only (no web surface for hand-editing a diff or replaying RNG yet).
     """
     read = load_project(project_yaml)
     if not read.is_valid:
@@ -242,6 +251,79 @@ def submit_review(project_yaml: Path, decision: ReviewDecision | str) -> ReviewR
         turn_dir=turn_dir,
         decision=decision,
         decided_by=read.config.user_mode,
+        selected_change_indices=selected_indices,
+    )
+
+
+@dataclass(frozen=True)
+class ReviewInfo:
+    pending: bool
+    turn: int | None
+    status: str | None
+    changes: list[dict[str, Any]]
+    rejected_changes: list[dict[str, Any]]
+    checks: list[dict[str, Any]]
+
+
+def get_review_status(project_yaml: Path) -> ReviewInfo:
+    """The latest pending/stopped-for-review turn's proposed diff, for the diff-review UI
+    (docs/issues/025).
+
+    ``changes`` is the turn's ``state_diff.yaml`` change list with each entry's original list
+    index attached (``partial``'s ``selected_indexes`` refer to this same index), so the UI can
+    round-trip a subset of indices back to ``POST .../review``. ``rejected_changes`` (candidates
+    the BuildDiff slot declined to propose) and ``checks`` (this turn's safety-checker findings,
+    ``checks.yaml``'s ``findings`` list) are included for context but are read-only here — they
+    are never resolvable over this endpoint.
+
+    Returns a ``pending: False`` shape (no turn/status/changes) when no turn is pending review,
+    rather than raising, so callers can poll unconditionally.
+    """
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+
+    resume_state = restore_resume_state(read.paths.runs, read.paths.root / "interventions.yaml")
+    pending_turn = resume_state.pending_review_turn
+    if pending_turn is None:
+        return ReviewInfo(
+            pending=False, turn=None, status=None, changes=[], rejected_changes=[], checks=[]
+        )
+
+    turn_dir = turn_dir_path(read.paths.runs, pending_turn)
+    status = read_turn_status(turn_dir)
+
+    diff_path = turn_dir / "state_diff.yaml"
+    diff_data = yaml.safe_load(diff_path.read_text(encoding="utf-8")) if diff_path.exists() else {}
+    diff_data = diff_data or {}
+    raw_changes = (diff_data.get("diff") or {}).get("changes", [])
+    changes = [
+        {
+            "index": index,
+            "target": change.get("target"),
+            "id": change.get("id"),
+            "path": change.get("path", ""),
+            "op": change.get("op"),
+            "value": change.get("value"),
+            "visibility": change.get("visibility"),
+            "source_event": change.get("source_event"),
+        }
+        for index, change in enumerate(raw_changes)
+    ]
+
+    checks_path = turn_dir / "checks.yaml"
+    checks_data = (
+        yaml.safe_load(checks_path.read_text(encoding="utf-8")) if checks_path.exists() else None
+    )
+    findings = (checks_data or {}).get("findings", [])
+
+    return ReviewInfo(
+        pending=True,
+        turn=pending_turn,
+        status=status.value if status is not None else None,
+        changes=changes,
+        rejected_changes=diff_data.get("rejected_changes", []),
+        checks=findings,
     )
 
 

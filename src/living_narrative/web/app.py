@@ -34,6 +34,7 @@ from living_narrative.web.service import (
     get_gm_world,
     get_interventions,
     get_permissions,
+    get_review_status,
     get_run_status,
     get_status,
     list_projects,
@@ -44,13 +45,24 @@ from living_narrative.web.service import (
     submit_review,
 )
 
+_WEB_REVIEW_DECISIONS = (
+    ReviewDecision.ACCEPT_ALL,
+    ReviewDecision.REJECT_ALL,
+    ReviewDecision.PARTIAL,
+)
+
 
 class AutoRequest(BaseModel):
     turns: int = Field(gt=0)
 
 
 class ReviewRequest(BaseModel):
+    """Body for ``POST .../review`` (docs/issues/025). ``selected_indexes`` is only meaningful
+    (and required, non-empty) for ``decision: partial`` — it refers to the ``index`` field
+    ``GET .../review`` attaches to each proposed change."""
+
     decision: ReviewDecision
+    selected_indexes: list[int] = Field(default_factory=list)
 
 
 class TurnRequest(BaseModel):
@@ -171,19 +183,51 @@ def create_app(project_root: Path) -> FastAPI:
         request_stop(project_yaml)
         return {"stopping": True}
 
+    @app.get("/api/project/{name}/review")
+    def api_get_review(name: str) -> dict:
+        """The latest pending/stopped-for-review turn's proposed diff, for the diff-review UI
+        (docs/issues/025): each change carries its list ``index`` (what ``selected_indexes``
+        below refers to), plus rejected-change candidates and this turn's check findings.
+        ``pending: false`` (no turn/status/changes) when nothing is awaiting review."""
+        project_yaml = _project_yaml(name)
+        try:
+            info = get_review_status(project_yaml)
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+        return {
+            "pending": info.pending,
+            "turn": info.turn,
+            "status": info.status,
+            "changes": info.changes,
+            "rejected_changes": info.rejected_changes,
+            "checks": info.checks,
+        }
+
     @app.post("/api/project/{name}/review")
     def api_review(name: str, body: ReviewRequest) -> dict:
-        if body.decision not in (ReviewDecision.ACCEPT_ALL, ReviewDecision.REJECT_ALL):
+        """Resolve the pending-review turn (docs/issues/021-022, extended by 025 to expose
+        ``partial``). ``partial`` requires a non-empty ``selected_indexes`` (422 otherwise) and
+        delegates to the same ``session.review.resolve_review`` primitive the CLI's
+        ``review --decision partial --apply`` uses — no separate resolution logic here."""
+        if body.decision not in _WEB_REVIEW_DECISIONS:
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"unsupported decision over the API: {body.decision.value!r} "
-                    "(only accept_all/reject_all — richer decisions stay CLI-only)"
+                    "(only accept_all/reject_all/partial — edit/rerun_turn stay CLI-only)"
                 ),
             )
+        if body.decision == ReviewDecision.PARTIAL and not body.selected_indexes:
+            raise HTTPException(
+                status_code=422,
+                detail="decision=partial requires a non-empty selected_indexes",
+            )
         project_yaml = _project_yaml(name)
+        selected_indices = (
+            set(body.selected_indexes) if body.decision == ReviewDecision.PARTIAL else None
+        )
         try:
-            result = submit_review(project_yaml, body.decision)
+            result = submit_review(project_yaml, body.decision, selected_indices=selected_indices)
         except NoPendingReviewError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ReviewStateError as exc:
