@@ -8,15 +8,19 @@ import yaml
 from living_narrative.cli._common import load_project_or_exit, runtime_error, usage_error
 from living_narrative.export_replay import (
     DEFAULT_PROFILE,
+    ArcsError,
     NoReplayableTurnsError,
     ReconstructionError,
     assemble_replay,
+    build_arcs_report,
     build_outline,
     narration_by_turn_from_records,
     reconstruct_session,
+    render_arcs_markdown,
     render_novel,
     render_outline_markdown,
     render_scenes_markdown,
+    render_trpg_replay,
 )
 from living_narrative.export_replay.loader import load_turn_records
 from living_narrative.pipeline.llm_gateway import LLMGateway
@@ -31,14 +35,24 @@ def replay(
     project: Path = typer.Option(..., "--project", help="Path to project.yaml"),
     output: Path = typer.Option(..., "--output", help="Destination replay.md path"),
     style: str = typer.Option("novel", "--style", help="novel|log"),
+    trpg: bool = typer.Option(
+        False,
+        "--trpg",
+        help="GM-facing TRPG-style output (rolls/interventions/scene headings); ignores --style",
+    ),
 ) -> None:
-    if style not in ("novel", "log"):
+    if not trpg and style not in ("novel", "log"):
         usage_error(f"unknown --style: {style!r} (expected 'novel' or 'log')")
 
     read = load_project_or_exit(project)
     try:
-        content = assemble_replay(read.paths.runs, style=style)
-    except NoReplayableTurnsError as exc:
+        if trpg:
+            reconstruction = reconstruct_session(project, include_gm=True)
+            records = load_turn_records(read.paths.runs)
+            content = render_trpg_replay(records, reconstruction)
+        else:
+            content = assemble_replay(read.paths.runs, style=style)
+    except (NoReplayableTurnsError, ReconstructionError) as exc:
         runtime_error(str(exc))
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -135,3 +149,30 @@ def novel(
     output_path.write_text(content, encoding="utf-8")
 
     typer.echo(f"Wrote {output_path}")
+
+
+@app.command("arcs")
+def arcs(
+    project: Path = typer.Option(..., "--project", help="Path to project.yaml"),
+) -> None:
+    """LLM-free: character emotion/relationship arcs + thread/memory summary report (GM向け)."""
+    read = load_project_or_exit(project)
+    try:
+        report = build_arcs_report(project)
+    except ArcsError as exc:
+        runtime_error(str(exc))
+
+    output_dir = read.paths.exports
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    yaml_path = output_dir / "arcs.yaml"
+    yaml_path.write_text(
+        yaml.safe_dump(report.model_dump(mode="json"), allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    markdown_path = output_dir / "arcs.md"
+    markdown_path.write_text(render_arcs_markdown(report), encoding="utf-8")
+
+    typer.echo(f"Wrote {yaml_path}")
+    typer.echo(f"Wrote {markdown_path}")

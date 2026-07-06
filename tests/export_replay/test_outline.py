@@ -233,9 +233,7 @@ def test_incoming_scene_fully_shadowed_by_outgoing_chapter_is_dropped():
         summary="",
         start_turn=3,
         end_turn=3,
-        key_events=[
-            KeyEvent(turn=3, type="scene_transition", text="転落", visibility="reader")
-        ],
+        key_events=[KeyEvent(turn=3, type="scene_transition", text="転落", visibility="reader")],
     )
     reconstruction = SessionReconstruction(scenes=[scene_1, scene_2], turning_points=[])
 

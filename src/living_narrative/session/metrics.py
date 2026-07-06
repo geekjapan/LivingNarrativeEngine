@@ -146,7 +146,7 @@ def collect_metrics(project_path: Path) -> ProjectMetrics:
         details = "; ".join(f"{issue.file_path}: {issue.message}" for issue in exc.issues)
         raise MetricsError(f"invalid state at {result.paths.state}: {details}") from exc
 
-    live_turns = _iter_live_turns(result.paths.runs)
+    live_turns = iter_live_turns(result.paths.runs)
     last_turn_number = live_turns[-1][0] if live_turns else None
 
     return ProjectMetrics(
@@ -170,12 +170,17 @@ def _load_yaml(path: Path) -> Any:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def _iter_live_turns(runs_dir: Path) -> list[tuple[int, Path]]:
+def iter_live_turns(runs_dir: Path) -> list[tuple[int, Path]]:
+    """Public: reused by ``export_replay/arcs.py`` (Issue 029) so its per-thread/relationship
+    turn walk stays gated by the same ``applied`` semantics this module already established,
+    instead of re-deriving turn iteration from scratch."""
     return [(number, turn_dir_path(runs_dir, number)) for number in existing_turn_numbers(runs_dir)]
 
 
-def _read_state_diff(turn_dir: Path) -> tuple[bool, list[dict[str, Any]]]:
-    """``(applied, changes)`` for a turn, per the module docstring's ``applied`` gate."""
+def read_state_diff(turn_dir: Path) -> tuple[bool, list[dict[str, Any]]]:
+    """``(applied, changes)`` for a turn, per the module docstring's ``applied`` gate.
+
+    Public: reused by ``export_replay/arcs.py`` (Issue 029)."""
     data = _load_yaml(turn_dir / "state_diff.yaml")
     if not data:
         return False, []
@@ -183,7 +188,8 @@ def _read_state_diff(turn_dir: Path) -> tuple[bool, list[dict[str, Any]]]:
     return bool(data.get("applied")), changes
 
 
-def _read_events(turn_dir: Path) -> list[dict[str, Any]]:
+def read_events(turn_dir: Path) -> list[dict[str, Any]]:
+    """Public: reused by ``export_replay/arcs.py`` (Issue 029)."""
     return list(_load_yaml(turn_dir / "events.yaml") or [])
 
 
@@ -238,13 +244,13 @@ def _collect_turns(
     )
 
 
-def _collect_emotions(
-    bundle: WorldStateBundle, live_turns: list[tuple[int, Path]]
-) -> list[CharacterEmotionMetrics]:
-    # (character_id, emotion) -> {turn: summed delta that turn}
+def _emotion_turn_deltas(
+    live_turns: list[tuple[int, Path]],
+) -> dict[tuple[str, str], dict[int, int]]:
+    """(character_id, emotion) -> {turn: summed delta that turn}."""
     deltas: dict[tuple[str, str], dict[int, int]] = defaultdict(dict)
     for turn, turn_dir in live_turns:
-        applied, changes = _read_state_diff(turn_dir)
+        applied, changes = read_state_diff(turn_dir)
         if not applied:
             continue
         for change in changes:
@@ -257,13 +263,49 @@ def _collect_emotions(
             key = (change.get("id"), emotion)
             bucket = deltas[key]
             bucket[turn] = bucket.get(turn, 0) + int(change.get("value") or 0)
+    return deltas
+
+
+def reconstruct_emotion_trajectories(
+    bundle: WorldStateBundle, live_turns: list[tuple[int, Path]]
+) -> dict[tuple[str, str], list[int]]:
+    """``(character_id, emotion) -> [baseline, value_after_live_turns[0], ...]``, aligned 1:1
+    with ``live_turns`` (index 0 is the ``emotions_baseline`` entry, index i is the value after
+    ``live_turns[i - 1]``). Only characters with a baseline for that emotion get an entry — see
+    this module's docstring for why (Issue 010's decay is opt-in per emotion key).
+
+    Public: extracted out of ``_collect_emotions`` so ``export_replay/arcs.py`` (Issue 029) can
+    reuse the exact same trajectory reconstruction to report per-turn change points, instead of
+    only the min/max/final summary this module needs.
+    """
+    deltas = _emotion_turn_deltas(live_turns)
+    trajectories: dict[tuple[str, str], list[int]] = {}
+    for character in bundle.characters:
+        for emotion in character.emotions:
+            baseline = character.emotions_baseline.get(emotion)
+            if baseline is None:
+                continue
+            turn_deltas = deltas.get((character.id, emotion), {})
+            value = baseline
+            trajectory = [value]
+            for turn, _ in live_turns:
+                value = max(0, min(100, value + turn_deltas.get(turn, 0)))
+                trajectory.append(value)
+            trajectories[(character.id, emotion)] = trajectory
+    return trajectories
+
+
+def _collect_emotions(
+    bundle: WorldStateBundle, live_turns: list[tuple[int, Path]]
+) -> list[CharacterEmotionMetrics]:
+    trajectories = reconstruct_emotion_trajectories(bundle, live_turns)
 
     results: list[CharacterEmotionMetrics] = []
     for character in bundle.characters:
         per_emotion: list[EmotionMetrics] = []
         for emotion, final_value in character.emotions.items():
-            baseline = character.emotions_baseline.get(emotion)
-            if baseline is None:
+            trajectory = trajectories.get((character.id, emotion))
+            if trajectory is None:
                 per_emotion.append(
                     EmotionMetrics(
                         emotion=emotion,
@@ -274,12 +316,6 @@ def _collect_emotions(
                     )
                 )
                 continue
-            turn_deltas = deltas.get((character.id, emotion), {})
-            value = baseline
-            trajectory = [value]
-            for turn, _ in live_turns:
-                value = max(0, min(100, value + turn_deltas.get(turn, 0)))
-                trajectory.append(value)
             streak = best = 0
             for sample in trajectory[1:]:
                 streak = streak + 1 if sample == 100 else 0
@@ -301,10 +337,10 @@ def _collect_pacing(live_turns: list[tuple[int, Path]]) -> PacingMetrics:
     stall_turns: set[int] = set()
     count = 0
     for turn, turn_dir in live_turns:
-        applied, _ = _read_state_diff(turn_dir)
+        applied, _ = read_state_diff(turn_dir)
         if not applied:
             continue
-        for event in _read_events(turn_dir):
+        for event in read_events(turn_dir):
             if event.get("type") == "pacing_stall":
                 count += 1
                 stall_turns.add(turn)
@@ -320,10 +356,10 @@ def _collect_threads(
 ) -> ThreadsMetrics:
     opened = advanced = resolved = 0
     for _, turn_dir in live_turns:
-        applied, _ = _read_state_diff(turn_dir)
+        applied, _ = read_state_diff(turn_dir)
         if not applied:
             continue
-        for event in _read_events(turn_dir):
+        for event in read_events(turn_dir):
             if event.get("type") != "thread_update":
                 continue
             action = (event.get("effects") or {}).get("action")
@@ -357,10 +393,10 @@ def _collect_threats(
     stage_turns: dict[str, dict[str, int]] = defaultdict(dict)
 
     for turn, turn_dir in live_turns:
-        applied, _ = _read_state_diff(turn_dir)
+        applied, _ = read_state_diff(turn_dir)
         if not applied:
             continue
-        for event in _read_events(turn_dir):
+        for event in read_events(turn_dir):
             effects = event.get("effects") or {}
             if event.get("type") == "threat_pressure":
                 threat_id = effects.get("threat_id")
@@ -400,7 +436,7 @@ def _collect_threats(
 def _collect_scenes(bundle: WorldStateBundle, live_turns: list[tuple[int, Path]]) -> SceneMetrics:
     transitions = 0
     for _, turn_dir in live_turns:
-        applied, changes = _read_state_diff(turn_dir)
+        applied, changes = read_state_diff(turn_dir)
         if not applied:
             continue
         for change in changes:

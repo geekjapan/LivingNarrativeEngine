@@ -127,7 +127,7 @@ def reconstruct_session(project_path: Path, include_gm: bool = False) -> Session
             key_event = KeyEvent(
                 turn=record.turn, type=kind, text=event.get("text") or "", visibility=visibility
             )
-            scene = _scene_for_turn(scene_records, record.turn)
+            scene = scene_for_turn(scene_records, record.turn)
             if scene is not None:
                 scene.key_events.append(key_event)
             if kind in _TURNING_POINT_KINDS:
@@ -243,11 +243,14 @@ def _classify_event(event: dict[str, Any]) -> str | None:
     return None
 
 
-def _scene_for_turn(scene_records: list[SceneRecord], turn: int) -> SceneRecord | None:
+def scene_for_turn(scene_records: list[SceneRecord], turn: int) -> SceneRecord | None:
     """The scene active during ``turn``. Scene-transition turns have both the outgoing
     scene's ``end_turn`` and the incoming scene's ``start_turn`` equal to that turn; iterating
     in ascending ``start_turn`` order and returning the first match attributes the boundary
-    turn's key events to the *outgoing* scene (the one the transition concludes)."""
+    turn's key events to the *outgoing* scene (the one the transition concludes).
+
+    Public: reused by ``export_replay/trpg.py`` (Issue 028) to group turns under scene
+    headings without re-deriving scene-membership logic."""
     for scene in scene_records:
         if scene.start_turn <= turn and (scene.end_turn is None or turn <= scene.end_turn):
             return scene

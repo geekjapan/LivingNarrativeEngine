@@ -1,5 +1,15 @@
 """Deterministic turn-artifact -> ``replay.md`` assembly (export-replay/spec.md)."""
 
+from living_narrative.export_replay.arcs import (
+    ArcsError,
+    ArcsReport,
+    CharacterEmotionArc,
+    EmotionChange,
+    RelationshipChange,
+    ThreadArc,
+    build_arcs_report,
+    render_arcs_markdown,
+)
 from living_narrative.export_replay.assemble import (
     NoReplayableTurnsError,
     UnknownReplayStyleError,
@@ -22,6 +32,7 @@ from living_narrative.export_replay.reconstruction import (
     reconstruct_session,
     render_scenes_markdown,
 )
+from living_narrative.export_replay.trpg import render_trpg_replay
 
 __all__ = [
     "NoReplayableTurnsError",
@@ -42,4 +53,13 @@ __all__ = [
     "TurningPoint",
     "reconstruct_session",
     "render_scenes_markdown",
+    "render_trpg_replay",
+    "ArcsError",
+    "ArcsReport",
+    "CharacterEmotionArc",
+    "EmotionChange",
+    "RelationshipChange",
+    "ThreadArc",
+    "build_arcs_report",
+    "render_arcs_markdown",
 ]
