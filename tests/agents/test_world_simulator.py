@@ -6,6 +6,7 @@ from living_narrative.agents.world_simulator import simulate_world
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.random.engine import RandomEngine
 from living_narrative.state.models import (
+    BackgroundEventTableEntry,
     LLMConfig,
     ProjectConfig,
     WorkspaceConfig,
@@ -14,7 +15,9 @@ from living_narrative.state.models import (
 )
 
 
-def _context(seed: str = "seed") -> TurnContext:
+def _context(
+    seed: str = "seed", background_events: list[BackgroundEventTableEntry] | None = None
+) -> TurnContext:
     project = ProjectConfig(
         id="p",
         title="P",
@@ -31,7 +34,14 @@ def _context(seed: str = "seed") -> TurnContext:
         turn=1,
         project=project,
         paths=None,
-        bundle=WorldStateBundle(world=WorldState(id="world_001", name="World", summary="")),
+        bundle=WorldStateBundle(
+            world=WorldState(
+                id="world_001",
+                name="World",
+                summary="",
+                background_events=background_events or [],
+            )
+        ),
         random_engine=RandomEngine(seed),
     )
 
@@ -56,6 +66,26 @@ def test_world_simulator_is_deterministic_with_fixed_seed():
 def test_background_event_visibility_is_required():
     with pytest.raises(ValidationError):
         BackgroundEventCandidate.model_validate({"description": "missing visibility"})
+
+
+def test_background_event_uses_world_state_table_when_populated():
+    table = [
+        BackgroundEventTableEntry(text="霧が濃くなる", weight=5),
+        BackgroundEventTableEntry(text="遠くで足音がする", weight=1),
+    ]
+
+    events = simulate_world(_context(background_events=table), [])
+
+    background_event = next(e for e in events if e.type == "background_event")
+    assert background_event.text in {entry.text for entry in table}
+    assert background_event.effects["_roll"]["table"]["table"] == "background_events"
+
+
+def test_background_event_falls_back_to_hardcoded_entries_when_table_empty():
+    events = simulate_world(_context(background_events=[]), [])
+
+    background_event = next(e for e in events if e.type == "background_event")
+    assert background_event.text in {"静かな時間が流れる", "遠くで不穏な物音がする"}
 
 
 def test_world_directive_becomes_a_world_event_candidate():

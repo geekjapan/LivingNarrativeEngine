@@ -163,12 +163,18 @@ class StateBaseModel(BaseModel):
     model_config = {"extra": "allow"}
 
 
+class BackgroundEventTableEntry(StateBaseModel):
+    text: str = Field(min_length=1)
+    weight: int = Field(ge=1)
+
+
 class WorldState(StateBaseModel):
     id: WorldId
     name: str
     summary: str
     laws: list[str] = Field(default_factory=list)
     parameters: dict[str, Percent] = Field(default_factory=dict)
+    background_events: list[BackgroundEventTableEntry] = Field(default_factory=list)
 
 
 class FactionState(StateBaseModel):

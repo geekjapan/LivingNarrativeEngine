@@ -8,3 +8,28 @@ parameters:
   public_order: 40
   danger_level: 55
   mystery_level: 70
+background_events:
+  - text: 静かな時間が流れる。ホームの縁で霧がゆっくりと渦を巻いている
+    weight: 6
+  - text: 天井の亀裂から水滴が落ち、闇の奥で規則正しい音を刻む
+    weight: 5
+  - text: 錆びた案内板が軋み、読めない駅名が霧の中に揺れる
+    weight: 4
+  - text: どこかで古い電球が明滅し、ホームの影が伸び縮みする
+    weight: 4
+  - text: 霧が一段と濃くなり、数歩先の視界が白く閉ざされる
+    weight: 3
+  - text: 地上から遠雷のような街のざわめきが届き、すぐに霧へ吸われて消える
+    weight: 3
+  - text: 冷たい風が線路の奥から吹き、油と土の匂いを運んでくる
+    weight: 3
+  - text: 改札跡の鉄柵で、誰かが結んだ色褪せたお守りの紐が揺れる
+    weight: 2
+  - text: 遠くで不穏な物音がする。金属を引きずるような、低い響き
+    weight: 2
+  - text: 霧の奥で足音が一度だけ響き、耳を澄ますと止む
+    weight: 1
+  - text: 最深部へ続く階段の闇が、今夜はいつもより深く見える
+    weight: 1
+  - text: 誰もいないはずの窓口の奥で、紙をめくるような気配がする
+    weight: 1

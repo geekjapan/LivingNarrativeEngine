@@ -1,7 +1,7 @@
 ---
 id: 005
 title: mist_stationの背景イベントテーブルを充実させる
-status: open
+status: done
 created: 2026-07-06
 ---
 
@@ -13,9 +13,13 @@ World Simulatorは設計通り重み付きテーブル抽選(`world_simulator.py
 
 ## 完了条件
 
-- [ ] `mist_station` テンプレートの `background_events` テーブルのエントリを増やし、文章の質を上げる(日本語、雰囲気のある描写、シーンの霧・駅の設定と噛み合うもの)
-- [ ] 重み配分を見直し(稀な不穏イベント vs 日常的な環境描写)
-- [ ] mist_run_001 で数ターン回して単調にならないことを確認
+- [x] `mist_station` テンプレートの `background_events` テーブルのエントリを増やし、文章の質を上げる(日本語、雰囲気のある描写、シーンの霧・駅の設定と噛み合うもの)
+- [x] 重み配分を見直し(稀な不穏イベント vs 日常的な環境描写)
+- [x] mist_run_001 で数ターン回して単調にならないことを確認(verify-005で8ターン: 5種、全てテーブル由来、leak findingsゼロ)
+
+## 実装メモ
+
+テーブルは実際には `world_simulator.py` にハードコードだった(テンプレートに無し)。`WorldState.background_events`(optional、`BackgroundEventTableEntry`)としてデータ化し、空なら旧2エントリへフォールバック。simulatorの抽選挙動は不変。
 
 ## 関連ファイル
 

@@ -27,10 +27,14 @@ def simulate_world(
         for item in interventions
         if item.get("type") == "dice_roll_request"
     ]
-    entries = [
-        WeightedEntry(name="静かな時間が流れる", weight=3),
-        WeightedEntry(name="遠くで不穏な物音がする", weight=1),
-    ]
+    table_entries = context.bundle.world.background_events
+    if table_entries:
+        entries = [WeightedEntry(name=entry.text, weight=entry.weight) for entry in table_entries]
+    else:
+        entries = [
+            WeightedEntry(name="静かな時間が流れる", weight=3),
+            WeightedEntry(name="遠くで不穏な物音がする", weight=1),
+        ]
     roll = context.random_engine.select_from_table(
         entries,
         turn=context.turn,
