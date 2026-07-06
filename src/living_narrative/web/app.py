@@ -12,6 +12,7 @@ other commands) do not require the optional ``web`` extra to be installed.
 """
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -26,6 +27,8 @@ from living_narrative.web.service import (
     ProjectNotFoundError,
     collect_narration,
     collect_structured_narration,
+    get_interventions,
+    get_permissions,
     get_run_status,
     get_status,
     list_projects,
@@ -43,6 +46,15 @@ class AutoRequest(BaseModel):
 
 class ReviewRequest(BaseModel):
     decision: ReviewDecision
+
+
+class TurnRequest(BaseModel):
+    """Optional body for ``POST /turn`` (docs/issues/023). Absent/empty body = a plain turn,
+    same as before this issue — ``free_text``/``drafts`` pass through verbatim to
+    ``TurnPipeline.run``'s ``intervention_text``/``intervention_drafts`` (no reinterpretation)."""
+
+    free_text: str | None = None
+    drafts: list[dict[str, Any]] | None = None
 
 
 def create_app(project_root: Path) -> FastAPI:
@@ -103,10 +115,21 @@ def create_app(project_root: Path) -> FastAPI:
         return [{"turn": e.turn, "status": e.status, "text": e.text} for e in entries]
 
     @app.post("/api/project/{name}/turn")
-    def api_run_turn(name: str) -> dict:
+    def api_run_turn(name: str, body: TurnRequest | None = None) -> dict:
+        """Runs one turn. Optional ``body`` carries a GM intervention (docs/issues/023):
+        ``free_text`` goes through the Interpreter, ``drafts`` are direct-input Intervention
+        drafts — both forwarded verbatim to ``TurnPipeline.run``, which persists whatever gets
+        accepted/rejected to this turn's ``intervention.yaml``. 409 while an ``auto`` run is in
+        progress for this project (same one-active-run-per-project rule ``/auto`` enforces)."""
         project_yaml = _project_yaml(name)
+        if get_run_status(project_yaml).running:
+            raise HTTPException(
+                status_code=409, detail=f"an auto run is already in progress for {name}"
+            )
+        free_text = body.free_text if body is not None else None
+        drafts = body.drafts if body is not None else None
         try:
-            result = run_turn(project_yaml)
+            result = run_turn(project_yaml, intervention_text=free_text, intervention_drafts=drafts)
         except UnresolvedTurnError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except LoadError as exc:
@@ -167,5 +190,27 @@ def create_app(project_root: Path) -> FastAPI:
             ),
             "turn_dir": str(result.turn_dir),
         }
+
+    @app.get("/api/project/{name}/permissions")
+    def api_permissions(name: str) -> dict:
+        """``user_mode`` and the intervention types it may submit (docs/issues/023, D114) — the
+        UI uses ``allowed_types`` to limit the structured-intervention form's type select."""
+        project_yaml = _project_yaml(name)
+        try:
+            info = get_permissions(project_yaml)
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+        return {"user_mode": info.user_mode, "allowed_types": info.allowed_types}
+
+    @app.get("/api/project/{name}/interventions")
+    def api_interventions(name: str) -> dict:
+        """Project-wide intervention history + the most recent turn's accepted/rejected
+        interventions, rejection reasons included (docs/issues/023)."""
+        project_yaml = _project_yaml(name)
+        try:
+            info = get_interventions(project_yaml)
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+        return {"history": info.history, "last_turn": info.last_turn}
 
     return app

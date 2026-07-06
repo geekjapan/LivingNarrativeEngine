@@ -6,27 +6,37 @@ Keeping it import-light means it can be unit tested even in environments without
 ``web`` extra installed — only ``web.app``/``web.server`` need FastAPI/uvicorn.
 """
 
+import re
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 from living_narrative.cli._common import read_narration_body
+from living_narrative.intervention.history import load_history
 from living_narrative.pipeline import TurnPipeline, TurnRunResult, TurnStatus
 from living_narrative.pipeline.turn_numbering import read_turn_status, turn_dir_path
+from living_narrative.session.mode import MODE_PERMISSIONS
 from living_narrative.session.resume import restore_resume_state
 from living_narrative.session.review import ReviewDecision, ReviewResult, resolve_review
-from living_narrative.state.models import SceneStatus
+from living_narrative.state.models import SceneStatus, UserMode
 from living_narrative.state.store import StateStore
 from living_narrative.workspace.loader import load_project
 
 __all__ = [
     "AutoRunAlreadyRunningError",
+    "InterventionsInfo",
     "NoPendingReviewError",
+    "PermissionsInfo",
     "ProjectNotFoundError",
     "RunStatus",
     "TurnNarration",
     "collect_narration",
     "collect_structured_narration",
+    "get_interventions",
+    "get_permissions",
     "get_run_status",
     "get_status",
     "list_projects",
@@ -36,6 +46,8 @@ __all__ = [
     "start_auto_run",
     "submit_review",
 ]
+
+_LIVE_TURN_DIR_RE = re.compile(r"^turn_(\d+)$")
 
 
 class ProjectNotFoundError(Exception):
@@ -146,13 +158,27 @@ def collect_narration(project_yaml: Path, from_turn: int) -> str:
     return "\n\n".join(bodies)
 
 
-def run_turn(project_yaml: Path) -> TurnRunResult:
+def run_turn(
+    project_yaml: Path,
+    *,
+    intervention_text: str | None = None,
+    intervention_drafts: list[dict[str, Any]] | None = None,
+) -> TurnRunResult:
     """Run one turn synchronously (blocking). Multi-turn background runs use ``start_auto_run``.
+
+    ``intervention_text``/``intervention_drafts`` are passed through verbatim to
+    ``TurnPipeline.run`` (docs/issues/023) — same free-text/direct-input contract the CLI's
+    ``turn --intervention``/``--type`` flags use (``cli/turn.py``), just sourced from an HTTP
+    body instead of argv.
 
     May raise ``pipeline.LoadError``/``pipeline.UnresolvedTurnError``, same as the CLI's
     ``turn`` command; callers translate those to HTTP errors (see ``web.app``).
     """
-    return TurnPipeline().run(project_yaml)
+    return TurnPipeline().run(
+        project_yaml,
+        intervention_text=intervention_text,
+        intervention_drafts=intervention_drafts,
+    )
 
 
 @dataclass(frozen=True)
@@ -210,6 +236,76 @@ def submit_review(project_yaml: Path, decision: ReviewDecision | str) -> ReviewR
         decision=decision,
         decided_by=read.config.user_mode,
     )
+
+
+@dataclass(frozen=True)
+class PermissionsInfo:
+    user_mode: str
+    allowed_types: list[str]
+
+
+def get_permissions(project_yaml: Path) -> PermissionsInfo:
+    """The project's ``user_mode`` and the intervention types it may submit (docs/issues/023).
+
+    Source of truth is ``session.mode.MODE_PERMISSIONS`` (D114: session-autonomy owns the
+    permission matrix) — this is a read-only projection of it, not a second copy.
+    """
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+
+    mode = UserMode(read.config.user_mode)
+    allowed = sorted(t.value for t in MODE_PERMISSIONS[mode].allowed_interventions)
+    return PermissionsInfo(user_mode=mode.value, allowed_types=allowed)
+
+
+def _latest_live_turn_number(runs_dir: Path) -> int | None:
+    """Highest ``turn_NNNN`` (never a ``_discarded_n`` variant) directory number, if any."""
+    if not runs_dir.exists():
+        return None
+    numbers = [
+        int(match.group(1))
+        for entry in runs_dir.iterdir()
+        if entry.is_dir() and (match := _LIVE_TURN_DIR_RE.match(entry.name))
+    ]
+    return max(numbers) if numbers else None
+
+
+@dataclass(frozen=True)
+class InterventionsInfo:
+    history: list[dict[str, Any]]
+    last_turn: dict[str, Any] | None
+
+
+def get_interventions(project_yaml: Path) -> InterventionsInfo:
+    """Project-wide intervention history index + the most recent turn's accepted/rejected
+    interventions (docs/issues/023).
+
+    ``history`` mirrors ``workspace/interventions.yaml`` (``intervention.history.load_history``);
+    ``last_turn`` reads that same turn's ``intervention.yaml`` directly (artifacts are written
+    even on a failed turn — spec-foundation.md §6 — so this can't reuse the "last *applied*
+    turn" resume bookkeeping, which only tracks applied turns).
+    """
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+
+    history = load_history(read.paths.root / "interventions.yaml")
+    history_dicts = [entry.model_dump(mode="json") for entry in history.entries]
+
+    last_turn: dict[str, Any] | None = None
+    last_turn_number = _latest_live_turn_number(read.paths.runs)
+    if last_turn_number is not None:
+        intervention_path = turn_dir_path(read.paths.runs, last_turn_number) / "intervention.yaml"
+        if intervention_path.exists():
+            data = yaml.safe_load(intervention_path.read_text(encoding="utf-8")) or {}
+            last_turn = {
+                "turn": last_turn_number,
+                "interventions": data.get("interventions", []),
+                "rejections": data.get("rejections", []),
+            }
+
+    return InterventionsInfo(history=history_dicts, last_turn=last_turn)
 
 
 @dataclass
