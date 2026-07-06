@@ -8,19 +8,25 @@ import yaml
 from living_narrative.cli._common import load_project_or_exit, runtime_error, usage_error
 from living_narrative.export_replay import (
     DEFAULT_PROFILE,
+    DEFAULT_REVISION_PROFILE,
     ArcsError,
     NoReplayableTurnsError,
+    NovelDraftParseError,
     ReconstructionError,
+    RevisionNotesError,
     assemble_replay,
     build_arcs_report,
     build_outline,
     narration_by_turn_from_records,
+    parse_novel_draft,
     reconstruct_session,
     render_arcs_markdown,
     render_novel,
     render_outline_markdown,
+    render_revised_novel,
     render_scenes_markdown,
     render_trpg_replay,
+    revise_novel,
 )
 from living_narrative.export_replay.loader import load_turn_records
 from living_narrative.pipeline.llm_gateway import LLMGateway
@@ -149,6 +155,57 @@ def novel(
     output_path.write_text(content, encoding="utf-8")
 
     typer.echo(f"Wrote {output_path}")
+
+
+@app.command("revise")
+def revise(
+    project: Path = typer.Option(..., "--project", help="Path to project.yaml"),
+    profile: str = typer.Option(
+        DEFAULT_REVISION_PROFILE, "--profile", help="LLM binding key used for the revision pass"
+    ),
+    input_path: Path | None = typer.Option(
+        None,
+        "--input",
+        help="Path to an existing novel_draft.md-shaped file "
+        "(default: workspace/exports/novel_draft.md)",
+    ),
+) -> None:
+    """LLM pass over an existing novel draft: whole-draft revision notes, then per-chapter
+    repetition/style smoothing. Standalone from `export novel` — run it against any existing
+    novel_draft.md (or --input file matching the same '## 第N章: ...' contract)."""
+    read = load_project_or_exit(project)
+    input_path = input_path if input_path is not None else read.paths.exports / "novel_draft.md"
+    if not input_path.exists():
+        runtime_error(
+            f"input draft not found: {input_path} "
+            "(run `export novel` first, or pass --input with an existing draft)"
+        )
+
+    try:
+        preamble, chapters = parse_novel_draft(input_path.read_text(encoding="utf-8"))
+    except NovelDraftParseError as exc:
+        runtime_error(str(exc))
+
+    gateway = LLMGateway(project=read.config, random_seed=read.config.random_seed)
+    try:
+        revised_chapters, notes = revise_novel(chapters, gateway, profile=profile)
+    except RevisionNotesError as exc:
+        runtime_error(str(exc))
+
+    output_dir = read.paths.exports
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    revised_path = output_dir / "novel_revised.md"
+    revised_path.write_text(render_revised_novel(preamble, revised_chapters), encoding="utf-8")
+
+    notes_path = output_dir / "revision_notes.yaml"
+    notes_path.write_text(
+        yaml.safe_dump(notes.model_dump(mode="json"), allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    typer.echo(f"Wrote {revised_path}")
+    typer.echo(f"Wrote {notes_path}")
 
 
 @app.command("arcs")

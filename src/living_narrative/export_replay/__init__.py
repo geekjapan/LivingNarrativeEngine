@@ -32,6 +32,16 @@ from living_narrative.export_replay.reconstruction import (
     reconstruct_session,
     render_scenes_markdown,
 )
+from living_narrative.export_replay.revision import (
+    DEFAULT_REVISION_PROFILE,
+    ChapterRevisionOutput,
+    NovelDraftParseError,
+    RevisionNotes,
+    RevisionNotesError,
+    parse_novel_draft,
+    render_revised_novel,
+    revise_novel,
+)
 from living_narrative.export_replay.trpg import render_trpg_replay
 
 __all__ = [
@@ -62,4 +72,12 @@ __all__ = [
     "ThreadArc",
     "build_arcs_report",
     "render_arcs_markdown",
+    "DEFAULT_REVISION_PROFILE",
+    "ChapterRevisionOutput",
+    "NovelDraftParseError",
+    "RevisionNotes",
+    "RevisionNotesError",
+    "parse_novel_draft",
+    "render_revised_novel",
+    "revise_novel",
 ]

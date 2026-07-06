@@ -281,3 +281,70 @@ def test_export_arcs_errors_when_project_not_found(tmp_path):
     result = runner.invoke(app, ["export", "arcs", "--project", str(output)])
 
     assert result.exit_code == 2
+
+
+def test_export_revise_writes_revised_novel_and_notes_yaml(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    TurnPipeline().run(project_path)
+    runner.invoke(app, ["export", "novel", "--project", str(project_path)])
+
+    result = runner.invoke(app, ["export", "revise", "--project", str(project_path)])
+
+    assert result.exit_code == 0, result.output
+    exports_dir = project_path.parent / "workspace" / "exports"
+    revised_path = exports_dir / "novel_revised.md"
+    notes_path = exports_dir / "revision_notes.yaml"
+    assert revised_path.exists()
+    assert notes_path.exists()
+    assert "第1章" in revised_path.read_text(encoding="utf-8")
+    notes = yaml.safe_load(notes_path.read_text(encoding="utf-8"))
+    assert set(notes.keys()) == {"repeated_phrases", "style_issues", "continuity_notes"}
+
+
+def test_export_revise_accepts_profile_flag(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    TurnPipeline().run(project_path)
+    runner.invoke(app, ["export", "novel", "--project", str(project_path)])
+
+    result = runner.invoke(
+        app, ["export", "revise", "--project", str(project_path), "--profile", "narrator"]
+    )
+
+    assert result.exit_code == 0, result.output
+
+
+def test_export_revise_accepts_explicit_input_path(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    TurnPipeline().run(project_path)
+    custom_input = tmp_path / "custom_draft.md"
+    custom_input.write_text(
+        "# タイトル\n\n## 第1章: 章タイトル\n\n本文がここに入る。\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(
+        app,
+        ["export", "revise", "--project", str(project_path), "--input", str(custom_input)],
+    )
+
+    assert result.exit_code == 0, result.output
+    revised_path = project_path.parent / "workspace" / "exports" / "novel_revised.md"
+    assert revised_path.exists()
+
+
+def test_export_revise_errors_when_input_draft_is_missing(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    TurnPipeline().run(project_path)
+
+    result = runner.invoke(app, ["export", "revise", "--project", str(project_path)])
+
+    assert result.exit_code == 1
+    exports_dir = project_path.parent / "workspace" / "exports"
+    assert not (exports_dir / "novel_revised.md").exists()
+
+
+def test_export_revise_errors_when_project_not_found(tmp_path):
+    output = tmp_path / "does_not_exist" / "project.yaml"
+
+    result = runner.invoke(app, ["export", "revise", "--project", str(output)])
+
+    assert result.exit_code == 2
