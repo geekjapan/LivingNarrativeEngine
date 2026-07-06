@@ -13,6 +13,7 @@ from living_narrative.llm.structured import (
     complete_structured,
     compute_prompt_hash,
     require_prompt_template_name,
+    schema_instruction_message,
 )
 from living_narrative.state.models import LLMConfig
 
@@ -55,10 +56,11 @@ class OpenAICompatibleProvider:
         **params: Any,
     ) -> BaseModel:
         prompt_template_name = require_prompt_template_name(params)
-        prompt_hash = compute_prompt_hash(messages)
+        augmented = [*messages, schema_instruction_message(response_schema)]
+        prompt_hash = compute_prompt_hash(augmented)
         return complete_structured(
             raw_complete=self._raw_complete,
-            messages=messages,
+            messages=augmented,
             response_schema=response_schema,
             provider_name=self.provider_name,
             model=self.config.model,

@@ -234,3 +234,32 @@ def test_openai_provider_raises_typed_error_without_secret(monkeypatch):
         provider.complete(messages(), SampleResponse, prompt_template_name="sample")
 
     assert "sk-test-secret" not in str(raised.value)
+
+
+def test_openai_provider_appends_response_schema_to_prompt():
+    captured: dict[str, object] = {}
+
+    class RecordingCompletions:
+        def create(self, **kwargs: object) -> object:
+            captured.update(kwargs)
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(message=SimpleNamespace(content='{"text": "ok", "score": 4}'))
+                ],
+                usage=SimpleNamespace(prompt_tokens=1, completion_tokens=2, total_tokens=3),
+            )
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=RecordingCompletions()))
+    provider = create_provider(
+        LLMConfig(provider="openai-compatible", model="test-model"),
+        api_key="sk-test",
+        client=client,
+    )
+
+    provider.complete(messages(), SampleResponse, prompt_template_name="sample")
+
+    sent = captured["messages"]
+    assert sent[-1]["role"] == "user"
+    assert "JSON Schema" in sent[-1]["content"]
+    for field in SampleResponse.model_fields:
+        assert field in sent[-1]["content"]

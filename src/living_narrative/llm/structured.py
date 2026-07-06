@@ -63,6 +63,17 @@ def validate_json_response(text: str, response_schema: type[BaseModel]) -> BaseM
     return response_schema.model_validate(extract_json(text))
 
 
+def schema_instruction_message(response_schema: type[BaseModel]) -> dict[str, str]:
+    schema = json.dumps(response_schema.model_json_schema(), ensure_ascii=False)
+    return {
+        "role": "user",
+        "content": (
+            "Respond with a single JSON object that validates against this JSON Schema. "
+            "Output only the JSON object — no prose, no code fences.\n" + schema
+        ),
+    }
+
+
 def _retry_messages(
     messages: list[dict[str, Any]],
     raw_text: str,
