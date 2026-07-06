@@ -7,14 +7,23 @@ import yaml
 
 from living_narrative.cli._common import load_project_or_exit, runtime_error, usage_error
 from living_narrative.export_replay import (
+    DEFAULT_PROFILE,
     NoReplayableTurnsError,
     ReconstructionError,
     assemble_replay,
+    build_outline,
+    narration_by_turn_from_records,
     reconstruct_session,
+    render_novel,
+    render_outline_markdown,
     render_scenes_markdown,
 )
+from living_narrative.export_replay.loader import load_turn_records
+from living_narrative.pipeline.llm_gateway import LLMGateway
 
 app = typer.Typer(name="export", help="Export commands")
+
+_NO_TURNS_MESSAGE = "no applied (non-reject_all) turn exists yet — run `turn`/`auto` first"
 
 
 @app.command("replay")
@@ -62,3 +71,67 @@ def scenes(
 
     typer.echo(f"Wrote {yaml_path}")
     typer.echo(f"Wrote {markdown_path}")
+
+
+@app.command("outline")
+def outline(
+    project: Path = typer.Option(..., "--project", help="Path to project.yaml"),
+) -> None:
+    """LLM-free: derive a chapter outline (outline.yaml/outline.md) from the run so far."""
+    read = load_project_or_exit(project)
+    try:
+        reconstruction = reconstruct_session(project)
+    except ReconstructionError as exc:
+        runtime_error(str(exc))
+
+    records = load_turn_records(read.paths.runs)
+    if not any(record.is_body_turn for record in records):
+        runtime_error(_NO_TURNS_MESSAGE)
+
+    result = build_outline(reconstruction, narration_by_turn_from_records(records))
+
+    output_dir = read.paths.exports
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    yaml_path = output_dir / "outline.yaml"
+    yaml_path.write_text(
+        yaml.safe_dump(result.model_dump(mode="json"), allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    markdown_path = output_dir / "outline.md"
+    markdown_path.write_text(render_outline_markdown(result), encoding="utf-8")
+
+    typer.echo(f"Wrote {yaml_path}")
+    typer.echo(f"Wrote {markdown_path}")
+
+
+@app.command("novel")
+def novel(
+    project: Path = typer.Option(..., "--project", help="Path to project.yaml"),
+    profile: str = typer.Option(
+        DEFAULT_PROFILE, "--profile", help="LLM binding key used for the per-chapter prose pass"
+    ),
+) -> None:
+    """LLM pass: derive a chapter outline, then rewrite it into novel_draft.md."""
+    read = load_project_or_exit(project)
+    try:
+        reconstruction = reconstruct_session(project)
+    except ReconstructionError as exc:
+        runtime_error(str(exc))
+
+    records = load_turn_records(read.paths.runs)
+    if not any(record.is_body_turn for record in records):
+        runtime_error(_NO_TURNS_MESSAGE)
+
+    result = build_outline(reconstruction, narration_by_turn_from_records(records))
+
+    gateway = LLMGateway(project=read.config, random_seed=read.config.random_seed)
+    content = render_novel(read.config, result, gateway, profile=profile)
+
+    output_dir = read.paths.exports
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "novel_draft.md"
+    output_path.write_text(content, encoding="utf-8")
+
+    typer.echo(f"Wrote {output_path}")
