@@ -9,7 +9,7 @@ from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.pipeline.models import ActionCandidate as PipelineActionCandidate
 from living_narrative.pipeline.models import ActRecord, WorldEventCandidate
-from living_narrative.state.models import CharacterStatus
+from living_narrative.state.models import CharacterStatus, Event
 
 PROMPT_TEMPLATE_NAME = "agent-runtime-character-v2"
 PROMPT_TEXT = """\
@@ -47,8 +47,13 @@ def run_character_agent(
     world_events: list[WorldEventCandidate],
     gateway: LLMGateway,
     interventions: list[dict[str, Any]] = (),
+    past_events: list[Event] | None = None,
 ) -> tuple[list[PipelineActionCandidate], list[ActRecord]]:
-    del world_events
+    current_events = [
+        _candidate_as_event(candidate, context.turn, index)
+        for index, candidate in enumerate(world_events)
+    ]
+    events = [*(past_events or []), *current_events]
     actions: list[PipelineActionCandidate] = []
     records: list[ActRecord] = []
     active_ids = _active_character_ids(context)
@@ -56,7 +61,9 @@ def run_character_agent(
         if character.status != CharacterStatus.ALIVE or character.id not in active_ids:
             continue
         directives = character_directives_for(interventions, character.id, context.bundle)
-        scoped = build_character_context(context.bundle, character.id, directives=directives)
+        scoped = build_character_context(
+            context.bundle, character.id, events=events, directives=directives
+        )
         messages = [
             {"role": "system", "content": PROMPT_TEXT},
             {"role": "user", "content": scoped.model_dump_json()},
@@ -90,6 +97,22 @@ def run_character_agent(
             )
         )
     return actions, records
+
+
+def _candidate_as_event(candidate: WorldEventCandidate, turn: int, index: int) -> Event:
+    # Simulate-phase candidates have no event_NNNN id yet (Resolve assigns real ones);
+    # this id is only for the visibility filter and is never persisted.
+    return Event(
+        id=f"event_9{index:03d}",
+        turn=turn,
+        type=candidate.type,
+        cause=candidate.cause,
+        text=candidate.text,
+        visibility=candidate.visibility,
+        known_by=candidate.known_by,
+        hidden_from=candidate.hidden_from,
+        effects=candidate.effects,
+    )
 
 
 def _active_character_ids(context: TurnContext) -> set[str]:

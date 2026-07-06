@@ -8,9 +8,11 @@ from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.random.engine import RandomEngine
 from living_narrative.state.models import (
     CharacterState,
+    Event,
     LLMConfig,
     ProjectConfig,
     SceneState,
+    Visibility,
     WorkspaceConfig,
     WorldState,
     WorldStateBundle,
@@ -99,6 +101,55 @@ def test_character_agent_schema_error_propagates():
 
     with pytest.raises(StructuredOutputError):
         run_character_agent(_context(), [], BadGateway())
+
+
+def test_character_agent_includes_past_events_visible_to_character():
+    context = _context()
+    gateway = LLMGateway(project=context.project, random_seed="seed")
+    past_events = [
+        Event(
+            id="event_0001",
+            turn=1,
+            type="narrative",
+            text="past visible event",
+            visibility=Visibility.READER,
+        )
+    ]
+
+    _, records = run_character_agent(context, [], gateway, past_events=past_events)
+
+    visible_texts = records[0].input_context["visible_events"]
+    assert any(event["text"] == "past visible event" for event in visible_texts)
+
+
+def test_character_agent_excludes_past_events_hidden_from_character():
+    context = _context()
+    gateway = LLMGateway(project=context.project, random_seed="seed")
+    past_events = [
+        Event(
+            id="event_0001",
+            turn=1,
+            type="narrative",
+            text="secret from Aoi",
+            visibility=Visibility.SCENE,
+            hidden_from=["char_001"],
+        )
+    ]
+
+    _, records = run_character_agent(context, [], gateway, past_events=past_events)
+
+    visible_texts = [event["text"] for event in records[0].input_context["visible_events"]]
+    assert "secret from Aoi" not in visible_texts
+
+
+def test_character_agent_defaults_past_events_to_none_backward_compatible():
+    context = _context()
+    gateway = LLMGateway(project=context.project, random_seed="seed")
+
+    actions, records = run_character_agent(context, [], gateway)
+
+    assert records[0].input_context["visible_events"] == []
+    assert isinstance(actions, list)
 
 
 def test_character_directive_reaches_only_its_target_characters_context():
