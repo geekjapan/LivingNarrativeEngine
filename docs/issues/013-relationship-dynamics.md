@@ -1,7 +1,7 @@
 ---
 id: 013
 title: 関係性が不変(diff機構は完備だがagent出力からの更新経路が無い)
-status: in_progress
+status: done
 created: 2026-07-07
 ---
 
@@ -22,10 +22,10 @@ Issue 006のemotion_deltasと同型:
 
 ## 完了条件
 
-- [ ] スキーマ+state_manager変換+ガード(reject理由付き)
-- [ ] プロンプトv5に関係更新指針
-- [ ] mock全テストpass(既存469+)
-- [ ] 実LLM 8ターン程度で関係値が動く(state_diffにrelationship delta、最終relationships.yamlが初期値から変化)
+- [x] スキーマ+state_manager変換+ガード(reject理由付き)
+- [x] プロンプトv5に関係更新指針
+- [x] mock全テストpass(既存469+ → 476)
+- [x] 実LLM 8ターン(`sandbox/issue013_llm`): 4/8ターンでrelationship delta(リナ→カイ tension+2/suspicion+3/trust+2/suspicion+3、非対称・-15〜+15内)、最終relationships.yamlに反映(trust 80→82等)。rejectガードは実LLMでは未発火(unit test済み)
 
 ## 関連ファイル
 

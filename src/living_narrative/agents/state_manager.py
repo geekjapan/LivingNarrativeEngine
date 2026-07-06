@@ -227,6 +227,38 @@ def _character_output_changes(
                 visibility=goal_update.visibility,
             )
         )
+    known_relationship_pairs = {
+        (relationship.from_, relationship.to) for relationship in context.bundle.relationships
+    }
+    for relationship_update in output.relationship_updates:
+        # 013: asymmetric by design (D116 composite key) — only the actor's own from-side
+        # view updates; no self-target and the pair must already exist in current state.
+        # Self-target is checked before building the relationship-target StateDiffChange
+        # because its id validator rejects "<x>__<x>" outright (can't even construct one
+        # to report as rejected).
+        if relationship_update.to == character_id:
+            stub = StateDiffChange(
+                target="character",
+                id=character_id,
+                op="delta",
+                path=f"relationships.{relationship_update.to}.{relationship_update.dimension}",
+                value=relationship_update.delta,
+                visibility=Visibility.CHARACTER,
+            )
+            rejected.append(_reject(stub, "relationship update targets self"))
+            continue
+        change = StateDiffChange(
+            target="relationship",
+            id=f"{character_id}__{relationship_update.to}",
+            op="delta",
+            path=relationship_update.dimension,
+            value=relationship_update.delta,
+            visibility=Visibility.CHARACTER,
+        )
+        if (character_id, relationship_update.to) not in known_relationship_pairs:
+            rejected.append(_reject(change, "relationship pair not found"))
+        else:
+            changes.append(change)
     return changes, rejected
 
 

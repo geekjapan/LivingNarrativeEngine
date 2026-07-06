@@ -55,10 +55,20 @@ class GoalUpdateCandidate(BaseModel):
     visibility: Visibility = Visibility.CHARACTER
 
 
+class RelationshipUpdateCandidate(BaseModel):
+    to: CharacterId
+    dimension: Literal["trust", "affection", "tension", "suspicion"]
+    delta: int
+
+
 class CharacterAgentOutput(BaseModel):
     action_candidates: list[ActionCandidate]
     emotion_deltas: list[EmotionDeltaCandidate]
     goal_updates: list[GoalUpdateCandidate]
+    # 013: optional/default-empty (unlike emotion_deltas/goal_updates) so the mock provider's
+    # random-fill path never has to invent a relationship update, keeping existing
+    # CharacterAgentOutput constructions back-compat.
+    relationship_updates: list[RelationshipUpdateCandidate] = Field(default_factory=list)
 
 
 class ParameterDriftCandidate(BaseModel):

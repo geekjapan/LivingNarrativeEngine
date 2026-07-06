@@ -2,6 +2,7 @@ from living_narrative.agents.models import (
     ActionCandidate,
     CharacterAgentOutput,
     ConflictResolverOutput,
+    RelationshipUpdateCandidate,
     StateManagerOutput,
     WorldSimulatorOutput,
 )
@@ -20,6 +21,24 @@ def test_character_agent_output_round_trips():
     )
 
     assert CharacterAgentOutput.model_validate_json(output.model_dump_json()) == output
+
+
+def test_character_agent_output_defaults_relationship_updates_to_empty_list():
+    output = CharacterAgentOutput(
+        action_candidates=[
+            ActionCandidate(kind="action", content="進む", visibility=Visibility.READER)
+        ],
+        emotion_deltas=[],
+        goal_updates=[],
+    )
+
+    assert output.relationship_updates == []
+
+
+def test_relationship_update_candidate_round_trips():
+    candidate = RelationshipUpdateCandidate(to="char_002", dimension="trust", delta=10)
+
+    assert RelationshipUpdateCandidate.model_validate_json(candidate.model_dump_json()) == candidate
 
 
 def test_inner_reaction_visibility_is_clamped_to_character():

@@ -2,6 +2,7 @@ from living_narrative.agents.models import (
     CharacterAgentOutput,
     EmotionDeltaCandidate,
     GoalUpdateCandidate,
+    RelationshipUpdateCandidate,
 )
 from living_narrative.agents.state_manager import build_state_diff
 from living_narrative.pipeline.context import TurnContext
@@ -14,6 +15,7 @@ from living_narrative.state.models import (
     LLMConfig,
     ProjectConfig,
     ReaderStateEntry,
+    RelationshipState,
     SceneState,
     SceneStatus,
     ThreatTrack,
@@ -35,7 +37,9 @@ def _ids():
     return allocate
 
 
-def _context(gm_vault=None, threats=None, scenes=None, characters=None, decay=0) -> TurnContext:
+def _context(
+    gm_vault=None, threats=None, scenes=None, characters=None, decay=0, relationships=None
+) -> TurnContext:
     project = ProjectConfig(
         id="p",
         title="P",
@@ -62,6 +66,7 @@ def _context(gm_vault=None, threats=None, scenes=None, characters=None, decay=0)
         if scenes is not None
         else [SceneState(id="scene_001", location="loc", time="now")],
         gm_vault=gm_vault or [],
+        relationships=relationships or [],
     )
     return TurnContext(1, project, None, bundle, RandomEngine("seed"))
 
@@ -475,6 +480,127 @@ def test_goal_update_appends_to_short_term_goals_on_apply():
 
     applied = apply_state_diff(context.bundle, result.diff)
     assert applied.bundle.characters[0].goals.short_term == ["find the caller"]
+
+
+def test_relationship_update_produces_a_relationship_delta_change_and_applies():
+    relationship = RelationshipState(
+        **{"from": "char_001", "to": "char_002"},
+        trust=50,
+        affection=50,
+        tension=50,
+        suspicion=50,
+    )
+    context = _context(
+        characters=[
+            CharacterState(id="char_001", name="A", role="r"),
+            CharacterState(id="char_002", name="B", role="r"),
+        ],
+        relationships=[relationship],
+    )
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[],
+        relationship_updates=[
+            RelationshipUpdateCandidate(to="char_002", dimension="trust", delta=10)
+        ],
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+    relationship_changes = [c for c in result.diff.changes if c.target == "relationship"]
+    assert len(relationship_changes) == 1
+    change = relationship_changes[0]
+    assert change.id == "char_001__char_002"
+    assert change.op == "delta"
+    assert change.path == "trust"
+    assert change.value == 10
+    assert change.visibility == Visibility.CHARACTER
+
+    applied = apply_state_diff(context.bundle, result.diff)
+    assert applied.bundle.relationships[0].trust == 60
+
+
+def test_relationship_update_clamps_to_100_on_apply():
+    relationship = RelationshipState(
+        **{"from": "char_001", "to": "char_002"},
+        trust=95,
+        affection=50,
+        tension=50,
+        suspicion=50,
+    )
+    context = _context(
+        characters=[
+            CharacterState(id="char_001", name="A", role="r"),
+            CharacterState(id="char_002", name="B", role="r"),
+        ],
+        relationships=[relationship],
+    )
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[],
+        relationship_updates=[
+            RelationshipUpdateCandidate(to="char_002", dimension="trust", delta=15)
+        ],
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+    applied = apply_state_diff(context.bundle, result.diff)
+
+    assert applied.bundle.relationships[0].trust == 100
+
+
+def test_relationship_update_targeting_self_is_rejected():
+    context = _context(
+        characters=[CharacterState(id="char_001", name="A", role="r")],
+        relationships=[],
+    )
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[],
+        relationship_updates=[
+            RelationshipUpdateCandidate(to="char_001", dimension="trust", delta=10)
+        ],
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+
+    assert [c for c in result.diff.changes if c.target == "relationship"] == []
+    assert any(
+        item.reason == "relationship update targets self" for item in result.rejected_changes
+    )
+
+
+def test_relationship_update_for_missing_pair_is_rejected():
+    context = _context(
+        characters=[
+            CharacterState(id="char_001", name="A", role="r"),
+            CharacterState(id="char_002", name="B", role="r"),
+        ],
+        relationships=[],
+    )
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[],
+        relationship_updates=[
+            RelationshipUpdateCandidate(to="char_002", dimension="trust", delta=10)
+        ],
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+
+    assert [c for c in result.diff.changes if c.target == "relationship"] == []
+    assert any(item.reason == "relationship pair not found" for item in result.rejected_changes)
+
+
+def test_character_agent_output_default_empty_relationship_updates_is_back_compat():
+    output = CharacterAgentOutput(action_candidates=[], emotion_deltas=[], goal_updates=[])
+
+    result = build_state_diff(_context(), [], [], character_outputs=[("char_001", output)])
+
+    assert [c for c in result.diff.changes if c.target == "relationship"] == []
 
 
 def test_scene_summary_update_produces_a_scene_summary_set_diff():
