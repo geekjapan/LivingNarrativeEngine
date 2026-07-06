@@ -22,6 +22,30 @@ def test_character_agent_output_round_trips():
     assert CharacterAgentOutput.model_validate_json(output.model_dump_json()) == output
 
 
+def test_inner_reaction_visibility_is_clamped_to_character():
+    candidate = ActionCandidate(
+        kind="inner_reaction", content="まさか…", visibility=Visibility.READER
+    )
+
+    assert candidate.visibility == Visibility.CHARACTER
+
+
+def test_inner_reaction_defaults_to_character_and_keeps_gm_only():
+    assert ActionCandidate(kind="inner_reaction", content="内心").visibility == Visibility.CHARACTER
+    assert (
+        ActionCandidate(
+            kind="inner_reaction", content="内心", visibility=Visibility.GM_ONLY
+        ).visibility
+        == Visibility.GM_ONLY
+    )
+
+
+def test_action_visibility_defaults_to_reader():
+    assert ActionCandidate(kind="action", content="進む").visibility == Visibility.READER
+    spoken = ActionCandidate(kind="dialogue", content="「行くぞ」", visibility=Visibility.SCENE)
+    assert spoken.visibility == Visibility.SCENE
+
+
 def test_world_simulator_output_requires_candidate_visibility():
     output = WorldSimulatorOutput.model_validate(
         {

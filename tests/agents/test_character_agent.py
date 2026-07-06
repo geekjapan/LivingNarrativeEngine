@@ -64,9 +64,11 @@ def test_character_agent_uses_character_binding_key():
     assert gateway.calls[0].model == "mock-large"
 
 
-def test_character_agent_prompt_mentions_secret_consistency():
-    assert "private minds" in PROMPT_TEXT
-    assert "unknown events" in PROMPT_TEXT
+def test_character_agent_prompt_mentions_scope_and_language_rules():
+    assert "private_mind" in PROMPT_TEXT
+    assert "GM vault" in PROMPT_TEXT
+    assert "日本語" in PROMPT_TEXT
+    assert '"character"' in PROMPT_TEXT
 
 
 def test_character_agent_is_deterministic_with_same_seed():

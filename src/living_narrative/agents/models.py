@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from living_narrative.pipeline.models import RejectedChange
 from living_narrative.state.diff import StateDiff
@@ -27,9 +27,20 @@ class CharacterAgentInput(BaseModel):
 class ActionCandidate(BaseModel):
     kind: Literal["action", "dialogue", "inner_reaction"]
     content: str = Field(min_length=1)
-    visibility: Visibility = Visibility.READER
+    visibility: Visibility | None = None
     target_id: str | None = None
     effects: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _scope_visibility(self) -> "ActionCandidate":
+        # Inner thoughts never reach the reader directly; disclosure happens
+        # through explicit reader_state diffs, not through candidate tags.
+        if self.kind == "inner_reaction":
+            if self.visibility != Visibility.GM_ONLY:
+                self.visibility = Visibility.CHARACTER
+        elif self.visibility is None:
+            self.visibility = Visibility.READER
+        return self
 
 
 class EmotionDeltaCandidate(BaseModel):
