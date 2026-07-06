@@ -14,15 +14,18 @@ from living_narrative.state.models import (
     CanonEntry,
     GmVaultEntry,
     ReaderStateEntry,
+    TimelineEntry,
     Visibility,
     WorldStateBundle,
 )
 
 DiffId = id_type("diff")
 EventId = id_type("event")
-Target = Literal["world", "character", "scene", "reader_state", "canon", "gm_vault", "relationship"]
+Target = Literal[
+    "world", "character", "scene", "reader_state", "canon", "gm_vault", "relationship", "timeline"
+]
 Op = Literal["add", "remove", "set", "delta"]
-COLLECTION_TARGETS = {"canon", "reader_state", "gm_vault"}
+COLLECTION_TARGETS = {"canon", "reader_state", "gm_vault", "timeline"}
 
 
 class StateDiffError(ValueError):
@@ -267,6 +270,11 @@ def _remove_value(current: Any, change: StateDiffChange) -> Any:
             if getattr(item, "id", None) == value["id"]:
                 current.remove(item)
                 return item.model_dump(mode="json") if isinstance(item, BaseModel) else item
+    if isinstance(value, dict):
+        for item in current:
+            if isinstance(item, BaseModel) and item.model_dump(mode="json") == value:
+                current.remove(item)
+                return item.model_dump(mode="json")
     if value in current:
         current.remove(value)
         return value
@@ -285,6 +293,7 @@ def _model_for_target(target: str) -> type[BaseModel]:
         "canon": CanonEntry,
         "reader_state": ReaderStateEntry,
         "gm_vault": GmVaultEntry,
+        "timeline": TimelineEntry,
     }[target]
 
 

@@ -3,11 +3,12 @@
 from collections.abc import Callable
 from typing import Any
 
+from living_narrative.agents.models import CharacterAgentOutput
 from living_narrative.intervention.reveal import must_not_reveal_texts, reveal_now_sources
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import BuildDiffOutput, RejectedChange
 from living_narrative.state.diff import StateDiff, StateDiffChange
-from living_narrative.state.models import Event, Visibility
+from living_narrative.state.models import CharacterId, Event, TimelineEntry, Visibility
 
 # canon_edit/hidden_truth_edit (spec.md Requirement "Type別ルーティング"): a state diff target
 # per type, keyed by the collection this intervention type adds to.
@@ -30,6 +31,7 @@ def build_state_diff(
     resolved_events: list[Event],
     interventions: list[dict[str, Any]],
     allocate_event_id: Callable[[], str] | None = None,
+    character_outputs: list[tuple[CharacterId, CharacterAgentOutput]] | None = None,
 ) -> BuildDiffOutput:
     allocate_event_id = allocate_event_id or _default_event_id_allocator()
     must_not_reveal = must_not_reveal_texts(context, interventions)
@@ -70,6 +72,25 @@ def build_state_diff(
         )
         synthetic_events.append(event)
         changes.append(change)
+
+    for character_id, output in character_outputs or []:
+        changes.extend(_character_output_changes(character_id, output))
+
+    timeline_event_ids = [event.id for event in resolved_events] + [
+        event.id for event in synthetic_events
+    ]
+    if timeline_event_ids:
+        changes.append(
+            StateDiffChange(
+                target="timeline",
+                op="add",
+                path="",
+                value=TimelineEntry(
+                    turn=context.turn, event_ids=timeline_event_ids
+                ).model_dump(mode="json"),
+                visibility=Visibility.CANON,
+            )
+        )
 
     return BuildDiffOutput(
         diff=StateDiff(id=f"diff_{context.turn:04d}", turn=context.turn, changes=changes),
@@ -141,6 +162,35 @@ def _reveal_now_change(
         source_event=event.id,
     )
     return event, change
+
+
+def _character_output_changes(
+    character_id: CharacterId, output: CharacterAgentOutput
+) -> list[StateDiffChange]:
+    changes = []
+    for emotion_delta in output.emotion_deltas:
+        changes.append(
+            StateDiffChange(
+                target="character",
+                id=character_id,
+                op="delta",
+                path=f"emotions.{emotion_delta.emotion}",
+                value=emotion_delta.delta,
+                visibility=emotion_delta.visibility,
+            )
+        )
+    for goal_update in output.goal_updates:
+        changes.append(
+            StateDiffChange(
+                target="character",
+                id=character_id,
+                op="add",
+                path=f"goals.{goal_update.goal_kind}",
+                value=goal_update.content,
+                visibility=goal_update.visibility,
+            )
+        )
+    return changes
 
 
 def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChange]:

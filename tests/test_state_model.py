@@ -603,6 +603,52 @@ def test_multi_turn_rollback_applies_inverse_diffs_in_descending_turn_order():
     assert rollback(three.bundle, inverses).model_dump(mode="json") == start.model_dump(mode="json")
 
 
+def test_timeline_add_change_appends_a_timeline_entry():
+    result = apply_state_diff(
+        bundle(),
+        StateDiff(
+            id="diff_001",
+            turn=1,
+            changes=[
+                StateDiffChange(
+                    target="timeline",
+                    op="add",
+                    path="",
+                    value={"turn": 1, "event_ids": ["event_0001"]},
+                    visibility=Visibility.CANON,
+                )
+            ],
+        ),
+    )
+
+    assert result.bundle.timeline[0].turn == 1
+    assert result.bundle.timeline[0].event_ids == ["event_0001"]
+
+
+def test_timeline_add_change_inverse_removes_the_entry():
+    original = bundle()
+    result = apply_state_diff(
+        original,
+        StateDiff(
+            id="diff_001",
+            turn=1,
+            changes=[
+                StateDiffChange(
+                    target="timeline",
+                    op="add",
+                    path="",
+                    value={"turn": 1, "event_ids": ["event_0001"]},
+                    visibility=Visibility.CANON,
+                )
+            ],
+        ),
+    )
+
+    restored = apply_state_diff(result.bundle, result.inverse_diff).bundle
+
+    assert restored.model_dump(mode="json") == original.model_dump(mode="json")
+
+
 def test_schema_export_writes_world_state_schema(tmp_path):
     export_state_schemas(tmp_path / "schemas")
 

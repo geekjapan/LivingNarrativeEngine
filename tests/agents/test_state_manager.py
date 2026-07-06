@@ -1,6 +1,12 @@
+from living_narrative.agents.models import (
+    CharacterAgentOutput,
+    EmotionDeltaCandidate,
+    GoalUpdateCandidate,
+)
 from living_narrative.agents.state_manager import build_state_diff
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.random.engine import RandomEngine
+from living_narrative.state.diff import apply_state_diff
 from living_narrative.state.models import (
     CharacterState,
     Event,
@@ -98,7 +104,7 @@ def test_must_not_reveal_reader_state_change_is_rejected():
         [{"type": "reveal_control", "mode": "must-not-reveal", "target_id": "secret"}],
     )
 
-    assert output.diff.changes == []
+    assert [c for c in output.diff.changes if c.target != "timeline"] == []
     assert "must-not-reveal" in output.rejected_changes[0].reason
 
 
@@ -114,7 +120,7 @@ def test_missing_target_change_is_rejected():
 
     output = build_state_diff(_context(), [event], [])
 
-    assert output.diff.changes == []
+    assert [c for c in output.diff.changes if c.target != "timeline"] == []
     assert "not found" in output.rejected_changes[0].reason
 
 
@@ -204,3 +210,129 @@ def test_reveal_now_is_skipped_when_already_disclosed():
 
     assert output.diff.changes == []
     assert output.synthetic_events == []
+
+
+def test_no_events_generates_no_timeline_change():
+    output = build_state_diff(_context(), [], [])
+
+    assert output.diff.changes == []
+
+
+def test_resolved_event_generates_a_timeline_append_change():
+    event = Event(
+        id="event_0001",
+        turn=1,
+        type="character_death",
+        text="A dies",
+        visibility=Visibility.CANON,
+        effects={"character_id": "char_001"},
+    )
+
+    output = build_state_diff(_context(), [event], [])
+
+    timeline_changes = [c for c in output.diff.changes if c.target == "timeline"]
+    assert len(timeline_changes) == 1
+    change = timeline_changes[0]
+    assert change.op == "add"
+    assert change.value["turn"] == 1
+    assert change.value["event_ids"] == ["event_0001"]
+    assert change.visibility == Visibility.CANON
+
+
+def test_synthetic_event_is_included_in_the_timeline_append_change():
+    intervention = {
+        "id": "int_0001",
+        "turn": 1,
+        "user_role": "full_gm",
+        "type": "canon_edit",
+        "target": {"kind": "canon"},
+        "content": "新しい真実",
+        "visibility": "canon",
+    }
+
+    output = build_state_diff(_context(), [], [intervention], _ids())
+
+    timeline_changes = [c for c in output.diff.changes if c.target == "timeline"]
+    assert len(timeline_changes) == 1
+    assert timeline_changes[0].value["event_ids"] == [output.synthetic_events[0].id]
+
+
+def test_emotion_delta_produces_a_character_delta_change_with_character_visibility():
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[EmotionDeltaCandidate(emotion="fear", delta=20)],
+        goal_updates=[],
+    )
+
+    result = build_state_diff(_context(), [], [], character_outputs=[("char_001", output)])
+
+    emotion_changes = [c for c in result.diff.changes if c.target == "character"]
+    assert len(emotion_changes) == 1
+    change = emotion_changes[0]
+    assert change.id == "char_001"
+    assert change.op == "delta"
+    assert change.path == "emotions.fear"
+    assert change.value == 20
+    assert change.visibility == Visibility.CHARACTER
+
+
+def test_emotion_delta_clamps_to_100_on_apply():
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[EmotionDeltaCandidate(emotion="fear", delta=30)],
+        goal_updates=[],
+    )
+    context = _context()
+    context.bundle.characters[0].emotions["fear"] = 90
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+    applied = apply_state_diff(context.bundle, result.diff)
+
+    assert applied.bundle.characters[0].emotions["fear"] == 100
+
+
+def test_emotion_delta_clamps_to_0_on_apply():
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[EmotionDeltaCandidate(emotion="fear", delta=-90)],
+        goal_updates=[],
+    )
+    context = _context()
+    context.bundle.characters[0].emotions["fear"] = 10
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+    applied = apply_state_diff(context.bundle, result.diff)
+
+    assert applied.bundle.characters[0].emotions["fear"] == 0
+
+
+def test_goal_update_appends_to_short_term_goals_on_apply():
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[GoalUpdateCandidate(goal_kind="short_term", content="find the caller")],
+    )
+    context = _context()
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+    goal_changes = [c for c in result.diff.changes if c.target == "character"]
+    assert goal_changes[0].op == "add"
+    assert goal_changes[0].path == "goals.short_term"
+    assert goal_changes[0].visibility == Visibility.CHARACTER
+
+    applied = apply_state_diff(context.bundle, result.diff)
+    assert applied.bundle.characters[0].goals.short_term == ["find the caller"]
+
+
+def test_goal_update_appends_to_long_term_goals_on_apply():
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[GoalUpdateCandidate(goal_kind="long_term", content="escape the station")],
+    )
+    context = _context()
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+    applied = apply_state_diff(context.bundle, result.diff)
+
+    assert applied.bundle.characters[0].goals.long_term == ["escape the station"]

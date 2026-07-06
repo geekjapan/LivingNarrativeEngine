@@ -72,7 +72,8 @@ def test_permission_rejection_is_recorded_and_produces_no_state_change(tmp_path,
     assert intervention_file["rejections"][0]["type"] == "canon_edit"
 
     state_diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
-    assert state_diff["diff"]["changes"] == []
+    non_timeline_changes = [c for c in state_diff["diff"]["changes"] if c["target"] != "timeline"]
+    assert non_timeline_changes == []
 
 
 def test_character_directive_routes_only_to_the_target_character(tmp_path, build_project):
