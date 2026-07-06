@@ -93,8 +93,10 @@ graph TD
 4. **実LLMスモークの基準**: 物語ダイナミクス系は8〜12ターン、加速が要る検証はsandbox側パラメータ改変(pressure初期値等)で誘発 — テンプレートは触らない
 5. **優先順序(推奨)**: 013→014が最優先(評価で残った物語課題の直接対策)。020をworktreeで並走開始。015/019はその後。017は価値が出るまで保留
 
-## 現在地
+## 現在地(2026-07-07更新)
 
-- 013: issueファイル作成済み・in_progress(このDAG確定を受けて着手)
-- 014〜030: issue未作成(着手時に各issueファイルへスペック詳細化)
-- E7〜E9: エピック(分解は着手時)
+- **Track A 完走**: 013/014/015/016/018/019 done(017 factionは保留のまま)。ゲート(019)は実LLM 20ターンbenchで通過(bench20_llm)
+- **Track B 完走**: 020/021-022/023/024/025 done
+- **Track C 完走**: 026/027/028-029/030 done(bench20実データでscenes/outline/novel/revised/TRPG/arcsの全export確認済み)
+- 次: E7(Game)/E8(Visual)/E9(Productization)エピックの分解、または残課題(metrics transition_count計数、スレッド回収圧、017 faction)
+- 689 tests。全issueは docs/issues/、実測は sandbox/bench20_llm
