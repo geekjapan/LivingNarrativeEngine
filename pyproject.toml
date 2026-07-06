@@ -11,6 +11,12 @@ dependencies = [
     "typer>=0.12",
 ]
 
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+]
+
 [project.scripts]
 living-narrative = "living_narrative.cli:app"
 living-narrative-state-schemas = "living_narrative.state.schema_export:main"
@@ -19,6 +25,7 @@ living-narrative-state-schemas = "living_narrative.state.schema_export:main"
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
+    "httpx>=0.27",
 ]
 
 [build-system]
