@@ -1,7 +1,7 @@
 ---
 id: 003
 title: LLMナレーター導入(narrate相でnarratorバインディングを解決しプロズ生成)
-status: open
+status: done
 created: 2026-07-06
 ---
 
@@ -17,12 +17,12 @@ created: 2026-07-06
 
 ## 完了条件
 
-- [ ] narrate相が `narrator` バインディング(→ `prose` プロファイル)を解決し、LLMナレーターを呼ぶ
-- [ ] ナレーターの入力は情報スコープモデル厳守: `reader_state` + 現シーンの `reader_visible_facts` + 当ターンのreader可視イベントのみ(gm_vault・hidden_facts・他者の秘密は不可)
-- [ ] 読者可視イベント集合を日本語プロズに書き直す(D106)。機械連結レンダラーはフォールバック/logスタイルとして残す
-- [ ] LLM失敗時の挙動を定義(D110に準拠: リトライ枯渇→turn failed か、機械連結へのフォールバックかを決めてADR化)
-- [ ] `_sentence()` の二重句読点も修正(LLM化後もlogレンダラーで残るため)
-- [ ] mist_run_001 実走で narration.md が読める日本語プロズになること
+- [x] narrate相が `narrator` バインディング(→ `prose` プロファイル)を解決し、LLMナレーターを呼ぶ(`narration/llm_narrator.py::run_narrate_phase`)
+- [x] ナレーターの入力は情報スコープモデル厳守: `reader_state` + 現シーンの `reader_visible_facts` + 当ターンのreader可視イベントのみ(入力は既存の `NarratorContext` のみ)
+- [x] 読者可視イベント集合を日本語プロズに書き直す(D106)。機械連結レンダラーはフォールバック/logスタイルとして残す
+- [x] LLM失敗時の挙動を定義 → ADR-0002: 機械連結novelへフォールバックし `agent_io/narrate.yaml` に `mode: renderer_fallback` を記録。turn failedにしない
+- [x] `_sentence()` の二重句読点も修正(`…` `」` `）` 等の閉じ文字には `。` を付けない)
+- [x] mist_run_001 実走で narration.md が読める日本語プロズになること(turn_0003, mode: llm, prose プロファイル)
 
 ## 関連ファイル
 

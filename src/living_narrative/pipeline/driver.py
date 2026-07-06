@@ -12,7 +12,7 @@ from living_narrative.intervention.permissions import PermissionTable
 from living_narrative.intervention.router import resolve_tone_control
 from living_narrative.intervention.service import run_intervene_phase
 from living_narrative.narration.context import build_narrator_context
-from living_narrative.narration.narrator import narrate
+from living_narrative.narration.llm_narrator import run_narrate_phase
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.errors import LoadError
 from living_narrative.pipeline.ids import make_event_id_allocator
@@ -221,9 +221,15 @@ class TurnPipeline:
                 effective_tone_control = resolve_tone_control(
                     intervention_file.interventions, tone_control
                 )
-                narration = narrate(
-                    narrator_context, style=style, mood=mood, tone_control=effective_tone_control
+                narration, narrate_record = run_narrate_phase(
+                    gateway=gateway,
+                    project=project,
+                    context=narrator_context,
+                    style=style,
+                    mood=mood,
+                    tone_control=effective_tone_control,
                 )
+                write_agent_io_component(turn_dir, "narrate", narrate_record)
                 write_narration(turn_dir, turn, narration.style, narration.text)
 
             with _timed_phase("build_diff", durations, current_phase):

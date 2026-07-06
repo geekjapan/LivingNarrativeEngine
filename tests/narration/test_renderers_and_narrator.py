@@ -58,6 +58,41 @@ def test_narrator_falls_back_to_default_message_without_events_or_facts():
     assert _JAPANESE_RE.search(result.text)
 
 
+def test_novel_renderer_does_not_double_punctuate():
+    context = NarratorContext(
+        turn=1,
+        reader_visible_events=[
+            Event(
+                id="event_0001",
+                turn=1,
+                type="action",
+                text="足音が遠ざかっていく…",
+                visibility=Visibility.READER,
+            ),
+            Event(
+                id="event_0002",
+                turn=1,
+                type="action",
+                text="彼女は頷いた(小さく)",
+                visibility=Visibility.READER,
+            ),
+            Event(
+                id="event_0003",
+                turn=1,
+                type="dialogue",
+                text="「行こう」",
+                visibility=Visibility.READER,
+            ),
+        ],
+    )
+
+    result = narrate(context, style="novel")
+
+    assert "…。" not in result.text
+    assert ")。" not in result.text
+    assert "」。" not in result.text
+
+
 def test_unregistered_renderer_style_raises():
     with pytest.raises(RendererNotFoundError):
         narrate(_context(), style="script")

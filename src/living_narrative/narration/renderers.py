@@ -30,8 +30,12 @@ class RendererRegistry:
             raise RendererNotFoundError(name) from exc
 
 
+# Trailing chars that already close a sentence — appending 。 double-punctuates (…。 」。 ）。).
+_SENTENCE_CLOSERS = ("。", "、", "！", "？", "…", "‥", "」", "』", "）", ")")
+
+
 def _sentence(text: str) -> str:
-    return text if text.endswith(("。", "、", "！", "？")) else f"{text}。"
+    return text if text.endswith(_SENTENCE_CLOSERS) else f"{text}。"
 
 
 def novel_renderer(context: NarratorContext, mood: str, tone_control: str | None) -> str:

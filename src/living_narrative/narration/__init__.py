@@ -1,6 +1,7 @@
 """Narrator, renderer registry, reader-only context extraction."""
 
 from living_narrative.narration.context import build_narrator_context, is_reader_visible_event
+from living_narrative.narration.llm_narrator import LLMNarratorOutput, run_narrate_phase
 from living_narrative.narration.models import NarrationResult, NarratorContext
 from living_narrative.narration.narrator import narrate
 from living_narrative.narration.renderers import (
@@ -12,6 +13,7 @@ from living_narrative.narration.renderers import (
 )
 
 __all__ = [
+    "LLMNarratorOutput",
     "NarrationResult",
     "NarratorContext",
     "RendererNotFoundError",
@@ -22,4 +24,5 @@ __all__ = [
     "log_renderer",
     "narrate",
     "novel_renderer",
+    "run_narrate_phase",
 ]
