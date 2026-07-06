@@ -41,6 +41,26 @@ INDEX_HTML = """\
   #intervention-freetext { width: 100%; box-sizing: border-box; margin-bottom: 0.4rem; }
   .intervention-entry { padding: 0.3rem 0; font-size: 0.9rem; }
   .intervention-entry .badge { margin-right: 0.4rem; }
+  .badge-gm_only { background: #4a148c; }
+  .badge-canon { background: #01579b; }
+  .badge-character { background: #00695c; }
+  .badge-scene { background: #ef6c00; }
+  .badge-reader { background: #2e7d32; }
+  #gm-panel { display: none; border: 1px solid #ddd; border-radius: 6px; padding: 0.75rem 1rem;
+    margin: 0.75rem 0; }
+  #gm-panel.open { display: block; }
+  #gm-panel h3 { margin-top: 1rem; margin-bottom: 0.3rem; }
+  #gm-panel h3:first-child { margin-top: 0; }
+  .gm-char-card { border: 1px solid #ddd; border-radius: 6px; padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem; }
+  .gm-char-card .emotion { font-size: 0.85rem; color: #444; margin-right: 0.5rem; }
+  .gm-secret { font-size: 0.85rem; color: #6a1b9a; }
+  .gm-threat { padding: 0.3rem 0; font-size: 0.9rem; }
+  .gm-scene, .gm-thread { border-bottom: 1px solid #eee; padding: 0.4rem 0; font-size: 0.9rem; }
+  .gm-timeline-entry { padding: 0.3rem 0; font-size: 0.85rem; }
+  .gm-timeline-entry .badge { margin-right: 0.3rem; }
+  #gm-turn-detail pre { white-space: pre-wrap; font-size: 0.8rem; background: #f5f5f5;
+    padding: 0.5rem; border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -62,6 +82,9 @@ INDEX_HTML = """\
     <span>review:</span>
     <button id="review-accept-button" disabled>accept_all</button>
     <button id="review-reject-button" disabled>reject_all</button>
+  </div>
+  <div class="group">
+    <button id="gm-toggle-button" disabled>GMビュー</button>
   </div>
 </div>
 <div class="intervention-panel">
@@ -101,6 +124,24 @@ INDEX_HTML = """\
 <div id="characters"></div>
 <h2>Story</h2>
 <div id="story"></div>
+<div id="gm-panel">
+  <h3>キャラクター(GM視点)</h3>
+  <div id="gm-characters"></div>
+  <h3>世界・脅威</h3>
+  <div id="gm-world"></div>
+  <h3>シーン</h3>
+  <div id="gm-scenes"></div>
+  <h3>未解決スレッド</h3>
+  <div id="gm-threads"></div>
+  <h3>タイムライン</h3>
+  <div id="gm-timeline"></div>
+  <h3>ターン詳細</h3>
+  <div class="group">
+    <input id="gm-turn-input" type="number" min="1" value="1">
+    <button id="gm-turn-button">取得</button>
+  </div>
+  <div id="gm-turn-detail"></div>
+</div>
 <script>
 const select = document.getElementById("project-select");
 const turnCountEl = document.getElementById("turn-count");
@@ -122,8 +163,19 @@ const interventionContentInput = document.getElementById("intervention-content")
 const interventionVisibilitySelect = document.getElementById("intervention-visibility");
 const interventionDraftButton = document.getElementById("intervention-draft-button");
 const interventionHistoryEl = document.getElementById("intervention-history");
+const gmToggleButton = document.getElementById("gm-toggle-button");
+const gmPanelEl = document.getElementById("gm-panel");
+const gmCharactersEl = document.getElementById("gm-characters");
+const gmWorldEl = document.getElementById("gm-world");
+const gmScenesEl = document.getElementById("gm-scenes");
+const gmThreadsEl = document.getElementById("gm-threads");
+const gmTimelineEl = document.getElementById("gm-timeline");
+const gmTurnInput = document.getElementById("gm-turn-input");
+const gmTurnButton = document.getElementById("gm-turn-button");
+const gmTurnDetailEl = document.getElementById("gm-turn-detail");
 
 let pollHandle = null;
+let gmOpen = false;
 
 function currentProject() {
   return select.value;
@@ -158,6 +210,124 @@ function renderInterventionHistory(interventionsData) {
   interventionHistoryEl.innerHTML = `<h4>直近ターン(turn ${lastTurn.turn})の介入</h4>${body}`;
 }
 
+function visibilityBadge(visibility) {
+  const cls = visibility ? `badge-${visibility}` : "badge-unknown";
+  return `<span class="badge ${cls}">${visibility || "unknown"}</span>`;
+}
+
+function renderGmCharacters(characters) {
+  gmCharactersEl.innerHTML = characters
+    .map((c) => {
+      const emotions = Object.entries(c.emotions || {})
+        .map((entry) => {
+          const [name, value] = entry;
+          const baseline = (c.emotions_baseline || {})[name];
+          const baselineNote = baseline !== undefined ? ` (baseline ${baseline})` : "";
+          return `<span class="emotion">${name}: ${value}${baselineNote}</span>`;
+        })
+        .join("");
+      const secrets = (c.secrets || [])
+        .map((s) => `<div class="gm-secret">secret: ${s}</div>`)
+        .join("");
+      const privateMind = (c.private_mind || [])
+        .map((p) => `<div class="gm-secret">private_mind: ${p}</div>`)
+        .join("");
+      const relationships = (c.relationships || [])
+        .map(
+          (r) =>
+            `<div class="emotion">→ ${r.to}: trust=${r.trust} affection=${r.affection} ` +
+            `tension=${r.tension} suspicion=${r.suspicion}</div>`
+        )
+        .join("");
+      return `<div class="gm-char-card">
+        <strong>${c.name}</strong> [${c.status}]
+        <div>${emotions}</div>
+        ${secrets}${privateMind}${relationships}
+      </div>`;
+    })
+    .join("");
+}
+
+function renderGmWorld(world) {
+  const threats = (world.threats || [])
+    .map((t) => {
+      const next = t.next_stage
+        ? `次の閾値: ${t.next_stage.at} — ${t.next_stage.text}`
+        : "全ての閾値を超過";
+      return (
+        `<div class="gm-threat"><strong>${t.name}</strong> ` +
+        `pressure=${t.pressure} — ${next}</div>`
+      );
+    })
+    .join("");
+  gmWorldEl.innerHTML = `<p>${world.world.name}: ${world.world.summary}</p>${threats}`;
+
+  gmScenesEl.innerHTML = (world.scenes || [])
+    .map((s) => {
+      const hidden = (s.hidden_facts || [])
+        .map((f) => `<div class="gm-secret">${visibilityBadge(f.visibility)} ${f.text}</div>`)
+        .join("");
+      return `<div class="gm-scene">
+        <strong>${s.location}</strong> [${s.status}] ${s.mood}
+        <div>${s.summary || ""}</div>
+        ${hidden}
+      </div>`;
+    })
+    .join("");
+}
+
+function renderGmThreads(data) {
+  const threads = (data.threads || [])
+    .map(
+      (t) =>
+        `<div class="gm-thread"><strong>${t.description}</strong> [${t.status}] ` +
+        `related_events=${t.related_event_count}` +
+        (t.opened_turn !== null && t.opened_turn !== undefined
+          ? ` opened@turn ${t.opened_turn}`
+          : "") +
+        `</div>`
+    )
+    .join("");
+  const summaries = (data.memory_summaries || [])
+    .map((m) => `<div class="gm-thread">up_to_turn ${m.up_to_turn}: ${m.text}</div>`)
+    .join("");
+  gmThreadsEl.innerHTML = (threads || "<p>未解決スレッドなし</p>") + summaries;
+}
+
+function renderGmTimeline(entries) {
+  gmTimelineEl.innerHTML = entries
+    .map((entry) => {
+      const events = (entry.events || [])
+        .map(
+          (e) =>
+            `<div class="gm-timeline-entry">${visibilityBadge(e.visibility)} ${e.text}</div>`
+        )
+        .join("");
+      return `<div><strong>turn ${entry.turn}</strong>${events}</div>`;
+    })
+    .reverse()
+    .join("");
+}
+
+function renderGmTurnDetail(detail) {
+  gmTurnDetailEl.innerHTML = `<pre>${JSON.stringify(detail, null, 2).replace(/</g, "&lt;")}</pre>`;
+}
+
+async function loadGm() {
+  const name = currentProject();
+  if (!name || !gmOpen) return;
+  const [charsRes, worldRes, threadsRes, timelineRes] = await Promise.all([
+    fetch(`/api/project/${encodeURIComponent(name)}/gm/characters`),
+    fetch(`/api/project/${encodeURIComponent(name)}/gm/world`),
+    fetch(`/api/project/${encodeURIComponent(name)}/gm/threads`),
+    fetch(`/api/project/${encodeURIComponent(name)}/gm/timeline`),
+  ]);
+  renderGmCharacters(await charsRes.json());
+  renderGmWorld(await worldRes.json());
+  renderGmThreads(await threadsRes.json());
+  renderGmTimeline(await timelineRes.json());
+}
+
 async function loadProjects() {
   const res = await fetch("/api/projects");
   const projects = await res.json();
@@ -171,6 +341,7 @@ async function loadProjects() {
   const hasProjects = projects.length > 0;
   turnButton.disabled = !hasProjects;
   autoButton.disabled = !hasProjects;
+  gmToggleButton.disabled = !hasProjects;
   if (hasProjects) await refresh();
 }
 
@@ -228,6 +399,8 @@ async function refresh() {
   interventionFreetextButton.disabled = interventionBlocked;
   interventionDraftButton.disabled = interventionBlocked || permissions.allowed_types.length === 0;
   renderInterventionHistory(interventionsData);
+
+  if (gmOpen) await loadGm();
 
   if (runStatus.running && pollHandle === null) {
     pollHandle = setInterval(poll, 1000);
@@ -331,6 +504,24 @@ async function submitReview(decision) {
 
 reviewAcceptButton.addEventListener("click", () => submitReview("accept_all"));
 reviewRejectButton.addEventListener("click", () => submitReview("reject_all"));
+
+gmToggleButton.addEventListener("click", async () => {
+  gmOpen = !gmOpen;
+  gmPanelEl.classList.toggle("open", gmOpen);
+  if (gmOpen) await loadGm();
+});
+
+gmTurnButton.addEventListener("click", async () => {
+  const name = currentProject();
+  const turn = parseInt(gmTurnInput.value, 10) || 1;
+  if (!name) return;
+  const res = await fetch(`/api/project/${encodeURIComponent(name)}/gm/turn/${turn}`);
+  if (res.status === 404) {
+    gmTurnDetailEl.innerHTML = `<p>turn ${turn} は見つかりません</p>`;
+    return;
+  }
+  renderGmTurnDetail(await res.json());
+});
 
 loadProjects();
 </script>

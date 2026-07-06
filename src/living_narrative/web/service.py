@@ -21,12 +21,14 @@ from living_narrative.pipeline.turn_numbering import read_turn_status, turn_dir_
 from living_narrative.session.mode import MODE_PERMISSIONS
 from living_narrative.session.resume import restore_resume_state
 from living_narrative.session.review import ReviewDecision, ReviewResult, resolve_review
-from living_narrative.state.models import SceneStatus, UserMode
+from living_narrative.state.models import Event, SceneStatus, ThreatTrack, UserMode
 from living_narrative.state.store import StateStore
 from living_narrative.workspace.loader import load_project
 
 __all__ = [
     "AutoRunAlreadyRunningError",
+    "GmThreadsInfo",
+    "GmWorldInfo",
     "InterventionsInfo",
     "NoPendingReviewError",
     "PermissionsInfo",
@@ -35,6 +37,11 @@ __all__ = [
     "TurnNarration",
     "collect_narration",
     "collect_structured_narration",
+    "get_gm_characters",
+    "get_gm_threads",
+    "get_gm_timeline",
+    "get_gm_turn_detail",
+    "get_gm_world",
     "get_interventions",
     "get_permissions",
     "get_run_status",
@@ -257,6 +264,176 @@ def get_permissions(project_yaml: Path) -> PermissionsInfo:
     mode = UserMode(read.config.user_mode)
     allowed = sorted(t.value for t in MODE_PERMISSIONS[mode].allowed_interventions)
     return PermissionsInfo(user_mode=mode.value, allowed_types=allowed)
+
+
+def get_gm_characters(project_yaml: Path) -> list[dict[str, Any]]:
+    """Full omniscient character dump for the GM pane (docs/issues/024).
+
+    Unlike ``get_status`` this deliberately includes ``secrets``/``private_mind``/``knowledge``
+    — the GM pane is the one surface allowed full visibility (spec-foundation.md §4: the GM/
+    World Simulator/State Manager see everything). Each character's own outgoing relationships
+    (``bundle.relationships`` entries where ``from_`` is this character) are bundled in under
+    ``relationships`` so the UI doesn't need a second round trip.
+    """
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+
+    bundle = StateStore.load(read.paths.state)
+    characters: list[dict[str, Any]] = []
+    for character in bundle.characters:
+        data = character.model_dump(mode="json")
+        data["relationships"] = [
+            rel.model_dump(mode="json", by_alias=True)
+            for rel in bundle.relationships
+            if rel.from_ == character.id
+        ]
+        characters.append(data)
+    return characters
+
+
+def _next_uncrossed_stage(threat: ThreatTrack) -> dict[str, Any] | None:
+    """The lowest-``at`` stage this threat's current ``pressure`` has not yet crossed, if any."""
+    upcoming = sorted((s for s in threat.stages if s.at > threat.pressure), key=lambda s: s.at)
+    return upcoming[0].model_dump(mode="json") if upcoming else None
+
+
+@dataclass(frozen=True)
+class GmWorldInfo:
+    world: dict[str, Any]
+    threats: list[dict[str, Any]]
+    pacing: dict[str, Any]
+    scenes: list[dict[str, Any]]
+
+
+def get_gm_world(project_yaml: Path) -> GmWorldInfo:
+    """World summary/parameters, threat pressure tracks, pacing config, and full scene state
+    (incl. ``hidden_facts``) for the GM pane (docs/issues/024). Omniscient — no visibility
+    filtering, unlike ``get_status``'s single active-scene/location-only projection."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+
+    bundle = StateStore.load(read.paths.state)
+    world = bundle.world
+    return GmWorldInfo(
+        world={
+            "id": world.id,
+            "name": world.name,
+            "summary": world.summary,
+            "laws": world.laws,
+            "parameters": world.parameters,
+        },
+        threats=[
+            {
+                "id": threat.id,
+                "name": threat.name,
+                "pressure": threat.pressure,
+                "stages": [stage.model_dump(mode="json") for stage in threat.stages],
+                "next_stage": _next_uncrossed_stage(threat),
+            }
+            for threat in world.threats
+        ],
+        pacing=world.pacing.model_dump(mode="json"),
+        scenes=[
+            {
+                "id": scene.id,
+                "status": scene.status.value,
+                "location": scene.location,
+                "mood": scene.mood,
+                "summary": scene.summary,
+                "hidden_facts": [fact.model_dump(mode="json") for fact in scene.hidden_facts],
+                "reader_visible_facts": scene.reader_visible_facts,
+            }
+            for scene in bundle.scenes
+        ],
+    )
+
+
+def get_gm_timeline(project_yaml: Path, from_turn: int, limit: int) -> list[dict[str, Any]]:
+    """Timeline entries from ``from_turn`` onward (up to ``limit`` entries), each with its
+    ``events.yaml``-hydrated event bodies (docs/issues/024).
+
+    Reads each turn's ``events.yaml`` artifact directly rather than reusing
+    ``agents.event_history.load_recent_events`` — that helper only supports "last N *turns*"
+    windowing, not a ``from``/``limit`` page over the timeline, and duplicating the small
+    hydration loop here keeps this module's existing artifact-reading style (see
+    ``get_interventions``) instead of adding a second calling convention to the shared helper.
+    """
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+
+    bundle = StateStore.load(read.paths.state)
+    entries = sorted(
+        (entry for entry in bundle.timeline if entry.turn >= from_turn),
+        key=lambda entry: entry.turn,
+    )[:limit]
+
+    result: list[dict[str, Any]] = []
+    for entry in entries:
+        events_path = turn_dir_path(read.paths.runs, entry.turn) / "events.yaml"
+        events: list[dict[str, Any]] = []
+        if events_path.exists():
+            raw_events = yaml.safe_load(events_path.read_text(encoding="utf-8")) or []
+            by_id = {item.get("id"): item for item in raw_events}
+            for event_id in entry.event_ids:
+                data = by_id.get(event_id)
+                if data is not None:
+                    events.append(Event.model_validate(data).model_dump(mode="json"))
+        result.append({"turn": entry.turn, "events": events})
+    return result
+
+
+@dataclass(frozen=True)
+class GmThreadsInfo:
+    threads: list[dict[str, Any]]
+    memory_summaries: list[dict[str, Any]]
+
+
+def get_gm_threads(project_yaml: Path) -> GmThreadsInfo:
+    """``unresolved_threads`` (full fields, plus a derived ``related_event_count``) and
+    ``memory_summaries`` for the GM pane (docs/issues/024)."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+
+    bundle = StateStore.load(read.paths.state)
+    threads: list[dict[str, Any]] = []
+    for thread in bundle.unresolved_threads:
+        data = thread.model_dump(mode="json")
+        data["related_event_count"] = len(thread.related_event_ids)
+        threads.append(data)
+
+    return GmThreadsInfo(
+        threads=threads,
+        memory_summaries=[summary.model_dump(mode="json") for summary in bundle.memory_summaries],
+    )
+
+
+def get_gm_turn_detail(project_yaml: Path, turn: int) -> dict[str, Any] | None:
+    """That turn's ``rolls.yaml``/``checks.yaml``/``state_diff.yaml`` contents, or ``None`` if
+    the turn directory does not exist (docs/issues/024) — callers translate ``None`` to 404."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+
+    turn_dir = turn_dir_path(read.paths.runs, turn)
+    if not turn_dir.exists():
+        return None
+
+    def _read_yaml(name: str) -> Any:
+        path = turn_dir / name
+        if not path.exists():
+            return None
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    return {
+        "turn": turn,
+        "rolls": _read_yaml("rolls.yaml") or [],
+        "checks": _read_yaml("checks.yaml") or {},
+        "state_diff": _read_yaml("state_diff.yaml") or {},
+    }
 
 
 def _latest_live_turn_number(runs_dir: Path) -> int | None:

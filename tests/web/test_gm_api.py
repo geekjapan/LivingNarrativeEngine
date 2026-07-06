@@ -1,0 +1,277 @@
+"""GM-pane API tests (docs/issues/024): read-only omniscient views over the existing web layer.
+
+Skips entirely when the optional ``web`` extra (fastapi/uvicorn) is not installed — the core
+suite must not depend on it. Uses the mock LLM provider + ``mist_station`` template (see
+``tests/smoke/test_mist_station_20_turns.py``) since it ships characters with non-empty
+``secrets``/``private_mind``, a multi-stage threat track, and hidden scene facts — exactly the
+data this issue's endpoints are meant to surface (and the non-GM endpoints must keep hiding).
+"""
+
+import pytest
+import yaml
+
+fastapi = pytest.importorskip("fastapi")
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from living_narrative.pipeline import TurnPipeline  # noqa: E402
+from living_narrative.web.app import create_app  # noqa: E402
+from living_narrative.workspace.init import create_project  # noqa: E402
+
+CHAR_002_SECRET = "幼い頃にこの駅で何かを見た記憶がある"
+CHAR_002_PRIVATE_MIND = "あの日見たものの正体を、まだリナに話せていない"
+SCENE_001_HIDDEN_FACT = "足音の主は、封印施設を探る追跡者である。"
+
+
+def _client(root):
+    return TestClient(create_app(root))
+
+
+def _build_mist_station(tmp_path):
+    return create_project(tmp_path / "mist_station", title="霧の駅", template="mist_station")
+
+
+def _load_yaml(path):
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+# --- gm/characters --------------------------------------------------------------------
+
+
+def test_gm_characters_returns_full_visibility_fields(tmp_path):
+    _build_mist_station(tmp_path)
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/characters")
+
+    assert response.status_code == 200
+    characters = response.json()
+    assert {c["id"] for c in characters} == {"char_001", "char_002", "char_003", "char_004"}
+
+    char_002 = next(c for c in characters if c["id"] == "char_002")
+    assert char_002["secrets"] == [CHAR_002_SECRET]
+    assert char_002["private_mind"] == [CHAR_002_PRIVATE_MIND]
+    assert char_002["emotions"] == {"fear": 40, "unease": 50}
+    assert char_002["emotions_baseline"] == {"fear": 40, "unease": 50}
+    assert char_002["goals"]["short_term"] == ["リナを守る"]
+    assert char_002["knowledge"]["knows"] == ["この駅の奥に何かがある"]
+    assert char_002["speech"]["first_person"] == "俺"
+    assert char_002["status"] == "alive"
+
+
+def test_gm_characters_relationships_are_from_side_only(tmp_path):
+    _build_mist_station(tmp_path)
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/characters")
+
+    char_001 = next(c for c in response.json() if c["id"] == "char_001")
+    rel_targets = {(rel["from"], rel["to"]) for rel in char_001["relationships"]}
+    # char_001 (リナ) has outgoing relationships to char_002 and char_003 in the template;
+    # char_004 -> char_001 must NOT appear (that's char_004's outgoing side, not char_001's).
+    assert rel_targets == {("char_001", "char_002"), ("char_001", "char_003")}
+
+
+def test_gm_characters_unknown_project_is_404(tmp_path):
+    response = _client(tmp_path).get("/api/project/does-not-exist/gm/characters")
+
+    assert response.status_code == 404
+
+
+# --- gm/world --------------------------------------------------------------------------
+
+
+def test_gm_world_returns_summary_pacing_and_scenes(tmp_path):
+    _build_mist_station(tmp_path)
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/world")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["world"]["name"] == "霧の駅"
+    assert data["world"]["parameters"]["danger_level"] == 55
+    assert data["pacing"] == {"stall_window": 3, "pressure_boost": 4}
+
+    scene_001 = next(s for s in data["scenes"] if s["id"] == "scene_001")
+    assert scene_001["status"] == "active"
+    assert scene_001["location"] == "霧の駅・地下ホーム"
+    assert any(f["text"] == SCENE_001_HIDDEN_FACT for f in scene_001["hidden_facts"])
+    assert scene_001["reader_visible_facts"]
+
+
+def test_gm_world_threat_next_stage_is_lowest_uncrossed(tmp_path):
+    _build_mist_station(tmp_path)
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/world")
+
+    threat = next(t for t in response.json()["threats"] if t["id"] == "threat_001")
+    assert threat["pressure"] == 0
+    assert len(threat["stages"]) == 4
+    assert threat["next_stage"]["at"] == 25  # the lowest stage not yet crossed at pressure 0
+
+
+def test_gm_world_unknown_project_is_404(tmp_path):
+    response = _client(tmp_path).get("/api/project/does-not-exist/gm/world")
+
+    assert response.status_code == 404
+
+
+# --- gm/threads --------------------------------------------------------------------------
+
+
+def test_gm_threads_includes_notes_opened_turn_and_related_event_count(tmp_path):
+    project_path = _build_mist_station(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    (state_dir / "unresolved_threads.yaml").write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "id": "thread_001",
+                    "description": "足音の正体",
+                    "status": "open",
+                    "related_event_ids": ["event_0001", "event_0002"],
+                    "notes": ["まだ解決していない"],
+                    "opened_turn": 1,
+                }
+            ],
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    (state_dir / "memory_summaries.yaml").write_text(
+        yaml.safe_dump(
+            [{"id": "memory_0001", "up_to_turn": 1, "text": "駅で足音が響いた。"}],
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/threads")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["threads"]) == 1
+    thread = data["threads"][0]
+    assert thread["notes"] == ["まだ解決していない"]
+    assert thread["opened_turn"] == 1
+    assert thread["related_event_count"] == 2
+    assert data["memory_summaries"][0]["text"] == "駅で足音が響いた。"
+
+
+def test_gm_threads_empty_when_none_recorded(tmp_path):
+    _build_mist_station(tmp_path)
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/threads")
+
+    assert response.status_code == 200
+    assert response.json() == {"threads": [], "memory_summaries": []}
+
+
+def test_gm_threads_unknown_project_is_404(tmp_path):
+    response = _client(tmp_path).get("/api/project/does-not-exist/gm/threads")
+
+    assert response.status_code == 404
+
+
+# --- gm/timeline -----------------------------------------------------------------------
+
+
+def test_gm_timeline_hydrates_events_with_visibility(tmp_path):
+    project_path = _build_mist_station(tmp_path)
+    TurnPipeline().run(project_path)
+    TurnPipeline().run(project_path)
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/timeline")
+
+    assert response.status_code == 200
+    entries = response.json()
+    assert [e["turn"] for e in entries] == [1, 2]
+    for entry in entries:
+        assert entry["events"], f"turn {entry['turn']} should have hydrated events"
+        for event in entry["events"]:
+            assert "visibility" in event
+            assert event["turn"] == entry["turn"]
+
+
+def test_gm_timeline_from_query_skips_earlier_turns(tmp_path):
+    project_path = _build_mist_station(tmp_path)
+    TurnPipeline().run(project_path)
+    TurnPipeline().run(project_path)
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/timeline?from=2")
+
+    entries = response.json()
+    assert [e["turn"] for e in entries] == [2]
+
+
+def test_gm_timeline_limit_caps_entries(tmp_path):
+    project_path = _build_mist_station(tmp_path)
+    TurnPipeline().run(project_path)
+    TurnPipeline().run(project_path)
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/timeline?limit=1")
+
+    entries = response.json()
+    assert [e["turn"] for e in entries] == [1]
+
+
+def test_gm_timeline_unknown_project_is_404(tmp_path):
+    response = _client(tmp_path).get("/api/project/does-not-exist/gm/timeline")
+
+    assert response.status_code == 404
+
+
+# --- gm/turn/{n} -----------------------------------------------------------------------
+
+
+def test_gm_turn_detail_returns_rolls_checks_state_diff(tmp_path):
+    project_path = _build_mist_station(tmp_path)
+    TurnPipeline().run(project_path)
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/turn/1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["turn"] == 1
+    assert data["rolls"] == _load_yaml(turn_dir / "rolls.yaml")
+    assert data["checks"] == _load_yaml(turn_dir / "checks.yaml")
+    assert data["state_diff"] == _load_yaml(turn_dir / "state_diff.yaml")
+
+
+def test_gm_turn_detail_404_on_missing_turn(tmp_path):
+    _build_mist_station(tmp_path)
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/turn/999")
+
+    assert response.status_code == 404
+
+
+def test_gm_turn_detail_unknown_project_is_404(tmp_path):
+    response = _client(tmp_path).get("/api/project/does-not-exist/gm/turn/1")
+
+    assert response.status_code == 404
+
+
+# --- regression: non-GM endpoints must keep the leak boundary intact -------------------
+
+
+def test_non_gm_endpoints_never_leak_secrets_private_mind_or_hidden_facts(tmp_path):
+    project_path = _build_mist_station(tmp_path)
+    TurnPipeline().run(project_path)
+    client = _client(tmp_path)
+
+    status_text = client.get("/api/project/mist_station/status").text
+    narration_text = client.get("/api/project/mist_station/narration").text
+    turns_text = client.get("/api/project/mist_station/turns").text
+
+    endpoints = (
+        ("status", status_text),
+        ("narration", narration_text),
+        ("turns", turns_text),
+    )
+    for label, text in endpoints:
+        assert "secrets" not in text, f"{label} leaked the 'secrets' key"
+        assert "private_mind" not in text, f"{label} leaked the 'private_mind' key"
+        assert "hidden_facts" not in text, f"{label} leaked the 'hidden_facts' key"
+        assert CHAR_002_SECRET not in text, f"{label} leaked a character secret's content"
+        assert CHAR_002_PRIVATE_MIND not in text, f"{label} leaked a character's private_mind"
+        assert SCENE_001_HIDDEN_FACT not in text, f"{label} leaked a scene hidden fact"
