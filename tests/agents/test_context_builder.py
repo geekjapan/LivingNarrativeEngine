@@ -7,6 +7,7 @@ from living_narrative.state.models import (
     RelationshipState,
     SceneState,
     SceneStatus,
+    SpeechProfile,
     Visibility,
     WorldState,
     WorldStateBundle,
@@ -23,6 +24,7 @@ def _bundle() -> WorldStateBundle:
                 role="detective",
                 knowledge={"knows": ["駅にいる"], "believes": [], "does_not_know": []},
                 private_mind=["Aoi private"],
+                speech=SpeechProfile(first_person="私", forbidden_terms=["僕", "俺"]),
             ),
             CharacterState(
                 id="char_002",
@@ -30,6 +32,7 @@ def _bundle() -> WorldStateBundle:
                 role="suspect",
                 private_mind=["Ren plans betrayal"],
                 secrets=["Ren secret debt"],
+                speech=SpeechProfile(first_person="俺", forbidden_terms=["僕"]),
             ),
         ],
         scenes=[
@@ -75,6 +78,15 @@ def test_character_context_excludes_other_private_mind():
     context = build_character_context(_bundle(), "char_001")
 
     assert "Ren plans betrayal" not in context.model_dump_json()
+
+
+def test_character_context_includes_own_speech_profile():
+    # Only char_001's own speech profile is present; other characters are never embedded
+    # in CharacterAgentInput at all (scoped_state is a copy of this character alone).
+    context = build_character_context(_bundle(), "char_001")
+
+    assert context.scoped_state.speech.first_person == "私"
+    assert context.scoped_state.speech.forbidden_terms == ["僕", "俺"]
 
 
 def test_character_context_excludes_hidden_from_event():

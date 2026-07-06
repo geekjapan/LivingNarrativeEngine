@@ -28,3 +28,8 @@ inventory:
   - 懐中電灯
 constraints: {}
 status: alive
+speech:
+  first_person: 私
+  forbidden_terms:
+    - 僕
+    - 俺

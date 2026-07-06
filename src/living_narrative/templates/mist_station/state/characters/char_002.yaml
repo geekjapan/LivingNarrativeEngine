@@ -29,3 +29,7 @@ private_mind:
 inventory: []
 constraints: {}
 status: alive
+speech:
+  first_person: 俺
+  forbidden_terms:
+    - 僕

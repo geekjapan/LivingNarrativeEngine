@@ -26,3 +26,8 @@ inventory:
   - 古い鍵
 constraints: {}
 status: alive
+speech:
+  first_person: 私
+  forbidden_terms:
+    - 僕
+    - 俺

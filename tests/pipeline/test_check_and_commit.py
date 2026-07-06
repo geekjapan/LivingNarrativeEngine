@@ -2,6 +2,7 @@ import yaml
 
 from living_narrative.pipeline import TurnPipeline, TurnStatus, default_registry
 from living_narrative.pipeline.models import CheckResult
+from living_narrative.state.models import Event, Visibility
 
 
 def _error_check(context, narration_text, resolved_events, diff_candidate):
@@ -55,3 +56,38 @@ def test_pacing_stall_warn_does_not_block_auto_apply(tmp_path, build_project):
     pacing_findings = [f for f in findings if f["source"] == "pacing_check"]
     assert pacing_findings
     assert pacing_findings[0]["severity"] == "warn"
+
+
+def test_speech_register_warn_does_not_block_auto_apply(tmp_path, build_project):
+    """Issue 012: a dialogue event using one of the character's own forbidden_terms
+    (e.g. the wrong first-person pronoun) is only a warn -- auto-apply still commits."""
+    project_path = build_project(
+        tmp_path, speech={"first_person": "私", "forbidden_terms": ["僕", "俺"]}
+    )
+    registry = default_registry()
+
+    def _resolve_with_forbidden_term_dialogue(
+        context, world_events, action_candidates, allocate_event_id, record_roll
+    ):
+        return [
+            Event(
+                id=allocate_event_id(),
+                turn=context.turn,
+                type="character_dialogue",
+                text="僕はここにいる",
+                visibility=Visibility.READER,
+                effects={"character_id": "char_001"},
+            )
+        ]
+
+    registry.register("resolve", _resolve_with_forbidden_term_dialogue)
+
+    result = TurnPipeline(registry=registry).run(project_path, commit_mode="auto")
+
+    assert result.status == TurnStatus.APPLIED
+    checks = yaml.safe_load((result.turn_dir / "checks.yaml").read_text(encoding="utf-8"))
+    findings = checks["findings"] if isinstance(checks, dict) else checks
+    speech_findings = [f for f in findings if f["source"] == "speech_register_check"]
+    assert speech_findings
+    assert speech_findings[0]["severity"] == "warn"
+    assert speech_findings[0]["related_ids"] == ["event_0001"]

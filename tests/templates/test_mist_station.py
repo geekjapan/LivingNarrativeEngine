@@ -129,6 +129,26 @@ def test_world_has_pacing_config(tmp_path):
     assert bundle.world.pacing.pressure_boost == 4
 
 
+def test_every_character_has_a_speech_profile_with_a_first_person_pronoun(tmp_path):
+    """Issue 012: mist_station defines each character's first-person pronoun and the
+    other pronouns forbidden to them, so the speech-register checker has real targets."""
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    expected = {
+        "char_001": ("私", {"僕", "俺"}),
+        "char_002": ("俺", {"僕"}),
+        "char_003": ("私", {"僕", "俺"}),
+        "char_004": ("俺", {"僕"}),
+    }
+    for character in bundle.characters:
+        first_person, forbidden = expected[character.id]
+        assert character.speech.first_person == first_person
+        assert set(character.speech.forbidden_terms) == forbidden
+        assert character.speech.first_person not in character.speech.forbidden_terms
+
+
 def test_every_character_emotions_baseline_matches_its_initial_emotions(tmp_path):
     """Issue 010: each character's baseline is set to its starting emotion values so decay
     is a no-op until the LLM actually moves emotions away from them."""

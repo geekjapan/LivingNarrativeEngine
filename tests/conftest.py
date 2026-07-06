@@ -23,6 +23,7 @@ def _build_project(
     emotions_baseline: dict[str, int] | None = None,
     emotion_decay_per_turn: int = 0,
     pacing: dict[str, int] | None = None,
+    speech: dict[str, Any] | None = None,
 ) -> Path:
     """A minimal workspace with one character and one scene."""
     project_dir = tmp_path / "project"
@@ -34,6 +35,8 @@ def _build_project(
         character["emotions"] = emotions
     if emotions_baseline is not None:
         character["emotions_baseline"] = emotions_baseline
+    if speech is not None:
+        character["speech"] = speech
     (state_dir / "characters" / "char_001.yaml").write_text(
         yaml.safe_dump(character, allow_unicode=True), encoding="utf-8"
     )

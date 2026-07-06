@@ -230,6 +230,14 @@ class CharacterKnowledge(StateBaseModel):
     does_not_know: list[str] = Field(default_factory=list)
 
 
+class SpeechProfile(StateBaseModel):
+    """Issue 012: this character's speech register, so first-person pronoun errors and
+    other register slips can be prevented (prompt) and detected (checker)."""
+
+    first_person: str | None = None
+    forbidden_terms: list[str] = Field(default_factory=list)
+
+
 class CharacterState(StateBaseModel):
     """Character state. ``private_mind`` is visible only to this character."""
 
@@ -248,6 +256,9 @@ class CharacterState(StateBaseModel):
     inventory: list[str] = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
     status: CharacterStatus = CharacterStatus.ALIVE
+    # Issue 012: speech register (first-person pronoun, forbidden terms). Default is an
+    # empty profile (back-compat) that never affects prompts or checkers.
+    speech: SpeechProfile = Field(default_factory=SpeechProfile)
 
 
 class RelationshipState(StateBaseModel):

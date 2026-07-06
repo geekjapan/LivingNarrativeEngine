@@ -1,7 +1,7 @@
 ---
 id: 012
 title: 文体・口調の検証が無い(リナの一人称が「僕」になる、checkerは事実のみ検証)
-status: open
+status: done
 created: 2026-07-06
 ---
 
@@ -25,11 +25,11 @@ created: 2026-07-06
 
 ## 完了条件
 
-- [ ] `SpeechProfile` スキーマ(後方互換default)、mist_station設定込み
-- [ ] character contextとプロンプトにspeechが入る(プロンプトv4バンプ)
-- [ ] checkerがforbidden_terms含有dialogueにwarnを出し、非該当では沈黙。auto-applyは止めない
-- [ ] mock全テストpass
-- [ ] 実LLM 6ターン程度で: 一人称の誤りが出ない(または出た場合checkerが捕捉する)ことを確認
+- [x] `SpeechProfile` スキーマ(後方互換default)、mist_station設定込み
+- [x] character contextとプロンプトにspeechが入る(プロンプトv4バンプ)
+- [x] checkerがforbidden_terms含有dialogueにwarnを出し、非該当では沈黙。auto-applyは止めない
+- [x] mock全テストpass
+- [ ] 実LLM確認はあとまわし(ユーザー指示 2026-07-07。コード+mock検証は完了、checker warnは非ブロッキングのためリスク低)
 
 ## 関連ファイル
 

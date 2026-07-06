@@ -22,6 +22,7 @@ from living_narrative.state.models import (
     RelationshipState,
     SceneState,
     SceneStatus,
+    SpeechProfile,
     ThreatStage,
     ThreatTrack,
     Visibility,
@@ -774,3 +775,31 @@ def test_world_threat_pressure_set_diff_unknown_threat_id_raises():
                 ],
             ),
         )
+
+
+# Issue 012: speech register profile (first_person / forbidden_terms on CharacterState).
+
+
+def test_speech_profile_defaults_to_no_first_person_and_empty_forbidden_terms():
+    profile = SpeechProfile()
+
+    assert profile.first_person is None
+    assert profile.forbidden_terms == []
+
+
+def test_character_state_defaults_to_an_empty_speech_profile():
+    character = CharacterState(id="char_001", name="Aoi", role="lead")
+
+    assert character.speech == SpeechProfile()
+
+
+def test_character_state_accepts_a_speech_profile():
+    character = CharacterState(
+        id="char_001",
+        name="Aoi",
+        role="lead",
+        speech=SpeechProfile(first_person="私", forbidden_terms=["僕", "俺"]),
+    )
+
+    assert character.speech.first_person == "私"
+    assert character.speech.forbidden_terms == ["僕", "俺"]
