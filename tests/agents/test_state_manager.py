@@ -1064,3 +1064,45 @@ def test_multiple_open_thread_updates_get_distinct_ids():
 
     thread_changes = [c for c in result.diff.changes if c.target == "threads"]
     assert [c.value["id"] for c in thread_changes] == ["thread_000101", "thread_000102"]
+
+
+# --- Issue 015: memory_summary_update -----------------------------------------------------
+
+
+def test_memory_summary_update_adds_a_memory_change_and_applies():
+    context = _context()
+    context.turn = 10
+
+    result = build_state_diff(
+        context, [], [], _ids(), memory_summary_update="これまでの物語の要約その1。"
+    )
+
+    memory_changes = [c for c in result.diff.changes if c.target == "memory"]
+    assert len(memory_changes) == 1
+    change = memory_changes[0]
+    assert change.op == "add"
+    assert change.path == ""
+    assert change.value["id"] == "memory_0010"
+    assert change.value["up_to_turn"] == 10
+    assert change.value["text"] == "これまでの物語の要約その1。"
+    assert change.visibility == Visibility.READER
+    assert result.rejected_changes == []
+
+    applied = apply_state_diff(context.bundle, result.diff)
+    assert len(applied.bundle.memory_summaries) == 1
+    assert applied.bundle.memory_summaries[0].text == "これまでの物語の要約その1。"
+
+    restored = apply_state_diff(applied.bundle, applied.inverse_diff).bundle
+    assert restored.memory_summaries == []
+
+
+def test_blank_memory_summary_update_is_a_no_op():
+    result = build_state_diff(_context(), [], [], _ids(), memory_summary_update="")
+
+    assert [c for c in result.diff.changes if c.target == "memory"] == []
+
+
+def test_none_memory_summary_update_is_a_no_op():
+    result = build_state_diff(_context(), [], [], _ids(), memory_summary_update=None)
+
+    assert [c for c in result.diff.changes if c.target == "memory"] == []

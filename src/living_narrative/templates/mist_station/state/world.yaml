@@ -12,6 +12,7 @@ emotion_decay_per_turn: 5
 pacing:
   stall_window: 3
   pressure_boost: 4
+memory_summary_interval: 10
 background_events:
   - text: 静かな時間が流れる。ホームの縁で霧がゆっくりと渦を巻いている
     weight: 6

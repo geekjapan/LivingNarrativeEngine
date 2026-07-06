@@ -4,6 +4,7 @@ from living_narrative.state.models import (
     Event,
     GmVaultEntry,
     HiddenFact,
+    MemorySummary,
     RelationshipState,
     SceneState,
     SceneStatus,
@@ -157,6 +158,26 @@ def test_character_context_includes_related_relationships():
 
     assert len(context.relationships) == 1
     assert context.relationships[0].suspicion == 90
+
+
+def test_character_context_includes_latest_memory_summary():
+    bundle = _bundle()
+    bundle.memory_summaries = [
+        MemorySummary(id="memory_0005", up_to_turn=5, text="5ターン目までの要約"),
+        MemorySummary(id="memory_0010", up_to_turn=10, text="10ターン目までの要約"),
+    ]
+
+    context = build_character_context(bundle, "char_001")
+
+    assert "10ターン目までの要約" in context.visible_facts
+    assert "5ターン目までの要約" not in context.visible_facts
+
+
+def test_character_context_omits_memory_summary_when_none_exist():
+    context = build_character_context(_bundle(), "char_001")
+
+    assert "" not in context.visible_facts
+    assert all("要約" not in fact for fact in context.visible_facts)
 
 
 def test_character_context_excludes_facts_from_a_pending_scene():

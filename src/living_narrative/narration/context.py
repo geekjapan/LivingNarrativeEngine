@@ -5,7 +5,7 @@ from typing import Any
 from living_narrative.intervention.reveal import must_not_reveal_texts
 from living_narrative.narration.models import NarratorContext, OpenThreadInfo
 from living_narrative.pipeline.context import TurnContext
-from living_narrative.state.models import Event, SceneStatus, Visibility
+from living_narrative.state.models import Event, SceneStatus, Visibility, latest_memory_summary
 
 _READER_VISIBLE = (Visibility.READER, Visibility.CANON)
 
@@ -42,6 +42,26 @@ def build_narrator_context(
         for thread in context.bundle.unresolved_threads
         if thread.status != "resolved"
     ]
+    # 015: memory-summary due-ness and its input window are both derivable from context alone
+    # (turn/world.memory_summary_interval/timeline), so nothing extra needs threading through
+    # driver.py's build_narrator_context call.
+    interval = context.bundle.world.memory_summary_interval
+    memory_summary_due = interval > 0 and context.turn % interval == 0
+    summary_window_events: list[str] = []
+    if memory_summary_due:
+        # Lazy import: mirrors driver.py's D108/D113 rationale — narration must not depend on
+        # agents at module import time (agents already depends on narration.models).
+        from living_narrative.agents.event_history import load_recent_events
+
+        window_events = load_recent_events(
+            context.paths.runs, context.bundle.timeline, max_turns=interval
+        )
+        summary_window_events = [
+            event.text
+            for event in window_events
+            if is_reader_visible_event(event) and event.text not in blocked
+        ]
+    memory_summary = latest_memory_summary(context.bundle.memory_summaries)
     return NarratorContext(
         turn=context.turn,
         reader_state_facts=reader_state_facts,
@@ -49,4 +69,7 @@ def build_narrator_context(
         reader_visible_events=reader_visible_events,
         scene_summary=scene_summary,
         open_threads=open_threads,
+        memory_summary=memory_summary,
+        memory_summary_due=memory_summary_due,
+        summary_window_events=summary_window_events,
     )

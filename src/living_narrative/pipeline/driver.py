@@ -261,6 +261,7 @@ class TurnPipeline:
                     character_outputs=character_outputs,
                     scene_summary_update=narration.scene_summary_update,
                     thread_updates=narration.thread_updates,
+                    memory_summary_update=narration.memory_summary_update,
                 )
                 if build_diff_output.synthetic_events:
                     resolved_events = [*resolved_events, *build_diff_output.synthetic_events]

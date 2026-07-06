@@ -19,6 +19,7 @@ from living_narrative.state.models import (
     Event,
     GmVaultEntry,
     HiddenFact,
+    MemorySummary,
     RelationshipState,
     SceneState,
     SceneStatus,
@@ -246,6 +247,42 @@ def test_state_store_logs_unknown_field_warning(tmp_path, caplog):
     StateStore.load(state_dir)
 
     assert any("favorite_color" in record.message for record in caplog.records)
+
+
+def test_memory_summary_interval_defaults_to_zero_and_rejects_negative():
+    world = WorldState(id="world_001", name="x", summary="y", laws=[], parameters={})
+    assert world.memory_summary_interval == 0
+    with pytest.raises(ValidationError):
+        WorldState(
+            id="world_001",
+            name="x",
+            summary="y",
+            laws=[],
+            parameters={},
+            memory_summary_interval=-1,
+        )
+
+
+def test_memory_summaries_round_trip_through_store(tmp_path):
+    state_dir = tmp_path / "state"
+    populated = bundle().model_copy(
+        update={
+            "memory_summaries": [MemorySummary(id="memory_0010", up_to_turn=10, text="要約その1")]
+        }
+    )
+    StateStore.save(populated, state_dir)
+
+    loaded = StateStore.load(state_dir)
+
+    assert loaded.memory_summaries == populated.memory_summaries
+
+
+def test_memory_summaries_yaml_missing_loads_empty_collection(tmp_path):
+    state_dir = tmp_path / "state"
+    StateStore.save(bundle(), state_dir)
+    (state_dir / "memory_summaries.yaml").unlink()
+
+    assert StateStore.load(state_dir).memory_summaries == []
 
 
 def test_state_store_preserves_unknown_field_on_save(tmp_path):
@@ -552,6 +589,31 @@ def test_remove_absent_id_is_rejected():
                 ],
             ),
         )
+
+
+def test_memory_summary_add_and_rollback():
+    result = apply_state_diff(
+        bundle(),
+        StateDiff(
+            id="diff_001",
+            turn=10,
+            changes=[
+                StateDiffChange(
+                    target="memory",
+                    op="add",
+                    path="",
+                    value={"id": "memory_0010", "up_to_turn": 10, "text": "要約その1"},
+                    visibility=Visibility.READER,
+                )
+            ],
+        ),
+    )
+
+    assert len(result.bundle.memory_summaries) == 1
+    assert result.bundle.memory_summaries[0].text == "要約その1"
+
+    restored = apply_state_diff(result.bundle, result.inverse_diff).bundle
+    assert restored.memory_summaries == []
 
 
 def test_multi_turn_rollback_applies_inverse_diffs_in_descending_turn_order():

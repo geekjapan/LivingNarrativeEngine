@@ -39,6 +39,12 @@ class NarratorContext(BaseModel):
     reader_visible_events: list[Event] = Field(default_factory=list)
     scene_summary: str = ""
     open_threads: list[OpenThreadInfo] = Field(default_factory=list)
+    # Issue 015: latest memory-summary text (empty when none yet), always available for
+    # consumption like scene_summary; memory_summary_due/summary_window_events are only
+    # populated on turns where the narrator is asked to (re)write it.
+    memory_summary: str = ""
+    memory_summary_due: bool = False
+    summary_window_events: list[str] = Field(default_factory=list)
 
 
 class NarrationResult(BaseModel):
@@ -46,3 +52,4 @@ class NarrationResult(BaseModel):
     style: str
     scene_summary_update: str | None = None
     thread_updates: list[ThreadUpdateCandidate] = Field(default_factory=list)
+    memory_summary_update: str | None = None

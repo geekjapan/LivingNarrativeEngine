@@ -48,11 +48,19 @@ note に進展の要約を日本語で書く。
 優先して検討する。
 - 進展も決着もない糸は thread_updates に含めない。無理に埋めない。
 
+## 通史要約(長期記憶)
+- summary_request が渡されたターンだけ、memory_summary_update に3〜5文の日本語で通史要約を書く。\
+summary_request.previous_summary(あれば)を引き継ぎ、summary_request.window_events \
+(直近の読者可視な出来事)を統合した、物語全体のこれまでの流れを書く。reader可視情報だけを\
+根拠にする。
+- summary_request が渡されないターンは memory_summary_update を null のままにする(無理に書かない)。
+
 ## 出力
 - prose フィールドに完成した地文だけを入れる。
 - scene_summary_update フィールドに、このターン終了時点での場面の現在状況を日本語1〜2文で書く\
 (このターンで何が変わったかを含める)。reader可視情報だけを根拠にする。
 - thread_updates フィールドに、上記の糸の更新をリストで入れる(0件でもよい)。
+- memory_summary_update フィールドは、summary_request が渡されたときだけ書く。それ以外は null。
 """
 
 
@@ -60,12 +68,13 @@ class LLMNarratorOutput(BaseModel):
     prose: str = Field(min_length=1)
     scene_summary_update: str | None = None
     thread_updates: list[ThreadUpdateCandidate] = Field(default_factory=list)
+    memory_summary_update: str | None = None
 
 
 def _narrator_payload(
     context: NarratorContext, project: ProjectConfig, mood: str, tone_control: str | None
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "genre": project.genre,
         "tone": project.tone,
         "mood": mood,
@@ -86,7 +95,16 @@ def _narrator_payload(
             }
             for thread in context.open_threads
         ],
+        "memory_summary": context.memory_summary,
     }
+    # 015: summary_request is only present on turns where a memory summary is due — its
+    # absence is the signal to the narrator to leave memory_summary_update null.
+    if context.memory_summary_due:
+        payload["summary_request"] = {
+            "previous_summary": context.memory_summary,
+            "window_events": context.summary_window_events,
+        }
+    return payload
 
 
 def run_narrate_phase(
@@ -132,11 +150,15 @@ def run_narrate_phase(
         }
     assert isinstance(output, LLMNarratorOutput)
     summary_update = output.scene_summary_update.strip() if output.scene_summary_update else None
+    memory_summary_update = (
+        output.memory_summary_update.strip() if output.memory_summary_update else None
+    )
     result = NarrationResult(
         text=output.prose.strip(),
         style="novel",
         scene_summary_update=summary_update or None,
         thread_updates=output.thread_updates,
+        memory_summary_update=memory_summary_update or None,
     )
     return result, {
         "mode": "llm",

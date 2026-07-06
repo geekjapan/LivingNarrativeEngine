@@ -217,6 +217,103 @@ def test_llm_narrator_payload_includes_open_threads_with_turns_open():
     ]
 
 
+def test_llm_narrator_payload_always_includes_current_memory_summary():
+    gateway = FakeGateway(result=LLMNarratorOutput(prose="霧の底で、彼は歩き出した。"))
+    context = _context()
+    context.memory_summary = "これまでのあらすじ。"
+
+    run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=context,
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    payload = json.loads(gateway.calls[0]["messages"][1]["content"])
+    assert payload["memory_summary"] == "これまでのあらすじ。"
+    assert "summary_request" not in payload
+
+
+def test_llm_narrator_payload_includes_summary_request_only_when_due():
+    gateway = FakeGateway(result=LLMNarratorOutput(prose="霧の底で、彼は歩き出した。"))
+    context = _context()
+    context.memory_summary = "これまでのあらすじ。"
+    context.memory_summary_due = True
+    context.summary_window_events = ["出来事A", "出来事B"]
+
+    run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=context,
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    payload = json.loads(gateway.calls[0]["messages"][1]["content"])
+    assert payload["summary_request"] == {
+        "previous_summary": "これまでのあらすじ。",
+        "window_events": ["出来事A", "出来事B"],
+    }
+
+
+def test_llm_narrator_output_carries_memory_summary_update():
+    gateway = FakeGateway(
+        result=LLMNarratorOutput(
+            prose="霧の底で、彼は歩き出した。",
+            memory_summary_update="これまでの物語の通史要約。",
+        )
+    )
+    context = _context()
+    context.memory_summary_due = True
+
+    result, record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=context,
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert result.memory_summary_update == "これまでの物語の通史要約。"
+    assert record["output"]["memory_summary_update"] == "これまでの物語の通史要約。"
+
+
+def test_llm_narrator_blank_memory_summary_update_normalizes_to_none():
+    gateway = FakeGateway(
+        result=LLMNarratorOutput(prose="霧の底で、彼は歩き出した。", memory_summary_update="   ")
+    )
+
+    result, _record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=_context(),
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert result.memory_summary_update is None
+
+
+def test_llm_narrator_defaults_to_no_memory_summary_update():
+    gateway = FakeGateway(result=LLMNarratorOutput(prose="霧の底で、彼は歩き出した。"))
+
+    result, _record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=_context(),
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert result.memory_summary_update is None
+
+
 def test_mechanical_renderer_used_without_narrator_binding():
     gateway = FakeGateway()
 
@@ -234,6 +331,7 @@ def test_mechanical_renderer_used_without_narrator_binding():
     assert "彼は歩き出した" in result.text
     assert result.scene_summary_update is None
     assert result.thread_updates == []
+    assert result.memory_summary_update is None
 
 
 def test_log_style_stays_mechanical_even_with_binding():
@@ -301,3 +399,4 @@ def test_llm_failure_falls_back_to_mechanical_renderer(error):
     assert result.style == "novel"
     assert result.scene_summary_update is None
     assert result.thread_updates == []
+    assert result.memory_summary_update is None

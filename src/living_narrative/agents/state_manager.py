@@ -42,6 +42,7 @@ def build_state_diff(
     character_outputs: list[tuple[CharacterId, CharacterAgentOutput]] | None = None,
     scene_summary_update: str | None = None,
     thread_updates: list[ThreadUpdateCandidate] | None = None,
+    memory_summary_update: str | None = None,
 ) -> BuildDiffOutput:
     allocate_event_id = allocate_event_id or _default_event_id_allocator()
     must_not_reveal = must_not_reveal_texts(context, interventions)
@@ -117,6 +118,23 @@ def build_state_diff(
     changes.extend(thread_changes)
     rejected.extend(thread_rejected)
     synthetic_events.extend(thread_events)
+
+    # 015: ナレーターのmemory_summary_updateをmemoryコレクションへのadd diffに変換(leak-safe:
+    # 007/014と同根拠 — ナレーターはreader可視情報しか見ていないので要約内容も漏洩しない)。
+    if memory_summary_update:
+        changes.append(
+            StateDiffChange(
+                target="memory",
+                op="add",
+                path="",
+                value={
+                    "id": f"memory_{context.turn:04d}",
+                    "up_to_turn": context.turn,
+                    "text": memory_summary_update,
+                },
+                visibility=Visibility.READER,
+            )
+        )
 
     timeline_event_ids = [event.id for event in resolved_events] + [
         event.id for event in synthetic_events

@@ -41,6 +41,7 @@ RollId = id_type("roll")
 ThreadId = id_type("thread")
 FactId = id_type("fact")
 ThreatId = id_type("threat")
+MemoryId = id_type("memory")
 
 _BINDING_KEY_FIXED = {
     "narrator",
@@ -208,6 +209,9 @@ class WorldState(StateBaseModel):
     emotion_decay_per_turn: Annotated[int, Field(ge=0)] = 0
     # Issue 011: narrative-stall detection/response tuning.
     pacing: PacingConfig = Field(default_factory=PacingConfig)
+    # Issue 015: turn interval at which the narrator is asked to fold reader-visible history
+    # into a running memory summary (0 = off, back-compat).
+    memory_summary_interval: Annotated[int, Field(ge=0)] = 0
 
 
 class FactionState(StateBaseModel):
@@ -332,6 +336,21 @@ class UnresolvedThread(StateBaseModel):
     opened_turn: int | None = None
 
 
+class MemorySummary(StateBaseModel):
+    """Issue 015: a narrator-written 通史要約 covering reader-visible history up to a turn."""
+
+    id: MemoryId
+    up_to_turn: int
+    text: str
+
+
+def latest_memory_summary(summaries: list[MemorySummary]) -> str:
+    """The most recently-covering memory summary's text, or ``""`` when none exist yet."""
+    if not summaries:
+        return ""
+    return max(summaries, key=lambda summary: summary.up_to_turn).text
+
+
 class Event(StateBaseModel):
     id: EventId
     turn: int
@@ -370,3 +389,4 @@ class WorldStateBundle(StateBaseModel):
     gm_vault: list[GmVaultEntry] = Field(default_factory=list)
     timeline: list[TimelineEntry] = Field(default_factory=list)
     unresolved_threads: list[UnresolvedThread] = Field(default_factory=list)
+    memory_summaries: list[MemorySummary] = Field(default_factory=list)

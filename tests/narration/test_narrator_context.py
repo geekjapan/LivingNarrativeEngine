@@ -14,13 +14,35 @@ def _write_unresolved_threads(project_path, threads: list[dict]) -> None:
     )
 
 
-def _context(project_path, resolved_events) -> TurnContext:
+def _write_memory_summaries(project_path, summaries: list[dict]) -> None:
+    state_dir = project_path.parent / "workspace" / "state"
+    (state_dir / "memory_summaries.yaml").write_text(
+        yaml.safe_dump(summaries, allow_unicode=True), encoding="utf-8"
+    )
+
+
+def _write_turn_events(paths, turn: int, events: list[dict]) -> None:
+    turn_dir = paths.runs / f"turn_{turn:04d}"
+    turn_dir.mkdir(parents=True, exist_ok=True)
+    (turn_dir / "events.yaml").write_text(
+        yaml.safe_dump(events, allow_unicode=True), encoding="utf-8"
+    )
+
+
+def _write_timeline(project_path, entries: list[dict]) -> None:
+    state_dir = project_path.parent / "workspace" / "state"
+    (state_dir / "timeline.yaml").write_text(
+        yaml.safe_dump(entries, allow_unicode=True), encoding="utf-8"
+    )
+
+
+def _context(project_path, resolved_events, turn: int = 1) -> TurnContext:
     read = load_project(project_path)
     bundle = StateStore.load(read.paths.state)
     from living_narrative.random.engine import RandomEngine
 
     return TurnContext(
-        turn=1,
+        turn=turn,
         project=read.config,
         paths=read.paths,
         bundle=bundle,
@@ -141,6 +163,96 @@ def test_no_unresolved_threads_yields_empty_open_threads(tmp_path, build_project
     narrator_context = build_narrator_context(_context(project_path, []), [])
 
     assert narrator_context.open_threads == []
+
+
+# --- Issue 015: memory summary ------------------------------------------------------------
+
+
+def test_memory_summary_due_false_by_default_when_interval_is_zero(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+
+    narrator_context = build_narrator_context(_context(project_path, [], turn=10), [])
+
+    assert narrator_context.memory_summary_due is False
+    assert narrator_context.summary_window_events == []
+
+
+def test_memory_summary_due_true_when_turn_is_a_multiple_of_the_interval(tmp_path, build_project):
+    project_path = build_project(tmp_path, memory_summary_interval=5)
+
+    due_context = build_narrator_context(_context(project_path, [], turn=5), [])
+    not_due_context = build_narrator_context(_context(project_path, [], turn=4), [])
+
+    assert due_context.memory_summary_due is True
+    assert not_due_context.memory_summary_due is False
+
+
+def test_summary_window_events_cover_the_interval_and_exclude_gm_only(tmp_path, build_project):
+    project_path = build_project(tmp_path, memory_summary_interval=2)
+    read = load_project(project_path)
+    _write_timeline(
+        project_path,
+        [
+            {"turn": 1, "event_ids": ["event_0001"]},
+            {"turn": 2, "event_ids": ["event_0002"]},
+            {"turn": 3, "event_ids": ["event_0003"]},
+            {"turn": 4, "event_ids": ["event_0004"]},
+        ],
+    )
+    _write_turn_events(
+        read.paths,
+        3,
+        [
+            {
+                "id": "event_0003",
+                "turn": 3,
+                "type": "action",
+                "text": "3ターン目の出来事",
+                "visibility": "reader",
+            }
+        ],
+    )
+    _write_turn_events(
+        read.paths,
+        4,
+        [
+            {
+                "id": "event_0004",
+                "turn": 4,
+                "type": "secret",
+                "text": "隠された出来事",
+                "visibility": "gm_only",
+            }
+        ],
+    )
+
+    narrator_context = build_narrator_context(_context(project_path, [], turn=4), [])
+
+    assert narrator_context.memory_summary_due is True
+    assert narrator_context.summary_window_events == ["3ターン目の出来事"]
+
+
+def test_memory_summary_defaults_to_empty_string(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+
+    narrator_context = build_narrator_context(_context(project_path, []), [])
+
+    assert narrator_context.memory_summary == ""
+
+
+def test_memory_summary_carries_the_latest_by_up_to_turn(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _write_memory_summaries(
+        project_path,
+        [
+            {"id": "memory_0005", "up_to_turn": 5, "text": "5ターン目までの要約"},
+            {"id": "memory_0010", "up_to_turn": 10, "text": "10ターン目までの要約"},
+        ],
+    )
+
+    narrator_context = build_narrator_context(_context(project_path, []), [])
+
+    assert narrator_context.memory_summary == "10ターン目までの要約"
 
 
 def test_pending_scene_facts_and_summary_are_excluded(tmp_path, build_project):

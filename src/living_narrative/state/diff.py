@@ -14,6 +14,7 @@ from living_narrative.state.ids import id_type, validate_relationship_key
 from living_narrative.state.models import (
     CanonEntry,
     GmVaultEntry,
+    MemorySummary,
     ReaderStateEntry,
     TimelineEntry,
     UnresolvedThread,
@@ -33,12 +34,14 @@ Target = Literal[
     "relationship",
     "timeline",
     "threads",
+    "memory",
 ]
 Op = Literal["add", "remove", "set", "delta"]
-COLLECTION_TARGETS = {"canon", "reader_state", "gm_vault", "timeline", "threads"}
-# 014: "threads" is the diff-target name for the bundle's `unresolved_threads` collection
-# (kept short/stable in diff artifacts; the attribute name is the longer bundle field).
-_TARGET_ATTR = {"threads": "unresolved_threads"}
+COLLECTION_TARGETS = {"canon", "reader_state", "gm_vault", "timeline", "threads", "memory"}
+# 014/015: "threads"/"memory" are the diff-target names for the bundle's `unresolved_threads`/
+# `memory_summaries` collections (kept short/stable in diff artifacts; the attribute names are
+# the longer bundle field names).
+_TARGET_ATTR = {"threads": "unresolved_threads", "memory": "memory_summaries"}
 
 
 class StateDiffError(ValueError):
@@ -318,6 +321,7 @@ def _model_for_target(target: str) -> type[BaseModel]:
         "gm_vault": GmVaultEntry,
         "timeline": TimelineEntry,
         "threads": UnresolvedThread,
+        "memory": MemorySummary,
     }[target]
 
 

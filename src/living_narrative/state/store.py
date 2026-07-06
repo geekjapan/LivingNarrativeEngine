@@ -16,6 +16,7 @@ from living_narrative.state.models import (
     CharacterState,
     FactionState,
     GmVaultEntry,
+    MemorySummary,
     ReaderStateEntry,
     RelationshipState,
     SceneState,
@@ -71,6 +72,14 @@ class StateStore:
             UnresolvedThread,
             issues,
         )
+        # Issue 015: optional like factions.yaml (back-compat, loads empty when absent) since
+        # existing projects predate the memory-summary feature and interval defaults to 0/off.
+        memory_summaries = _load_list(
+            state_dir / "memory_summaries.yaml",
+            MemorySummary,
+            issues,
+            optional=True,
+        )
 
         if issues:
             raise StateLoadError(issues)
@@ -86,6 +95,7 @@ class StateStore:
             gm_vault=gm_vault,
             timeline=timeline,
             unresolved_threads=unresolved_threads,
+            memory_summaries=memory_summaries,
         )
         _warn_unknowns(bundle, state_dir)
         return bundle
@@ -110,6 +120,10 @@ class StateStore:
         _atomic_yaml(
             state_dir / "unresolved_threads.yaml",
             [_dump_model(item) for item in bundle.unresolved_threads],
+        )
+        _atomic_yaml(
+            state_dir / "memory_summaries.yaml",
+            [_dump_model(item) for item in bundle.memory_summaries],
         )
         _save_dir(state_dir / "characters", bundle.characters)
         _save_dir(state_dir / "scenes", bundle.scenes)

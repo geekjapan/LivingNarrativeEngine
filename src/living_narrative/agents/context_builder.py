@@ -11,6 +11,7 @@ from living_narrative.state.models import (
     SceneStatus,
     Visibility,
     WorldStateBundle,
+    latest_memory_summary,
 )
 
 DEFAULT_EVENT_LIMIT = 20
@@ -59,6 +60,9 @@ def build_character_context(
         if directive.get("character_id") in (None, character_id)
         or directive.get("target_id") == character_id
     ]
+    # 015: the latest memory summary is reader-visible by construction (narrator-authored from
+    # reader-visible material only), so handing it to the character is leak-safe.
+    memory_summary = latest_memory_summary(bundle.memory_summaries)
     return CharacterAgentInput(
         character_id=character_id,
         scoped_state=character.model_copy(deep=True),
@@ -66,6 +70,7 @@ def build_character_context(
         visible_facts=[
             *character.knowledge.knows,
             *scene_facts,
+            *([memory_summary] if memory_summary else []),
         ],
         relationships=relationships,
         directives=character_directives,
