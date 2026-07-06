@@ -27,6 +27,11 @@ from living_narrative.web.service import (
     ProjectNotFoundError,
     collect_narration,
     collect_structured_narration,
+    get_gm_characters,
+    get_gm_threads,
+    get_gm_timeline,
+    get_gm_turn_detail,
+    get_gm_world,
     get_interventions,
     get_permissions,
     get_run_status,
@@ -212,5 +217,68 @@ def create_app(project_root: Path) -> FastAPI:
         except ProjectNotFoundError:
             raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
         return {"history": info.history, "last_turn": info.last_turn}
+
+    @app.get("/api/project/{name}/gm/characters")
+    def api_gm_characters(name: str) -> list[dict]:
+        """Omniscient character dump (emotions/goals/knowledge/secrets/private_mind/speech/
+        status + each character's outgoing relationships) for the GM pane (docs/issues/024)."""
+        project_yaml = _project_yaml(name)
+        try:
+            return get_gm_characters(project_yaml)
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+
+    @app.get("/api/project/{name}/gm/world")
+    def api_gm_world(name: str) -> dict:
+        """World summary/parameters, threat pressure tracks (with next uncrossed stage),
+        pacing config, and full scene state incl. ``hidden_facts`` (docs/issues/024)."""
+        project_yaml = _project_yaml(name)
+        try:
+            info = get_gm_world(project_yaml)
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+        return {
+            "world": info.world,
+            "threats": info.threats,
+            "pacing": info.pacing,
+            "scenes": info.scenes,
+        }
+
+    @app.get("/api/project/{name}/gm/timeline")
+    def api_gm_timeline(
+        name: str,
+        from_turn: int = Query(1, alias="from", ge=1),
+        limit: int = Query(50, ge=1),
+    ) -> list[dict]:
+        """Timeline entries from ``from`` turn onward (up to ``limit``), each with its
+        hydrated ``events.yaml`` bodies incl. visibility (docs/issues/024)."""
+        project_yaml = _project_yaml(name)
+        try:
+            return get_gm_timeline(project_yaml, from_turn, limit)
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+
+    @app.get("/api/project/{name}/gm/threads")
+    def api_gm_threads(name: str) -> dict:
+        """``unresolved_threads`` (full fields) + ``memory_summaries`` (docs/issues/024)."""
+        project_yaml = _project_yaml(name)
+        try:
+            info = get_gm_threads(project_yaml)
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+        return {"threads": info.threads, "memory_summaries": info.memory_summaries}
+
+    @app.get("/api/project/{name}/gm/turn/{turn}")
+    def api_gm_turn(name: str, turn: int) -> dict:
+        """That turn's ``rolls.yaml``/``checks.yaml``/``state_diff.yaml`` contents
+        (docs/issues/024). 404 if the turn directory does not exist."""
+        project_yaml = _project_yaml(name)
+        try:
+            detail = get_gm_turn_detail(project_yaml, turn)
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"turn not found: {turn}")
+        return detail
 
     return app
