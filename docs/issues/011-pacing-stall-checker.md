@@ -41,3 +41,7 @@ created: 2026-07-06
 - `src/living_narrative/state/models.py`(WorldState、ReaderStateEntry.established_turn)
 - `src/living_narrative/session/stop_conditions.py:109`(warnはCHECKER_ERROR対象外の確認)
 - 評価: `docs/evaluations/2026-07-06-replay-20turn-eval.md`
+
+## 実LLM実地観測(2026-07-07、sandbox/issue012_llm)
+
+turn 10で実停滞発生 → `pacing_stall`(stalled_turns: 3)+ pressureロール `2d6+4` 適用 → boostにより同ターンでstage 75閾値を突破し `threat_stage` 発火。**pacing warnは同ターンで停滞が解消された場合は抑制される**(pacing_check.py の意図的な短絡)— warnが見えるのはboostしてもなお前進しなかったターンのみ。これは意図した動作。

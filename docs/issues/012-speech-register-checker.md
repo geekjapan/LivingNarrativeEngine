@@ -29,7 +29,7 @@ created: 2026-07-06
 - [x] character contextとプロンプトにspeechが入る(プロンプトv4バンプ)
 - [x] checkerがforbidden_terms含有dialogueにwarnを出し、非該当では沈黙。auto-applyは止めない
 - [x] mock全テストpass
-- [ ] 実LLM確認はあとまわし(ユーザー指示 2026-07-07。コード+mock検証は完了、checker warnは非ブロッキングのためリスク低)
+- [x] 実LLM 12ターン(`sandbox/issue012_llm`、2026-07-07): 一人称違反ゼロ(「僕」出現ゼロ、「俺」はカイのみ)、v4プロンプト有効、checkerは正しく沈黙
 
 ## 関連ファイル
 
