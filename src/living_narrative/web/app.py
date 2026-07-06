@@ -1,9 +1,10 @@
-"""FastAPI app: a thin HTTP window over the existing engine (docs/issues/020, Track B).
+"""FastAPI app: a thin HTTP window over the existing engine (docs/issues/020, 021-022, Track B).
 
 No state mutation logic lives here — every route delegates to ``web.service`` (which in turn
-delegates to ``workspace.loader``/``state.store``/``pipeline.driver``). YAML files remain the
-single source of truth (spec-foundation.md D103); this module never holds state of its own
-beyond the ``project_root`` it was created with.
+delegates to ``workspace.loader``/``state.store``/``pipeline.driver``/``session.review``). YAML
+files remain the single source of truth (spec-foundation.md D103); this module never holds state
+of its own beyond the ``project_root`` it was created with (the auto-run registry lives in
+``web.service``, keyed by resolved project directory).
 
 Only imported from ``web.server`` and test modules that ``pytest.importorskip("fastapi")`` first
 — never from ``living_narrative.cli`` at module scope, so the core test suite (and the CLI's
@@ -14,17 +15,34 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
+from pydantic import BaseModel, Field
 
 from living_narrative.pipeline import LoadError, UnresolvedTurnError
+from living_narrative.session.review import ReviewDecision, ReviewStateError
 from living_narrative.web.page import INDEX_HTML
 from living_narrative.web.service import (
+    AutoRunAlreadyRunningError,
+    NoPendingReviewError,
     ProjectNotFoundError,
     collect_narration,
+    collect_structured_narration,
+    get_run_status,
     get_status,
     list_projects,
+    request_stop,
     resolve_project_dir,
     run_turn,
+    start_auto_run,
+    submit_review,
 )
+
+
+class AutoRequest(BaseModel):
+    turns: int = Field(gt=0)
+
+
+class ReviewRequest(BaseModel):
+    decision: ReviewDecision
 
 
 def create_app(project_root: Path) -> FastAPI:
@@ -74,6 +92,16 @@ def create_app(project_root: Path) -> FastAPI:
         except ProjectNotFoundError:
             raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
 
+    @app.get("/api/project/{name}/turns")
+    def api_turns(name: str, from_turn: int = Query(1, alias="from", ge=1)) -> list[dict]:
+        """Structured per-turn narration: ``[{turn, status, text}]`` (docs/issues/021-022)."""
+        project_yaml = _project_yaml(name)
+        try:
+            entries = collect_structured_narration(project_yaml, from_turn)
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+        return [{"turn": e.turn, "status": e.status, "text": e.text} for e in entries]
+
     @app.post("/api/project/{name}/turn")
     def api_run_turn(name: str) -> dict:
         project_yaml = _project_yaml(name)
@@ -86,6 +114,57 @@ def create_app(project_root: Path) -> FastAPI:
         return {
             "turn": result.turn,
             "status": result.status.value,
+            "turn_dir": str(result.turn_dir),
+        }
+
+    @app.post("/api/project/{name}/auto")
+    def api_start_auto(name: str, body: AutoRequest) -> dict:
+        project_yaml = _project_yaml(name)
+        try:
+            start_auto_run(project_yaml, body.turns)
+        except AutoRunAlreadyRunningError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"started": True, "turns": body.turns}
+
+    @app.get("/api/project/{name}/run_status")
+    def api_run_status(name: str) -> dict:
+        project_yaml = _project_yaml(name)
+        status = get_run_status(project_yaml)
+        return {
+            "running": status.running,
+            "current_turn": status.current_turn,
+            "last_status": status.last_status,
+            "stopped_reason": status.stopped_reason,
+        }
+
+    @app.post("/api/project/{name}/stop")
+    def api_stop(name: str) -> dict:
+        project_yaml = _project_yaml(name)
+        request_stop(project_yaml)
+        return {"stopping": True}
+
+    @app.post("/api/project/{name}/review")
+    def api_review(name: str, body: ReviewRequest) -> dict:
+        if body.decision not in (ReviewDecision.ACCEPT_ALL, ReviewDecision.REJECT_ALL):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"unsupported decision over the API: {body.decision.value!r} "
+                    "(only accept_all/reject_all — richer decisions stay CLI-only)"
+                ),
+            )
+        project_yaml = _project_yaml(name)
+        try:
+            result = submit_review(project_yaml, body.decision)
+        except NoPendingReviewError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ReviewStateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "decision": result.decision.value,
+            "resulting_turn_status": getattr(
+                result.resulting_turn_status, "value", result.resulting_turn_status
+            ),
             "turn_dir": str(result.turn_dir),
         }
 
