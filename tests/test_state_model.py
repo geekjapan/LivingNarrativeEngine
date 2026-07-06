@@ -22,6 +22,8 @@ from living_narrative.state.models import (
     RelationshipState,
     SceneState,
     SceneStatus,
+    ThreatStage,
+    ThreatTrack,
     Visibility,
     WorldState,
     WorldStateBundle,
@@ -657,3 +659,118 @@ def test_schema_export_writes_world_state_schema(tmp_path):
     export_state_schemas(tmp_path / "schemas")
 
     assert (tmp_path / "schemas" / "WorldState.schema.yaml").exists()
+
+
+# Issue 008: threat escalation tracks (ThreatTrack/ThreatStage on WorldState).
+
+
+def test_world_threats_defaults_to_empty_list():
+    assert WorldState(id="world_001", name="x", summary="y").threats == []
+
+
+def test_threat_track_pressure_and_stages_default():
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure_per_turn="2d6")
+
+    assert threat.pressure == 0
+    assert threat.stages == []
+
+
+def test_threat_stage_at_below_range_rejected():
+    with pytest.raises(ValidationError):
+        ThreatStage(at=0, text="closer", visibility=Visibility.SCENE)
+
+
+def test_threat_stage_at_above_range_rejected():
+    with pytest.raises(ValidationError):
+        ThreatStage(at=101, text="closer", visibility=Visibility.SCENE)
+
+
+def test_threat_stage_blank_text_rejected():
+    with pytest.raises(ValidationError):
+        ThreatStage(at=25, text="", visibility=Visibility.SCENE)
+
+
+def _threat_bundle() -> WorldStateBundle:
+    return WorldStateBundle(
+        world=WorldState(
+            id="world_001",
+            name="Mist Station",
+            summary="A quiet station.",
+            threats=[
+                ThreatTrack(
+                    id="threat_001",
+                    name="Pursuer",
+                    pressure=10,
+                    pressure_per_turn="2d6",
+                    stages=[ThreatStage(at=25, text="closer", visibility=Visibility.SCENE)],
+                ),
+                ThreatTrack(id="threat_002", name="Other", pressure=5, pressure_per_turn="1d6"),
+            ],
+        )
+    )
+
+
+def test_world_threat_pressure_set_diff_updates_the_matching_threat_only():
+    result = apply_state_diff(
+        _threat_bundle(),
+        StateDiff(
+            id="diff_001",
+            turn=1,
+            changes=[
+                StateDiffChange(
+                    target="world",
+                    op="set",
+                    path="threats.threat_001.pressure",
+                    value=40,
+                    visibility=Visibility.GM_ONLY,
+                )
+            ],
+        ),
+    )
+
+    assert result.bundle.world.threats[0].pressure == 40
+    assert result.bundle.world.threats[1].pressure == 5
+
+
+def test_world_threat_pressure_set_diff_rollback_restores_original_pressure():
+    original = _threat_bundle()
+    result = apply_state_diff(
+        original,
+        StateDiff(
+            id="diff_001",
+            turn=1,
+            changes=[
+                StateDiffChange(
+                    target="world",
+                    op="set",
+                    path="threats.threat_001.pressure",
+                    value=40,
+                    visibility=Visibility.GM_ONLY,
+                )
+            ],
+        ),
+    )
+
+    restored = apply_state_diff(result.bundle, result.inverse_diff).bundle
+
+    assert restored.model_dump(mode="json") == original.model_dump(mode="json")
+
+
+def test_world_threat_pressure_set_diff_unknown_threat_id_raises():
+    with pytest.raises(StateDiffError):
+        apply_state_diff(
+            _threat_bundle(),
+            StateDiff(
+                id="diff_001",
+                turn=1,
+                changes=[
+                    StateDiffChange(
+                        target="world",
+                        op="set",
+                        path="threats.threat_099.pressure",
+                        value=40,
+                        visibility=Visibility.GM_ONLY,
+                    )
+                ],
+            ),
+        )

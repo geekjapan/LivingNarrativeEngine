@@ -33,3 +33,23 @@ background_events:
     weight: 1
   - text: 誰もいないはずの窓口の奥で、紙をめくるような気配がする
     weight: 1
+threats:
+  - id: threat_001
+    name: 追跡者
+    pressure: 0
+    pressure_per_turn: 2d6
+    stages:
+      - at: 25
+        text: 追跡者が探索範囲を狭めている。
+        visibility: gm_only
+      - at: 50
+        text: 足音の方向が定まり、明確にこちらへ向かっている。
+        visibility: scene
+      - at: 75
+        text: 霧の奥に人影が揺れ、規則正しい足音が急に止まる。
+        visibility: reader
+      - at: 100
+        text: 霧を裂いて、追跡者が二人の前に姿を現す。
+        visibility: reader
+        effects:
+          encounter: threat_001

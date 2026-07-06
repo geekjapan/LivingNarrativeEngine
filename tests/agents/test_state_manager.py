@@ -15,6 +15,7 @@ from living_narrative.state.models import (
     ProjectConfig,
     ReaderStateEntry,
     SceneState,
+    ThreatTrack,
     Visibility,
     WorkspaceConfig,
     WorldState,
@@ -33,7 +34,7 @@ def _ids():
     return allocate
 
 
-def _context(gm_vault=None) -> TurnContext:
+def _context(gm_vault=None, threats=None) -> TurnContext:
     project = ProjectConfig(
         id="p",
         title="P",
@@ -47,7 +48,7 @@ def _context(gm_vault=None) -> TurnContext:
         workspace=WorkspaceConfig(root=".", state="state", runs="runs", exports="exports"),
     )
     bundle = WorldStateBundle(
-        world=WorldState(id="world_001", name="World", summary=""),
+        world=WorldState(id="world_001", name="World", summary="", threats=threats or []),
         characters=[CharacterState(id="char_001", name="A", role="r", emotions={"fear": 30})],
         scenes=[SceneState(id="scene_001", location="loc", time="now")],
         gm_vault=gm_vault or [],
@@ -365,6 +366,50 @@ def test_blank_scene_summary_update_produces_no_scene_change():
     result = build_state_diff(_context(), [], [], scene_summary_update="")
 
     assert [c for c in result.diff.changes if c.target == "scene"] == []
+
+
+def test_threat_pressure_event_generates_a_world_set_diff():
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure=10, pressure_per_turn="2d6")
+    event = Event(
+        id="event_0001",
+        turn=1,
+        type="threat_pressure",
+        text="Pursuer draws closer",
+        visibility=Visibility.GM_ONLY,
+        effects={"threat_id": "threat_001", "pressure": 22},
+    )
+
+    output = build_state_diff(_context(threats=[threat]), [event], [])
+
+    change = next(c for c in output.diff.changes if c.target == "world")
+    assert change.op == "set"
+    assert change.path == "threats.threat_001.pressure"
+    assert change.value == 22
+    assert change.visibility == Visibility.GM_ONLY
+    assert change.source_event == "event_0001"
+
+
+def test_threat_pressure_diff_applies_to_the_matching_threat_and_rolls_back():
+    threat_a = ThreatTrack(id="threat_001", name="Pursuer", pressure=10, pressure_per_turn="2d6")
+    threat_b = ThreatTrack(id="threat_002", name="Other", pressure=5, pressure_per_turn="1d6")
+    context = _context(threats=[threat_a, threat_b])
+    event = Event(
+        id="event_0001",
+        turn=1,
+        type="threat_pressure",
+        text="Pursuer draws closer",
+        visibility=Visibility.GM_ONLY,
+        effects={"threat_id": "threat_001", "pressure": 22},
+    )
+
+    output = build_state_diff(context, [event], [])
+    applied = apply_state_diff(context.bundle, output.diff)
+
+    assert applied.bundle.world.threats[0].pressure == 22
+    assert applied.bundle.world.threats[1].pressure == 5
+
+    restored = apply_state_diff(applied.bundle, applied.inverse_diff).bundle
+    assert restored.world.threats[0].pressure == 10
 
 
 def test_goal_update_appends_to_long_term_goals_on_apply():

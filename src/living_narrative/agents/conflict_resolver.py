@@ -34,7 +34,11 @@ def resolve_conflicts(
             if other_index >= index and _conflicts(candidate, other)
         ]
         if len(conflict_indexes) <= 1:
-            resolved.append(_event_from_candidate(context, candidate, allocate_event_id()))
+            resolved.append(
+                _event_from_candidate(
+                    context, candidate, allocate_event_id(), _pre_roll_ids(candidate)
+                )
+            )
             handled.add(index)
             continue
 
@@ -52,9 +56,19 @@ def resolve_conflicts(
             roll_ids.append(roll.id)
             if roll.outcome == "failure":
                 winner = challenger
-        resolved.append(_event_from_candidate(context, winner, allocate_event_id(), roll_ids))
+        resolved.append(
+            _event_from_candidate(
+                context, winner, allocate_event_id(), [*_pre_roll_ids(winner), *roll_ids]
+            )
+        )
         handled.update(conflict_indexes)
     return resolved
+
+
+def _pre_roll_ids(candidate: Candidate) -> list[str]:
+    """Roll id a candidate already carries in ``effects`` (e.g. threat pressure rolls, D121)."""
+    roll_id = candidate.effects.get("roll_id")
+    return [roll_id] if roll_id else []
 
 
 def _order_candidates(

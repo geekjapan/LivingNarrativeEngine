@@ -234,6 +234,11 @@ def _resolve_path(target: Any, path: str) -> tuple[Any, str | int]:
 def _read(container: Any, key: str | int) -> Any:
     if key == "":
         return container
+    if isinstance(container, list):
+        for item in container:
+            if getattr(item, "id", None) == key:
+                return item
+        raise StateDiffError(f"path not found: {key}")
     if isinstance(container, dict):
         if key not in container:
             raise StateDiffError(f"path not found: {key}")

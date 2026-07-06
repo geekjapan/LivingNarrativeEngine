@@ -6,7 +6,7 @@ from living_narrative.agents.models import BackgroundEventCandidate, WorldSimula
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import WorldEventCandidate
 from living_narrative.random.tables import WeightedEntry
-from living_narrative.state.models import Visibility
+from living_narrative.state.models import ThreatTrack, Visibility
 
 # world_directive/event_injection become world event candidates verbatim (spec.md Requirement
 # "Type別ルーティング"): they *are* what the World Simulator should propose this turn.
@@ -63,7 +63,52 @@ def simulate_world(
         )
         for event in output.background_events
     ]
-    return [*directive_events, *dice_events, *background_candidates]
+    threat_events = [
+        event
+        for threat in context.bundle.world.threats
+        for event in _threat_events(context, threat)
+    ]
+    return [*directive_events, *dice_events, *background_candidates, *threat_events]
+
+
+def _threat_events(context: TurnContext, threat: ThreatTrack) -> list[WorldEventCandidate]:
+    """Issue 008: roll the threat's pressure forward and fire any newly-crossed stages."""
+    roll = context.random_engine.roll_dice(
+        threat.pressure_per_turn,
+        turn=context.turn,
+        label=f"threat:{threat.id}",
+    )
+    old_pressure = threat.pressure
+    new_pressure = min(100, old_pressure + roll.result)
+    pressure_event = WorldEventCandidate(
+        type="threat_pressure",
+        cause="world_simulator",
+        text=f"{threat.name}の気配が強まっている(pressure {new_pressure})",
+        visibility=Visibility.GM_ONLY,
+        effects={
+            "threat_id": threat.id,
+            "pressure": new_pressure,
+            "roll_id": roll.id,
+            "_roll": roll.model_dump(mode="json"),
+        },
+    )
+    stage_events = [
+        WorldEventCandidate(
+            type="threat_stage",
+            cause="world_simulator",
+            text=stage.text,
+            visibility=stage.visibility,
+            effects={
+                **stage.effects,
+                "threat_id": threat.id,
+                "stage_at": stage.at,
+                "roll_id": roll.id,
+            },
+        )
+        for stage in sorted(threat.stages, key=lambda item: item.at)
+        if old_pressure < stage.at <= new_pressure
+    ]
+    return [pressure_event, *stage_events]
 
 
 def _world_event_from_intervention(item: dict[str, Any]) -> WorldEventCandidate:

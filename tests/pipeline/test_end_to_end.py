@@ -99,6 +99,36 @@ def test_narrator_scene_summary_update_is_committed_to_scene_state(
     assert bundle.scenes[0].summary == "霧の奥へ歩き始めた。"
 
 
+def test_threat_pressure_diff_is_applied_across_a_mock_turn(tmp_path, build_project):
+    """Issue 008: a threats-bearing project rolls pressure forward and persists it via a
+    proper world state diff, through the real Load->...->Commit pipeline."""
+    project_path = build_project(
+        tmp_path,
+        threats=[
+            {
+                "id": "threat_001",
+                "name": "Pursuer",
+                "pressure": 0,
+                "pressure_per_turn": "2d6",
+                "stages": [],
+            }
+        ],
+    )
+
+    result = TurnPipeline().run(project_path)
+
+    assert result.status == TurnStatus.APPLIED
+    state_diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
+    world_changes = [c for c in state_diff["diff"]["changes"] if c["target"] == "world"]
+    assert len(world_changes) == 1
+    assert world_changes[0]["path"] == "threats.threat_001.pressure"
+    assert world_changes[0]["value"] > 0
+
+    read = load_project(project_path)
+    bundle = StateStore.load(read.paths.state)
+    assert bundle.world.threats[0].pressure == world_changes[0]["value"]
+
+
 def test_multiple_llm_profiles_recorded_individually(tmp_path, build_project):
     project_path = build_project(tmp_path)
     project_data = yaml.safe_load(project_path.read_text(encoding="utf-8"))

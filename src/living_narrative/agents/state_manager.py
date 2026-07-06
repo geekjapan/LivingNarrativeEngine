@@ -221,6 +221,18 @@ def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChan
     changes = []
     character_id = event.effects.get("character_id") or event.effects.get("target_id")
     scene_id = event.effects.get("scene_id") or event.effects.get("target_id")
+    if event.type == "threat_pressure":
+        threat_id = event.effects.get("threat_id")
+        changes.append(
+            StateDiffChange(
+                target="world",
+                op="set",
+                path=f"threats.{threat_id}.pressure",
+                value=event.effects.get("pressure"),
+                visibility=Visibility.GM_ONLY,
+                source_event=event.id,
+            )
+        )
     if event.effects.get("status") == "dead" or event.type == "character_death":
         changes.append(
             StateDiffChange(

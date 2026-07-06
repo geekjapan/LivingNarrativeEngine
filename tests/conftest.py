@@ -18,6 +18,7 @@ def _build_project(
     character_status: str = "alive",
     scene_status: str = "active",
     scene_summary: str = "",
+    threats: list[dict[str, Any]] | None = None,
 ) -> Path:
     """A minimal workspace with one character and one scene."""
     project_dir = tmp_path / "project"
@@ -45,6 +46,8 @@ def _build_project(
     )
 
     world = {"id": "world_001", "name": "Test World", "summary": "A quiet test world."}
+    if threats is not None:
+        world["threats"] = threats
     (state_dir / "world.yaml").write_text(
         yaml.safe_dump(world, allow_unicode=True), encoding="utf-8"
     )

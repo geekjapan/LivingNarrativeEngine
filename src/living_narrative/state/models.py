@@ -40,6 +40,7 @@ EventId = id_type("event")
 RollId = id_type("roll")
 ThreadId = id_type("thread")
 FactId = id_type("fact")
+ThreatId = id_type("threat")
 
 _BINDING_KEY_FIXED = {
     "narrator",
@@ -168,6 +169,25 @@ class BackgroundEventTableEntry(StateBaseModel):
     weight: int = Field(ge=1)
 
 
+class ThreatStage(StateBaseModel):
+    """A one-shot escalation point in a ``ThreatTrack``, fired once pressure crosses ``at``."""
+
+    at: Annotated[int, Field(ge=1, le=100)]
+    text: str = Field(min_length=1)
+    visibility: Visibility
+    effects: dict[str, Any] = Field(default_factory=dict)
+
+
+class ThreatTrack(StateBaseModel):
+    """Issue 008: a data-driven plot-pressure track (e.g. a pursuer closing in)."""
+
+    id: ThreatId
+    name: str
+    pressure: Annotated[int, Field(ge=0, le=100)] = 0
+    pressure_per_turn: str
+    stages: list[ThreatStage] = Field(default_factory=list)
+
+
 class WorldState(StateBaseModel):
     id: WorldId
     name: str
@@ -175,6 +195,7 @@ class WorldState(StateBaseModel):
     laws: list[str] = Field(default_factory=list)
     parameters: dict[str, Percent] = Field(default_factory=dict)
     background_events: list[BackgroundEventTableEntry] = Field(default_factory=list)
+    threats: list[ThreatTrack] = Field(default_factory=list)
 
 
 class FactionState(StateBaseModel):

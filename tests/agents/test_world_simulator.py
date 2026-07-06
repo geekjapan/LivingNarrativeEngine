@@ -9,6 +9,9 @@ from living_narrative.state.models import (
     BackgroundEventTableEntry,
     LLMConfig,
     ProjectConfig,
+    ThreatStage,
+    ThreatTrack,
+    Visibility,
     WorkspaceConfig,
     WorldState,
     WorldStateBundle,
@@ -16,7 +19,10 @@ from living_narrative.state.models import (
 
 
 def _context(
-    seed: str = "seed", background_events: list[BackgroundEventTableEntry] | None = None
+    seed: str = "seed",
+    background_events: list[BackgroundEventTableEntry] | None = None,
+    threats: list[ThreatTrack] | None = None,
+    turn: int = 1,
 ) -> TurnContext:
     project = ProjectConfig(
         id="p",
@@ -31,7 +37,7 @@ def _context(
         workspace=WorkspaceConfig(root=".", state="state", runs="runs", exports="exports"),
     )
     return TurnContext(
-        turn=1,
+        turn=turn,
         project=project,
         paths=None,
         bundle=WorldStateBundle(
@@ -40,6 +46,7 @@ def _context(
                 name="World",
                 summary="",
                 background_events=background_events or [],
+                threats=threats or [],
             )
         ),
         random_engine=RandomEngine(seed),
@@ -146,3 +153,139 @@ def test_unrelated_intervention_types_do_not_produce_world_events():
     events = simulate_world(_context(), [intervention])
 
     assert all(e.type != "character_directive" for e in events)
+
+
+# Issue 008: threat escalation tracks.
+
+
+def _pressure_roll(seed: str = "seed", turn: int = 1) -> int:
+    """The pressure roll a fresh 2d6 threat produces for a given seed/turn (0 starting pressure
+    makes the resulting ``pressure`` effect equal to the raw roll)."""
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure=0, pressure_per_turn="2d6")
+    events = simulate_world(_context(seed, threats=[threat], turn=turn), [])
+    return next(e for e in events if e.type == "threat_pressure").effects["pressure"]
+
+
+def test_no_threats_produces_no_threat_events():
+    events = simulate_world(_context(), [])
+
+    assert all(e.type not in {"threat_pressure", "threat_stage"} for e in events)
+
+
+def test_threat_with_no_stages_emits_only_a_pressure_event():
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure=0, pressure_per_turn="2d6")
+
+    events = simulate_world(_context(threats=[threat]), [])
+
+    assert [e.type for e in events if e.type.startswith("threat_")] == ["threat_pressure"]
+
+
+def test_threat_pressure_event_is_gm_only_and_carries_the_roll():
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure=10, pressure_per_turn="2d6")
+
+    events = simulate_world(_context(threats=[threat]), [])
+
+    event = next(e for e in events if e.type == "threat_pressure")
+    assert event.visibility == "gm_only"
+    assert event.effects["threat_id"] == "threat_001"
+    assert event.effects["_roll"]["type"] == "dice"
+    assert event.effects["_roll"]["dice"]["notation"] == "2d6"
+    assert event.effects["roll_id"] == event.effects["_roll"]["id"]
+    assert event.effects["pressure"] == 10 + event.effects["_roll"]["result"]
+
+
+def test_threat_pressure_clamps_to_100():
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure=99, pressure_per_turn="2d6")
+
+    events = simulate_world(_context(threats=[threat]), [])
+
+    event = next(e for e in events if e.type == "threat_pressure")
+    assert event.effects["pressure"] == 100
+
+
+def test_threat_stage_not_yet_crossed_does_not_fire():
+    roll = _pressure_roll()
+    threat = ThreatTrack(
+        id="threat_001",
+        name="Pursuer",
+        pressure=0,
+        pressure_per_turn="2d6",
+        stages=[ThreatStage(at=roll + 1, text="not yet", visibility=Visibility.SCENE)],
+    )
+
+    events = simulate_world(_context(threats=[threat]), [])
+
+    assert [e for e in events if e.type == "threat_stage"] == []
+
+
+def test_threat_stage_crossed_by_the_roll_fires_once():
+    roll = _pressure_roll()
+    threat = ThreatTrack(
+        id="threat_001",
+        name="Pursuer",
+        pressure=0,
+        pressure_per_turn="2d6",
+        stages=[ThreatStage(at=roll, text="足音が近づく", visibility=Visibility.SCENE)],
+    )
+
+    events = simulate_world(_context(threats=[threat]), [])
+
+    stage_events = [e for e in events if e.type == "threat_stage"]
+    assert len(stage_events) == 1
+    assert stage_events[0].text == "足音が近づく"
+    assert stage_events[0].visibility == "scene"
+    assert stage_events[0].effects["threat_id"] == "threat_001"
+    assert stage_events[0].effects["stage_at"] == roll
+    assert (
+        stage_events[0].effects["roll_id"]
+        == next(e for e in events if e.type == "threat_pressure").effects["roll_id"]
+    )
+
+
+def test_multiple_thresholds_crossed_in_one_roll_all_fire_in_ascending_order():
+    roll = _pressure_roll()
+    threat = ThreatTrack(
+        id="threat_001",
+        name="Pursuer",
+        pressure=0,
+        pressure_per_turn="2d6",
+        stages=[
+            ThreatStage(at=roll, text="second", visibility=Visibility.READER),
+            ThreatStage(at=1, text="first", visibility=Visibility.SCENE),
+        ],
+    )
+
+    events = simulate_world(_context(threats=[threat]), [])
+
+    stage_events = [e for e in events if e.type == "threat_stage"]
+    assert [e.text for e in stage_events] == ["first", "second"]
+
+
+def test_already_past_stage_never_refires():
+    roll = _pressure_roll()
+    threat = ThreatTrack(
+        id="threat_001",
+        name="Pursuer",
+        pressure=roll,
+        pressure_per_turn="2d6",
+        stages=[ThreatStage(at=roll, text="already happened", visibility=Visibility.SCENE)],
+    )
+
+    events = simulate_world(_context(threats=[threat]), [])
+
+    assert [e for e in events if e.type == "threat_stage"] == []
+
+
+def test_threat_events_are_deterministic_with_fixed_seed():
+    threat = ThreatTrack(
+        id="threat_001",
+        name="Pursuer",
+        pressure=0,
+        pressure_per_turn="2d6",
+        stages=[ThreatStage(at=5, text="closer", visibility=Visibility.SCENE)],
+    )
+
+    first = simulate_world(_context("same-seed", threats=[threat]), [])
+    second = simulate_world(_context("same-seed", threats=[threat]), [])
+
+    assert first == second
