@@ -32,7 +32,7 @@ def test_mist_station_state_is_schema_valid(tmp_path):
     assert bundle.world.id == "world_001"
     assert len(bundle.characters) == 4
     assert len(bundle.gm_vault) == 3
-    assert len(bundle.scenes) == 1
+    assert len(bundle.scenes) == 2
 
 
 def test_every_gm_vault_entry_is_linked_to_a_character(tmp_path):
@@ -62,6 +62,31 @@ def test_scene_001_hidden_facts_reference_the_starting_characters(tmp_path):
     assert scene.hidden_facts
     known_by_ids = {char_id for fact in scene.hidden_facts for char_id in fact.known_by}
     assert known_by_ids <= {c.id for c in bundle.characters}
+
+
+def test_scene_002_is_pending_with_empty_active_characters_for_carry_over(tmp_path):
+    """Issue 009: scene_002 is template-defined but not yet started; its cast is carried over
+    from scene_001 by the state manager's scene_transition handling, not pre-filled here.
+    Also exercises the store loader with multiple scene files (state/scenes/*.yaml)."""
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    scene = next(scene for scene in bundle.scenes if scene.id == "scene_002")
+    assert scene.status == "pending"
+    assert scene.active_characters == []
+    known_by_ids = {char_id for fact in scene.hidden_facts for char_id in fact.known_by}
+    assert known_by_ids <= {c.id for c in bundle.characters}
+
+
+def test_world_stage_100_carries_a_scene_transition_to_scene_002(tmp_path):
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    threat = next(t for t in bundle.world.threats if t.id == "threat_001")
+    stage_100 = next(stage for stage in threat.stages if stage.at == 100)
+    assert stage_100.effects["scene_transition"] == {"end": "scene_001", "start": "scene_002"}
 
 
 def test_relationships_are_directed_pairs_between_valid_characters(tmp_path):

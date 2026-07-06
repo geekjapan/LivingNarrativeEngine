@@ -27,6 +27,36 @@ def _context() -> Context:
     )
 
 
+def test_character_in_pending_scene_only_is_treated_as_absent():
+    context = Context(
+        WorldStateBundle(
+            world=WorldState(id="world_001", name="World", summary=""),
+            characters=[CharacterState(id="char_001", name="A", role="r")],
+            scenes=[
+                SceneState(
+                    id="scene_002",
+                    location="loc",
+                    time="now",
+                    active_characters=["char_001"],
+                    status="pending",
+                )
+            ],
+        )
+    )
+    event = Event(
+        id="event_0001",
+        turn=1,
+        type="character_action",
+        text="acts",
+        visibility=Visibility.READER,
+        effects={"character_id": "char_001"},
+    )
+
+    findings = continuity_checker(context, "", [event], StateDiff(id="diff_0001", turn=1))
+
+    assert findings[0].severity == "error"
+
+
 def test_absent_character_action_is_error():
     event = Event(
         id="event_0001",

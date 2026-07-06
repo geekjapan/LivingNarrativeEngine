@@ -5,7 +5,13 @@ from typing import Any
 from pydantic import BaseModel
 
 from living_narrative.agents.models import CharacterAgentInput
-from living_narrative.state.models import CharacterId, Event, Visibility, WorldStateBundle
+from living_narrative.state.models import (
+    CharacterId,
+    Event,
+    SceneStatus,
+    Visibility,
+    WorldStateBundle,
+)
 
 DEFAULT_EVENT_LIMIT = 20
 
@@ -26,6 +32,8 @@ def build_character_context(
     character = _find_character(bundle, character_id)
     scene_facts = []
     for scene in bundle.scenes:
+        if scene.status != SceneStatus.ACTIVE:
+            continue
         if character_id not in scene.active_characters:
             continue
         scene_facts.extend(scene.reader_visible_facts)

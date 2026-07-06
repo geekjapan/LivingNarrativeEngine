@@ -93,3 +93,17 @@ def test_scene_summary_defaults_to_empty_string(tmp_path, build_project):
     narrator_context = build_narrator_context(_context(project_path, []), [])
 
     assert narrator_context.scene_summary == ""
+
+
+def test_pending_scene_facts_and_summary_are_excluded(tmp_path, build_project):
+    project_path = build_project(
+        tmp_path,
+        scene_status="pending",
+        reader_visible_facts=["まだ始まっていない場面の手がかり"],
+        scene_summary="まだ語られていない場面。",
+    )
+
+    narrator_context = build_narrator_context(_context(project_path, []), [])
+
+    assert narrator_context.scene_reader_visible_facts == []
+    assert narrator_context.scene_summary == ""

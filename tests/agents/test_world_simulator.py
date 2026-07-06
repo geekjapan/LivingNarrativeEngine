@@ -242,6 +242,31 @@ def test_threat_stage_crossed_by_the_roll_fires_once():
     )
 
 
+def test_threat_stage_carries_arbitrary_effects_like_scene_transition():
+    """Issue 009: scene_transition is just another key in ThreatStage.effects (data-driven,
+    no world_simulator code path dedicated to it)."""
+    roll = _pressure_roll()
+    threat = ThreatTrack(
+        id="threat_001",
+        name="Pursuer",
+        pressure=0,
+        pressure_per_turn="2d6",
+        stages=[
+            ThreatStage(
+                at=roll,
+                text="追跡者が姿を現す",
+                visibility=Visibility.READER,
+                effects={"scene_transition": {"end": "scene_001", "start": "scene_002"}},
+            )
+        ],
+    )
+
+    events = simulate_world(_context(threats=[threat]), [])
+
+    stage_event = next(e for e in events if e.type == "threat_stage")
+    assert stage_event.effects["scene_transition"] == {"end": "scene_001", "start": "scene_002"}
+
+
 def test_multiple_thresholds_crossed_in_one_roll_all_fire_in_ascending_order():
     roll = _pressure_roll()
     threat = ThreatTrack(

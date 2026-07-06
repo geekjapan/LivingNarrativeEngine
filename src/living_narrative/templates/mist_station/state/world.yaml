@@ -53,3 +53,6 @@ threats:
         visibility: reader
         effects:
           encounter: threat_001
+          scene_transition:
+            end: scene_001
+            start: scene_002

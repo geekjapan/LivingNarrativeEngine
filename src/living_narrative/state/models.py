@@ -156,6 +156,7 @@ class CharacterStatus(StrEnum):
 
 
 class SceneStatus(StrEnum):
+    PENDING = "pending"
     ACTIVE = "active"
     ENDED = "ended"
 

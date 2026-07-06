@@ -15,6 +15,7 @@ from living_narrative.state.models import (
     ProjectConfig,
     ReaderStateEntry,
     SceneState,
+    SceneStatus,
     ThreatTrack,
     Visibility,
     WorkspaceConfig,
@@ -34,7 +35,7 @@ def _ids():
     return allocate
 
 
-def _context(gm_vault=None, threats=None) -> TurnContext:
+def _context(gm_vault=None, threats=None, scenes=None) -> TurnContext:
     project = ProjectConfig(
         id="p",
         title="P",
@@ -50,7 +51,9 @@ def _context(gm_vault=None, threats=None) -> TurnContext:
     bundle = WorldStateBundle(
         world=WorldState(id="world_001", name="World", summary="", threats=threats or []),
         characters=[CharacterState(id="char_001", name="A", role="r", emotions={"fear": 30})],
-        scenes=[SceneState(id="scene_001", location="loc", time="now")],
+        scenes=scenes
+        if scenes is not None
+        else [SceneState(id="scene_001", location="loc", time="now")],
         gm_vault=gm_vault or [],
     )
     return TurnContext(1, project, None, bundle, RandomEngine("seed"))
@@ -424,3 +427,172 @@ def test_goal_update_appends_to_long_term_goals_on_apply():
     applied = apply_state_diff(context.bundle, result.diff)
 
     assert applied.bundle.characters[0].goals.long_term == ["escape the station"]
+
+
+def _transition_scenes(scene_002_active_characters=None):
+    return [
+        SceneState(
+            id="scene_001",
+            location="loc",
+            time="now",
+            active_characters=["char_001"],
+            status=SceneStatus.ACTIVE,
+        ),
+        SceneState(
+            id="scene_002",
+            location="next loc",
+            time="now",
+            active_characters=scene_002_active_characters or [],
+            status=SceneStatus.PENDING,
+        ),
+    ]
+
+
+def _transition_event(**effects):
+    return Event(
+        id="event_0001",
+        turn=1,
+        type="threat_stage",
+        text="追跡者が現れる",
+        visibility=Visibility.READER,
+        effects={"scene_transition": effects},
+    )
+
+
+def test_scene_transition_end_and_start_produce_three_diffs_and_apply_rollback_restores():
+    context = _context(scenes=_transition_scenes())
+    event = _transition_event(end="scene_001", start="scene_002")
+
+    output = build_state_diff(context, [event], [])
+    scene_changes = [c for c in output.diff.changes if c.target == "scene"]
+
+    assert output.rejected_changes == []
+    assert len(scene_changes) == 3
+    assert {
+        (c.id, c.path, c.value if not isinstance(c.value, list) else tuple(c.value))
+        for c in scene_changes
+    } == {
+        ("scene_001", "status", "ended"),
+        ("scene_002", "status", "active"),
+        ("scene_002", "active_characters", ("char_001",)),
+    }
+    for change in scene_changes:
+        assert change.source_event == "event_0001"
+        assert change.visibility == Visibility.CANON
+
+    applied = apply_state_diff(context.bundle, output.diff)
+    scene_001 = next(s for s in applied.bundle.scenes if s.id == "scene_001")
+    scene_002 = next(s for s in applied.bundle.scenes if s.id == "scene_002")
+    assert scene_001.status == "ended"
+    assert scene_002.status == "active"
+    assert scene_002.active_characters == ["char_001"]
+
+    restored = apply_state_diff(applied.bundle, applied.inverse_diff).bundle
+    restored_001 = next(s for s in restored.scenes if s.id == "scene_001")
+    restored_002 = next(s for s in restored.scenes if s.id == "scene_002")
+    assert restored_001.status == "active"
+    assert restored_002.status == "pending"
+    assert restored_002.active_characters == []
+
+
+def test_scene_transition_start_target_missing_is_rejected():
+    context = _context(scenes=_transition_scenes())
+    event = _transition_event(end="scene_001", start="scene_999")
+
+    output = build_state_diff(context, [event], [])
+
+    assert any(c.target == "scene" and c.id == "scene_999" for c in output.diff.changes) is False
+    assert any(
+        item.reason == "scene_transition start target not found" for item in output.rejected_changes
+    )
+    # end side still succeeds independently
+    assert any(
+        c.target == "scene" and c.id == "scene_001" and c.value == "ended"
+        for c in output.diff.changes
+    )
+
+
+def test_scene_transition_start_target_not_pending_is_rejected():
+    scenes = _transition_scenes()
+    scenes[1].status = SceneStatus.ACTIVE
+    context = _context(scenes=scenes)
+    event = _transition_event(end="scene_001", start="scene_002")
+
+    output = build_state_diff(context, [event], [])
+
+    assert any(
+        item.reason == "scene_transition start target not pending"
+        for item in output.rejected_changes
+    )
+    assert not any(c.target == "scene" and c.id == "scene_002" for c in output.diff.changes)
+
+
+def test_scene_transition_start_only_activates_without_carry_over_when_no_end():
+    context = _context(scenes=_transition_scenes())
+    event = _transition_event(start="scene_002")
+
+    output = build_state_diff(context, [event], [])
+    scene_changes = [c for c in output.diff.changes if c.target == "scene"]
+
+    assert output.rejected_changes == []
+    assert len(scene_changes) == 1
+    assert scene_changes[0].id == "scene_002"
+    assert scene_changes[0].path == "status"
+    assert scene_changes[0].value == "active"
+
+
+def test_scene_transition_end_only_just_ends_the_scene():
+    context = _context(scenes=_transition_scenes())
+    event = _transition_event(end="scene_001")
+
+    output = build_state_diff(context, [event], [])
+    scene_changes = [c for c in output.diff.changes if c.target == "scene"]
+
+    assert output.rejected_changes == []
+    assert len(scene_changes) == 1
+    assert scene_changes[0].id == "scene_001"
+    assert scene_changes[0].path == "status"
+    assert scene_changes[0].value == "ended"
+
+
+def test_scene_transition_does_not_overwrite_predefined_active_characters():
+    context = _context(scenes=_transition_scenes(scene_002_active_characters=["char_001"]))
+    event = _transition_event(end="scene_001", start="scene_002")
+
+    output = build_state_diff(context, [event], [])
+    scene_changes = [c for c in output.diff.changes if c.target == "scene"]
+
+    assert output.rejected_changes == []
+    assert len(scene_changes) == 2
+    assert not any(c.path == "active_characters" for c in scene_changes)
+
+    applied = apply_state_diff(context.bundle, output.diff)
+    scene_002 = next(s for s in applied.bundle.scenes if s.id == "scene_002")
+    assert scene_002.active_characters == ["char_001"]
+
+
+def test_active_scene_id_skips_pending_scenes_for_scene_summary_update():
+    scenes = _transition_scenes()  # scene_001 active, scene_002 pending
+    context = _context(scenes=scenes)
+
+    result = build_state_diff(context, [], [], scene_summary_update="次の場面へ。")
+
+    scene_changes = [c for c in result.diff.changes if c.target == "scene"]
+    assert len(scene_changes) == 1
+    assert scene_changes[0].id == "scene_001"
+
+
+def test_active_scene_id_is_none_when_only_pending_scenes_exist():
+    scenes = [
+        SceneState(
+            id="scene_002",
+            location="loc",
+            time="now",
+            status=SceneStatus.PENDING,
+        )
+    ]
+    context = _context(scenes=scenes)
+
+    result = build_state_diff(context, [], [], scene_summary_update="次の場面へ。")
+
+    assert [c for c in result.diff.changes if c.target == "scene"] == []

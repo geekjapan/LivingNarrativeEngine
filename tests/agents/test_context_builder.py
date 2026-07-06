@@ -6,6 +6,7 @@ from living_narrative.state.models import (
     HiddenFact,
     RelationshipState,
     SceneState,
+    SceneStatus,
     Visibility,
     WorldState,
     WorldStateBundle,
@@ -144,6 +145,24 @@ def test_character_context_includes_related_relationships():
 
     assert len(context.relationships) == 1
     assert context.relationships[0].suspicion == 90
+
+
+def test_character_context_excludes_facts_from_a_pending_scene():
+    bundle = _bundle()
+    bundle.scenes.append(
+        SceneState(
+            id="scene_002",
+            location="次の場所",
+            time="夜",
+            active_characters=["char_001"],
+            reader_visible_facts=["まだ始まっていない場面の手がかり"],
+            status=SceneStatus.PENDING,
+        )
+    )
+
+    context = build_character_context(bundle, "char_001")
+
+    assert "まだ始まっていない場面の手がかり" not in context.visible_facts
 
 
 def test_world_context_contains_full_state():

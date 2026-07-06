@@ -19,6 +19,20 @@ def _add_gm_vault_entry(project_path, entry_id: str, text: str) -> None:
     path.write_text(yaml.safe_dump(entries, allow_unicode=True), encoding="utf-8")
 
 
+def _add_pending_scene(project_path, scene_id: str) -> None:
+    state_dir = project_path.parent / "workspace" / "state"
+    scene = {
+        "id": scene_id,
+        "location": "次の場所",
+        "time": "夜",
+        "active_characters": [],
+        "status": "pending",
+    }
+    (state_dir / "scenes" / f"{scene_id}.yaml").write_text(
+        yaml.safe_dump(scene, allow_unicode=True), encoding="utf-8"
+    )
+
+
 def _drafts(*items):
     return list(items)
 
@@ -204,6 +218,39 @@ def test_reveal_now_promotes_gm_vault_fact_via_full_pipeline(tmp_path, build_pro
     ]
     assert any(change["value"]["text"] == "隠された真実" for change in reader_state_changes)
     assert result.status == TurnStatus.APPLIED
+
+
+def test_event_injection_scene_transition_flips_scenes_via_full_pipeline(tmp_path, build_project):
+    """Issue 009: a GM-forced event_injection carrying effects.scene_transition ends the
+    current scene, activates the pending one, and carries the cast over."""
+    project_path = build_project(tmp_path)
+    _set_user_mode(project_path, "full_gm")
+    _add_pending_scene(project_path, "scene_002")
+
+    result = TurnPipeline().run(
+        project_path,
+        intervention_drafts=_drafts(
+            {
+                "type": "event_injection",
+                "target": {"kind": "world"},
+                "content": "追跡者が姿を現す",
+                "constraints": {"scene_transition": {"end": "scene_001", "start": "scene_002"}},
+                "visibility": "reader",
+            }
+        ),
+    )
+
+    state_diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
+    scene_changes = [c for c in state_diff["diff"]["changes"] if c["target"] == "scene"]
+    assert {
+        (c["id"], c["path"], c["value"] if not isinstance(c["value"], list) else tuple(c["value"]))
+        for c in scene_changes
+    } == {
+        ("scene_001", "status", "ended"),
+        ("scene_002", "status", "active"),
+        ("scene_002", "active_characters", ("char_001",)),
+    }
+    assert result.status != "failed"
 
 
 def test_interventions_yaml_accumulates_history_after_an_applied_turn(tmp_path, build_project):

@@ -1,0 +1,21 @@
+id: scene_002
+location: 霧の駅・行き止まりの通路
+time: 夜
+active_characters: []
+mood: 逃げ場のない緊迫
+stakes: ここで追跡者をやり過ごせなければ、封印施設の秘密ごと連れ去られる
+summary: 霧を裂いて現れた追跡者と、二人は行き止まりの通路で対峙している。
+reader_visible_facts:
+  - 通路の先は行き止まりで、後ろには濃い霧が満ちている。
+  - 追跡者は足音を止め、じっとこちらを見据えている。
+hidden_facts:
+  - id: fact_003
+    text: 追跡者は封印施設の情報を何者かに売り渡そうとしている。
+    visibility: gm_only
+    known_by: []
+  - id: fact_004
+    text: 追跡者は、ミラの正体には気づいていない。
+    visibility: character
+    known_by:
+      - char_003
+status: pending

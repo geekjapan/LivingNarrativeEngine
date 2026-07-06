@@ -8,7 +8,13 @@ from living_narrative.intervention.reveal import must_not_reveal_texts, reveal_n
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import BuildDiffOutput, RejectedChange
 from living_narrative.state.diff import StateDiff, StateDiffChange
-from living_narrative.state.models import CharacterId, Event, TimelineEntry, Visibility
+from living_narrative.state.models import (
+    CharacterId,
+    Event,
+    SceneStatus,
+    TimelineEntry,
+    Visibility,
+)
 
 # canon_edit/hidden_truth_edit (spec.md Requirement "Type別ルーティング"): a state diff target
 # per type, keyed by the collection this intervention type adds to.
@@ -42,10 +48,13 @@ def build_state_diff(
 
     for event in resolved_events:
         for candidate in _changes_for_event(context, event):
+            transition_reason = _invalid_scene_transition_reason(context, candidate)
             if candidate.source_event is None:
                 rejected.append(_reject(candidate, "missing source_event"))
             elif _blocked_reveal(candidate, must_not_reveal):
                 rejected.append(_reject(candidate, "blocked by reveal_control must-not-reveal"))
+            elif transition_reason is not None:
+                rejected.append(_reject(candidate, transition_reason))
             elif not _valid_target(context, candidate):
                 rejected.append(_reject(candidate, "target id not found in current state"))
             else:
@@ -257,6 +266,7 @@ def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChan
                 source_event=event.id,
             )
         )
+    changes.extend(_scene_transition_changes(context, event))
     reveal_text = event.effects.get("reveal_text")
     if reveal_text:
         changes.append(
@@ -297,6 +307,81 @@ def _active_scene_id(context: TurnContext) -> str | None:
     for scene in context.bundle.scenes:
         if scene.status == "active":
             return scene.id
+    return None
+
+
+def _find_scene(context: TurnContext, scene_id: str | None):
+    if scene_id is None:
+        return None
+    return next((scene for scene in context.bundle.scenes if scene.id == scene_id), None)
+
+
+def _scene_transition_changes(context: TurnContext, event: Event) -> list[StateDiffChange]:
+    """Issue 009: ``effects.scene_transition: {"end": <id>, "start": <id>}`` ends one scene,
+    activates the next (template-defined, pending), and carries active_characters over when
+    the start scene doesn't already define its own cast.
+    """
+    transition = event.effects.get("scene_transition")
+    if not isinstance(transition, dict):
+        return []
+    changes = []
+    end_id = transition.get("end")
+    start_id = transition.get("start")
+    if end_id:
+        changes.append(
+            StateDiffChange(
+                target="scene",
+                id=end_id,
+                op="set",
+                path="status",
+                value=SceneStatus.ENDED.value,
+                visibility=Visibility.CANON,
+                source_event=event.id,
+            )
+        )
+    if start_id:
+        changes.append(
+            StateDiffChange(
+                target="scene",
+                id=start_id,
+                op="set",
+                path="status",
+                value=SceneStatus.ACTIVE.value,
+                visibility=Visibility.CANON,
+                source_event=event.id,
+            )
+        )
+        start_scene = _find_scene(context, start_id)
+        end_scene = _find_scene(context, end_id)
+        if (
+            start_scene is not None
+            and start_scene.status == SceneStatus.PENDING
+            and not start_scene.active_characters
+            and end_scene is not None
+        ):
+            changes.append(
+                StateDiffChange(
+                    target="scene",
+                    id=start_id,
+                    op="set",
+                    path="active_characters",
+                    value=list(end_scene.active_characters),
+                    visibility=Visibility.CANON,
+                    source_event=event.id,
+                )
+            )
+    return changes
+
+
+def _invalid_scene_transition_reason(context: TurnContext, change: StateDiffChange) -> str | None:
+    """Custom rejection reasons for the start-side of a scene_transition (D009 guard)."""
+    if not (change.target == "scene" and change.path == "status" and change.value == "active"):
+        return None
+    scene = _find_scene(context, change.id)
+    if scene is None:
+        return "scene_transition start target not found"
+    if scene.status != SceneStatus.PENDING:
+        return "scene_transition start target not pending"
     return None
 
 

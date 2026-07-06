@@ -7,6 +7,7 @@ import yaml
 
 from living_narrative.export_replay import assemble_replay
 from living_narrative.pipeline import TurnPipeline, TurnStatus
+from living_narrative.session.review import ReviewDecision, resolve_review
 from living_narrative.workspace.init import create_project
 
 FIXED_SEED = "mist-station-smoke-fixed-seed"
@@ -38,12 +39,27 @@ def _pin_seed(project_path) -> None:
 
 
 def _run_turns(pipeline, project_path, turn_range, drafts_by_turn, results):
+    workspace_root = project_path.parent / "workspace"
+    state_dir = workspace_root / "state"
     for turn in turn_range:
         result = pipeline.run(project_path, intervention_drafts=drafts_by_turn.get(turn))
         assert result.turn == turn
-        assert result.status == TurnStatus.APPLIED, (
-            f"turn {turn} did not apply cleanly: status={result.status}"
-        )
+        if result.status in (TurnStatus.STOPPED_FOR_REVIEW, TurnStatus.PENDING_REVIEW):
+            # Issue 009: the pursuer's threat stage 100 fires a scene_transition, which trips
+            # the SCENE_END stop condition (D119, unconditional). A GM accepts the diff — the
+            # same review-gate path a real session would use — so the deterministic run keeps
+            # progressing across the transition turn.
+            resolve_review(
+                workspace_root=workspace_root,
+                state_dir=state_dir,
+                turn_dir=result.turn_dir,
+                decision=ReviewDecision.ACCEPT_ALL,
+                decided_by="full_gm",
+            )
+        else:
+            assert result.status == TurnStatus.APPLIED, (
+                f"turn {turn} did not apply cleanly: status={result.status}"
+            )
         results.append(result)
 
 

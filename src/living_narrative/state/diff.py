@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -256,7 +257,12 @@ def _write(container: Any, key: str | int, value: Any) -> None:
         container[key] = value
         return
     if isinstance(container, BaseModel):
-        setattr(container, "from_" if key == "from" else key, value)
+        attr = "from_" if key == "from" else key
+        current = getattr(container, attr, None)
+        # enum欄へのset(YAML由来のraw str)は型を維持して書き戻す
+        if isinstance(current, Enum) and not isinstance(value, Enum):
+            value = type(current)(value)
+        setattr(container, attr, value)
         return
     raise StateDiffError(f"path not writable: {key}")
 
