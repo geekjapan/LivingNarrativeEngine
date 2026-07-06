@@ -17,6 +17,7 @@ def _build_project(
     hidden_facts: list[dict[str, Any]] | None = None,
     character_status: str = "alive",
     scene_status: str = "active",
+    scene_summary: str = "",
 ) -> Path:
     """A minimal workspace with one character and one scene."""
     project_dir = tmp_path / "project"
@@ -35,6 +36,7 @@ def _build_project(
         "active_characters": ["char_001"],
         "mood": "静寂",
         "status": scene_status,
+        "summary": scene_summary,
         "reader_visible_facts": reader_visible_facts or [],
         "hidden_facts": hidden_facts or [],
     }

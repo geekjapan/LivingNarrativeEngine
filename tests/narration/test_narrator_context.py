@@ -77,3 +77,19 @@ def test_must_not_reveal_intervention_filters_matching_reader_visible_content(
 
     assert narrator_context.scene_reader_visible_facts == []
     assert narrator_context.reader_visible_events == []
+
+
+def test_scene_summary_from_active_scene_is_included(tmp_path, build_project):
+    project_path = build_project(tmp_path, scene_summary="霧の中、足音が近づいている。")
+
+    narrator_context = build_narrator_context(_context(project_path, []), [])
+
+    assert narrator_context.scene_summary == "霧の中、足音が近づいている。"
+
+
+def test_scene_summary_defaults_to_empty_string(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+
+    narrator_context = build_narrator_context(_context(project_path, []), [])
+
+    assert narrator_context.scene_summary == ""

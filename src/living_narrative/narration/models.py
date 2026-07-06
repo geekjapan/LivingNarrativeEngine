@@ -12,8 +12,10 @@ class NarratorContext(BaseModel):
     reader_state_facts: list[str] = Field(default_factory=list)
     scene_reader_visible_facts: list[str] = Field(default_factory=list)
     reader_visible_events: list[Event] = Field(default_factory=list)
+    scene_summary: str = ""
 
 
 class NarrationResult(BaseModel):
     text: str
     style: str
+    scene_summary_update: str | None = None

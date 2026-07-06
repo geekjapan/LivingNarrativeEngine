@@ -32,6 +32,7 @@ def build_state_diff(
     interventions: list[dict[str, Any]],
     allocate_event_id: Callable[[], str] | None = None,
     character_outputs: list[tuple[CharacterId, CharacterAgentOutput]] | None = None,
+    scene_summary_update: str | None = None,
 ) -> BuildDiffOutput:
     allocate_event_id = allocate_event_id or _default_event_id_allocator()
     must_not_reveal = must_not_reveal_texts(context, interventions)
@@ -77,6 +78,21 @@ def build_state_diff(
         output_changes, output_rejected = _character_output_changes(context, character_id, output)
         changes.extend(output_changes)
         rejected.extend(output_rejected)
+
+    # 007: ナレーターが書いた場面の現在状況更新をsetに変換(leak-safe by construction: ADR-0003)。
+    if scene_summary_update:
+        scene_id = _active_scene_id(context)
+        if scene_id is not None:
+            changes.append(
+                StateDiffChange(
+                    target="scene",
+                    id=scene_id,
+                    op="set",
+                    path="summary",
+                    value=scene_summary_update,
+                    visibility=Visibility.SCENE,
+                )
+            )
 
     timeline_event_ids = [event.id for event in resolved_events] + [
         event.id for event in synthetic_events

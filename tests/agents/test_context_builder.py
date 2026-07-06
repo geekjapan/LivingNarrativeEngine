@@ -124,6 +124,21 @@ def test_character_context_truncates_events_to_recent_limit():
     assert [event.text for event in context.visible_events] == ["event 4", "event 5"]
 
 
+def test_character_context_includes_scene_summary():
+    bundle = _bundle()
+    bundle.scenes[0].summary = "霧の奥へ歩き始めた。"
+
+    context = build_character_context(bundle, "char_001")
+
+    assert "霧の奥へ歩き始めた。" in context.visible_facts
+
+
+def test_character_context_omits_empty_scene_summary():
+    context = build_character_context(_bundle(), "char_001")
+
+    assert "" not in context.visible_facts
+
+
 def test_character_context_includes_related_relationships():
     context = build_character_context(_bundle(), "char_001")
 

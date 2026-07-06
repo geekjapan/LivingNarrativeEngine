@@ -339,6 +339,34 @@ def test_goal_update_appends_to_short_term_goals_on_apply():
     assert applied.bundle.characters[0].goals.short_term == ["find the caller"]
 
 
+def test_scene_summary_update_produces_a_scene_summary_set_diff():
+    result = build_state_diff(_context(), [], [], scene_summary_update="霧の奥へ歩き始めた。")
+
+    scene_changes = [c for c in result.diff.changes if c.target == "scene"]
+    assert len(scene_changes) == 1
+    change = scene_changes[0]
+    assert change.id == "scene_001"
+    assert change.op == "set"
+    assert change.path == "summary"
+    assert change.value == "霧の奥へ歩き始めた。"
+    assert change.visibility == Visibility.SCENE
+
+    applied = apply_state_diff(_context().bundle, result.diff)
+    assert applied.bundle.scenes[0].summary == "霧の奥へ歩き始めた。"
+
+
+def test_no_scene_summary_update_produces_no_scene_change():
+    result = build_state_diff(_context(), [], [], scene_summary_update=None)
+
+    assert [c for c in result.diff.changes if c.target == "scene"] == []
+
+
+def test_blank_scene_summary_update_produces_no_scene_change():
+    result = build_state_diff(_context(), [], [], scene_summary_update="")
+
+    assert [c for c in result.diff.changes if c.target == "scene"] == []
+
+
 def test_goal_update_appends_to_long_term_goals_on_apply():
     output = CharacterAgentOutput(
         action_candidates=[],

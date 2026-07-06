@@ -244,6 +244,7 @@ class SceneState(StateBaseModel):
     active_characters: list[CharacterId] = Field(default_factory=list)
     mood: str = ""
     stakes: str = ""
+    summary: str = ""
     reader_visible_facts: list[str] = Field(default_factory=list)
     hidden_facts: list[HiddenFact] = Field(default_factory=list)
     status: SceneStatus = SceneStatus.ACTIVE

@@ -1,6 +1,9 @@
 import yaml
 
+from living_narrative.narration.models import NarrationResult
 from living_narrative.pipeline import TurnPipeline, TurnStatus
+from living_narrative.state.store import StateStore
+from living_narrative.workspace.loader import load_project
 
 ARTIFACT_FILES = [
     "intervention.yaml",
@@ -56,6 +59,44 @@ def test_meta_yaml_contains_required_fields(tmp_path, build_project):
         assert call["binding_key"]
         assert call["profile_name"]
         assert call["model"]
+
+
+def test_narrator_scene_summary_update_is_committed_to_scene_state(
+    tmp_path, build_project, monkeypatch
+):
+    """Issue 007: the narrator's scene_summary_update must flow through BuildDiff into the
+    committed scene state (mock provider fills optional fields with their default of None, so
+    the narrate phase is faked here to exercise the driver -> state_manager wiring directly).
+    """
+    from living_narrative.pipeline import driver as driver_module
+
+    project_path = build_project(tmp_path)
+
+    def fake_run_narrate_phase(*, gateway, project, context, style, mood, tone_control):
+        return (
+            NarrationResult(
+                text="霧の奥へ歩き始めた。",
+                style="novel",
+                scene_summary_update="霧の奥へ歩き始めた。",
+            ),
+            {"mode": "llm", "style": "novel"},
+        )
+
+    monkeypatch.setattr(driver_module, "run_narrate_phase", fake_run_narrate_phase)
+
+    result = TurnPipeline().run(project_path)
+
+    assert result.status == TurnStatus.APPLIED
+    state_diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
+    scene_changes = [c for c in state_diff["diff"]["changes"] if c["target"] == "scene"]
+    assert len(scene_changes) == 1
+    assert scene_changes[0]["path"] == "summary"
+    assert scene_changes[0]["value"] == "霧の奥へ歩き始めた。"
+    assert scene_changes[0]["visibility"] == "scene"
+
+    read = load_project(project_path)
+    bundle = StateStore.load(read.paths.state)
+    assert bundle.scenes[0].summary == "霧の奥へ歩き始めた。"
 
 
 def test_multiple_llm_profiles_recorded_individually(tmp_path, build_project):

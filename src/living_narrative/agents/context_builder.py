@@ -29,6 +29,8 @@ def build_character_context(
         if character_id not in scene.active_characters:
             continue
         scene_facts.extend(scene.reader_visible_facts)
+        if scene.summary:
+            scene_facts.append(scene.summary)
         scene_facts.extend(
             fact.text
             for fact in scene.hidden_facts

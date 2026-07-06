@@ -94,6 +94,10 @@ def test_scene_status_defaults_to_active():
     assert SceneState(id="scene_001", location="x", time="y").status == SceneStatus.ACTIVE
 
 
+def test_scene_summary_defaults_to_empty_string():
+    assert SceneState(id="scene_001", location="x", time="y").summary == ""
+
+
 def test_invalid_character_id_rejected():
     with pytest.raises(ValidationError):
         CharacterState(id="char1", name="Aoi", role="lead")

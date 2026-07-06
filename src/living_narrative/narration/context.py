@@ -22,13 +22,14 @@ def build_narrator_context(
 ) -> NarratorContext:
     blocked = must_not_reveal_texts(context, interventions)
     reader_state_facts = [entry.text for entry in context.bundle.reader_state]
+    active_scenes = [scene for scene in context.bundle.scenes if scene.status == SceneStatus.ACTIVE]
     scene_facts = [
         fact
-        for scene in context.bundle.scenes
-        if scene.status == SceneStatus.ACTIVE
+        for scene in active_scenes
         for fact in scene.reader_visible_facts
         if fact not in blocked
     ]
+    scene_summary = next((scene.summary for scene in active_scenes if scene.summary), "")
     reader_visible_events = [
         event
         for event in resolved_events
@@ -39,4 +40,5 @@ def build_narrator_context(
         reader_state_facts=reader_state_facts,
         scene_reader_visible_facts=scene_facts,
         reader_visible_events=reader_visible_events,
+        scene_summary=scene_summary,
     )

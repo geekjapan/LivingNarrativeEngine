@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from living_narrative.llm.errors import ProviderConnectionError, StructuredOutputError
@@ -83,12 +85,69 @@ def test_llm_narrator_used_when_narrator_binding_present():
 
     assert result.text == "霧の底で、彼は歩き出した。"
     assert result.style == "novel"
+    assert result.scene_summary_update is None
     assert record["mode"] == "llm"
     assert len(gateway.calls) == 1
     call = gateway.calls[0]
     assert call["binding_key"] == "narrator"
     assert call["prompt_template_name"] == PROMPT_TEMPLATE_NAME
     assert "彼は歩き出した" in call["messages"][1]["content"]
+
+
+def test_llm_narrator_payload_includes_current_scene_summary():
+    gateway = FakeGateway(result=LLMNarratorOutput(prose="霧の底で、彼は歩き出した。"))
+    context = _context()
+    context.scene_summary = "駅のホームに霧が立ち込めている。"
+
+    run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=context,
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    payload = json.loads(gateway.calls[0]["messages"][1]["content"])
+    assert payload["scene_summary"] == "駅のホームに霧が立ち込めている。"
+
+
+def test_llm_narrator_output_carries_scene_summary_update():
+    gateway = FakeGateway(
+        result=LLMNarratorOutput(
+            prose="霧の底で、彼は歩き出した。",
+            scene_summary_update="彼は霧の奥へ向かって歩き始めた。",
+        )
+    )
+
+    result, record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=_context(),
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert result.scene_summary_update == "彼は霧の奥へ向かって歩き始めた。"
+    assert record["output"]["scene_summary_update"] == "彼は霧の奥へ向かって歩き始めた。"
+
+
+def test_llm_narrator_blank_scene_summary_update_normalizes_to_none():
+    gateway = FakeGateway(
+        result=LLMNarratorOutput(prose="霧の底で、彼は歩き出した。", scene_summary_update="   ")
+    )
+
+    result, _record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=_context(),
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert result.scene_summary_update is None
 
 
 def test_mechanical_renderer_used_without_narrator_binding():
@@ -106,6 +165,7 @@ def test_mechanical_renderer_used_without_narrator_binding():
     assert gateway.calls == []
     assert record["mode"] == "renderer"
     assert "彼は歩き出した" in result.text
+    assert result.scene_summary_update is None
 
 
 def test_log_style_stays_mechanical_even_with_binding():
@@ -171,3 +231,4 @@ def test_llm_failure_falls_back_to_mechanical_renderer(error):
     assert record["error"]["type"] == type(error).__name__
     assert "彼は歩き出した" in result.text
     assert result.style == "novel"
+    assert result.scene_summary_update is None
