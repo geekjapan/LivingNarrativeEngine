@@ -11,6 +11,8 @@ goals:
     - 封印を維持する
 emotions:
   caution: 70
+emotions_baseline:
+  caution: 70
 knowledge:
   knows:
     - 封印施設の存在

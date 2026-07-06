@@ -108,3 +108,23 @@ def test_world_parameters_are_within_0_to_100(tmp_path):
 
     for value in bundle.world.parameters.values():
         assert 0 <= value <= 100
+
+
+def test_world_has_a_nonzero_emotion_decay_rate(tmp_path):
+    """Issue 010: mist_station opts into engine-side emotion homeostasis."""
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    assert bundle.world.emotion_decay_per_turn == 5
+
+
+def test_every_character_emotions_baseline_matches_its_initial_emotions(tmp_path):
+    """Issue 010: each character's baseline is set to its starting emotion values so decay
+    is a no-op until the LLM actually moves emotions away from them."""
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    for character in bundle.characters:
+        assert character.emotions_baseline == character.emotions

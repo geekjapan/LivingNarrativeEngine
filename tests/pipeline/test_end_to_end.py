@@ -129,6 +129,33 @@ def test_threat_pressure_diff_is_applied_across_a_mock_turn(tmp_path, build_proj
     assert bundle.world.threats[0].pressure == world_changes[0]["value"]
 
 
+def test_emotion_decay_diff_is_applied_across_a_mock_turn(tmp_path, build_project):
+    """Issue 010: a character above its emotions_baseline decays toward it through the real
+    Load->...->Commit pipeline, via a proper character state diff."""
+    project_path = build_project(
+        tmp_path,
+        emotions={"fear": 80},
+        emotions_baseline={"fear": 30},
+        emotion_decay_per_turn=5,
+    )
+
+    result = TurnPipeline().run(project_path)
+
+    assert result.status == TurnStatus.APPLIED
+    state_diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
+    emotion_changes = [
+        c
+        for c in state_diff["diff"]["changes"]
+        if c["target"] == "character" and c["path"] == "emotions.fear"
+    ]
+    assert len(emotion_changes) == 1
+    assert emotion_changes[0]["value"] == -5
+
+    read = load_project(project_path)
+    bundle = StateStore.load(read.paths.state)
+    assert bundle.characters[0].emotions["fear"] == 75
+
+
 def test_multiple_llm_profiles_recorded_individually(tmp_path, build_project):
     project_path = build_project(tmp_path)
     project_data = yaml.safe_load(project_path.read_text(encoding="utf-8"))

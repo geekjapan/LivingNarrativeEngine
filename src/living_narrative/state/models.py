@@ -197,6 +197,8 @@ class WorldState(StateBaseModel):
     parameters: dict[str, Percent] = Field(default_factory=dict)
     background_events: list[BackgroundEventTableEntry] = Field(default_factory=list)
     threats: list[ThreatTrack] = Field(default_factory=list)
+    # Issue 010: engine-side emotion homeostasis rate (0 = off, back-compat).
+    emotion_decay_per_turn: Annotated[int, Field(ge=0)] = 0
 
 
 class FactionState(StateBaseModel):
@@ -228,6 +230,9 @@ class CharacterState(StateBaseModel):
     traits: list[str] = Field(default_factory=list)
     goals: CharacterGoals = Field(default_factory=CharacterGoals)
     emotions: dict[str, Percent] = Field(default_factory=dict)
+    # Issue 010: this character's resting/平常値 emotion levels. Empty = decay does not
+    # apply to this character (back-compat); only keys also present in ``emotions`` decay.
+    emotions_baseline: dict[str, Percent] = Field(default_factory=dict)
     knowledge: CharacterKnowledge = Field(default_factory=CharacterKnowledge)
     secrets: list[str] = Field(default_factory=list)
     private_mind: list[str] = Field(default_factory=list)

@@ -12,6 +12,9 @@ goals:
 emotions:
   fear: 40
   unease: 50
+emotions_baseline:
+  fear: 40
+  unease: 50
 knowledge:
   knows:
     - この駅の奥に何かがある

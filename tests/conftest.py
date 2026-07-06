@@ -19,6 +19,9 @@ def _build_project(
     scene_status: str = "active",
     scene_summary: str = "",
     threats: list[dict[str, Any]] | None = None,
+    emotions: dict[str, int] | None = None,
+    emotions_baseline: dict[str, int] | None = None,
+    emotion_decay_per_turn: int = 0,
 ) -> Path:
     """A minimal workspace with one character and one scene."""
     project_dir = tmp_path / "project"
@@ -26,6 +29,10 @@ def _build_project(
     state_dir = project_dir / "workspace" / "state"
 
     character = {"id": "char_001", "name": "Aoi", "role": "detective", "status": character_status}
+    if emotions is not None:
+        character["emotions"] = emotions
+    if emotions_baseline is not None:
+        character["emotions_baseline"] = emotions_baseline
     (state_dir / "characters" / "char_001.yaml").write_text(
         yaml.safe_dump(character, allow_unicode=True), encoding="utf-8"
     )
@@ -48,6 +55,8 @@ def _build_project(
     world = {"id": "world_001", "name": "Test World", "summary": "A quiet test world."}
     if threats is not None:
         world["threats"] = threats
+    if emotion_decay_per_turn:
+        world["emotion_decay_per_turn"] = emotion_decay_per_turn
     (state_dir / "world.yaml").write_text(
         yaml.safe_dump(world, allow_unicode=True), encoding="utf-8"
     )

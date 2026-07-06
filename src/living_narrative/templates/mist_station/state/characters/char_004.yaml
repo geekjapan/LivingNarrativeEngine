@@ -11,6 +11,8 @@ goals:
     - 封印施設を暴く
 emotions:
   determination: 80
+emotions_baseline:
+  determination: 80
 knowledge:
   knows:
     - リナたちがこの駅にいる

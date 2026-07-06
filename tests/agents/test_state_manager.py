@@ -35,7 +35,7 @@ def _ids():
     return allocate
 
 
-def _context(gm_vault=None, threats=None, scenes=None) -> TurnContext:
+def _context(gm_vault=None, threats=None, scenes=None, characters=None, decay=0) -> TurnContext:
     project = ProjectConfig(
         id="p",
         title="P",
@@ -49,8 +49,15 @@ def _context(gm_vault=None, threats=None, scenes=None) -> TurnContext:
         workspace=WorkspaceConfig(root=".", state="state", runs="runs", exports="exports"),
     )
     bundle = WorldStateBundle(
-        world=WorldState(id="world_001", name="World", summary="", threats=threats or []),
-        characters=[CharacterState(id="char_001", name="A", role="r", emotions={"fear": 30})],
+        world=WorldState(
+            id="world_001",
+            name="World",
+            summary="",
+            threats=threats or [],
+            emotion_decay_per_turn=decay,
+        ),
+        characters=characters
+        or [CharacterState(id="char_001", name="A", role="r", emotions={"fear": 30})],
         scenes=scenes
         if scenes is not None
         else [SceneState(id="scene_001", location="loc", time="now")],
@@ -323,6 +330,133 @@ def test_emotion_delta_clamps_to_0_on_apply():
     applied = apply_state_diff(context.bundle, result.diff)
 
     assert applied.bundle.characters[0].emotions["fear"] == 0
+
+
+def test_emotion_decay_pulls_down_toward_baseline_when_above_it():
+    character = CharacterState(
+        id="char_001",
+        name="A",
+        role="r",
+        emotions={"fear": 80},
+        emotions_baseline={"fear": 30},
+    )
+    context = _context(characters=[character], decay=5)
+
+    result = build_state_diff(context, [], [])
+
+    emotion_changes = [c for c in result.diff.changes if c.target == "character"]
+    assert len(emotion_changes) == 1
+    change = emotion_changes[0]
+    assert change.path == "emotions.fear"
+    assert change.value == -5
+    assert change.visibility == Visibility.CHARACTER
+
+
+def test_emotion_decay_pulls_up_toward_baseline_when_below_it():
+    character = CharacterState(
+        id="char_001",
+        name="A",
+        role="r",
+        emotions={"fear": 10},
+        emotions_baseline={"fear": 30},
+    )
+    context = _context(characters=[character], decay=5)
+
+    result = build_state_diff(context, [], [])
+
+    emotion_changes = [c for c in result.diff.changes if c.target == "character"]
+    assert len(emotion_changes) == 1
+    assert emotion_changes[0].value == 5
+
+
+def test_emotion_decay_min_step_lands_exactly_on_baseline_without_overshoot():
+    character = CharacterState(
+        id="char_001",
+        name="A",
+        role="r",
+        emotions={"fear": 32},
+        emotions_baseline={"fear": 30},
+    )
+    context = _context(characters=[character], decay=5)
+
+    result = build_state_diff(context, [], [])
+    applied = apply_state_diff(context.bundle, result.diff)
+
+    emotion_changes = [c for c in result.diff.changes if c.target == "character"]
+    assert emotion_changes[0].value == -2
+    assert applied.bundle.characters[0].emotions["fear"] == 30
+
+
+def test_emotion_decay_rate_zero_produces_no_changes():
+    character = CharacterState(
+        id="char_001",
+        name="A",
+        role="r",
+        emotions={"fear": 80},
+        emotions_baseline={"fear": 30},
+    )
+    context = _context(characters=[character], decay=0)
+
+    result = build_state_diff(context, [], [])
+
+    assert [c for c in result.diff.changes if c.target == "character"] == []
+
+
+def test_emotion_decay_skips_emotion_keys_missing_a_baseline():
+    character = CharacterState(
+        id="char_001",
+        name="A",
+        role="r",
+        emotions={"fear": 80, "curiosity": 60},
+        emotions_baseline={"fear": 30},
+    )
+    context = _context(characters=[character], decay=5)
+
+    result = build_state_diff(context, [], [])
+
+    emotion_changes = [c for c in result.diff.changes if c.target == "character"]
+    assert len(emotion_changes) == 1
+    assert emotion_changes[0].path == "emotions.fear"
+
+
+def test_emotion_decay_skips_dead_characters():
+    character = CharacterState(
+        id="char_001",
+        name="A",
+        role="r",
+        emotions={"fear": 80},
+        emotions_baseline={"fear": 30},
+        status="dead",
+    )
+    context = _context(characters=[character], decay=5)
+
+    result = build_state_diff(context, [], [])
+
+    assert [c for c in result.diff.changes if c.target == "character"] == []
+
+
+def test_emotion_decay_and_character_output_delta_both_apply_cleanly_in_one_diff():
+    character = CharacterState(
+        id="char_001",
+        name="A",
+        role="r",
+        emotions={"fear": 50},
+        emotions_baseline={"fear": 30},
+    )
+    context = _context(characters=[character], decay=5)
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[EmotionDeltaCandidate(emotion="fear", delta=10)],
+        goal_updates=[],
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+    emotion_changes = [c for c in result.diff.changes if c.target == "character"]
+    assert len(emotion_changes) == 2
+
+    applied = apply_state_diff(context.bundle, result.diff)
+    # +10 from the character output, then -5 decay applied in diff order: 50 + 10 - 5 = 55
+    assert applied.bundle.characters[0].emotions["fear"] == 55
 
 
 def test_goal_update_appends_to_short_term_goals_on_apply():

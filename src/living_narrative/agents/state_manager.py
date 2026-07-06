@@ -10,6 +10,7 @@ from living_narrative.pipeline.models import BuildDiffOutput, RejectedChange
 from living_narrative.state.diff import StateDiff, StateDiffChange
 from living_narrative.state.models import (
     CharacterId,
+    CharacterStatus,
     Event,
     SceneStatus,
     TimelineEntry,
@@ -87,6 +88,9 @@ def build_state_diff(
         output_changes, output_rejected = _character_output_changes(context, character_id, output)
         changes.extend(output_changes)
         rejected.extend(output_rejected)
+
+    # 010: ベースライン減衰(エンジン側・決定論)。rate 0 またはbaseline未定義ならno-op。
+    changes.extend(_emotion_decay_changes(context))
 
     # 007: ナレーターが書いた場面の現在状況更新をsetに変換(leak-safe by construction: ADR-0003)。
     if scene_summary_update:
@@ -224,6 +228,39 @@ def _character_output_changes(
             )
         )
     return changes, rejected
+
+
+def _emotion_decay_changes(context: TurnContext) -> list[StateDiffChange]:
+    """Issue 010: every ALIVE character's emotions drift toward ``emotions_baseline`` by up
+    to ``world.emotion_decay_per_turn`` per turn, in whichever direction closes the gap,
+    landing exactly on the baseline instead of overshooting it. A character with no baseline
+    for a given emotion (or rate 0) is left untouched (back-compat)."""
+    rate = context.bundle.world.emotion_decay_per_turn
+    if rate <= 0:
+        return []
+    changes = []
+    for character in context.bundle.characters:
+        if character.status != CharacterStatus.ALIVE:
+            continue
+        for emotion in sorted(character.emotions_baseline):
+            if emotion not in character.emotions:
+                continue
+            distance = character.emotions_baseline[emotion] - character.emotions[emotion]
+            if distance == 0:
+                continue
+            step = min(rate, abs(distance))
+            delta = step if distance > 0 else -step
+            changes.append(
+                StateDiffChange(
+                    target="character",
+                    id=character.id,
+                    op="delta",
+                    path=f"emotions.{emotion}",
+                    value=delta,
+                    visibility=Visibility.CHARACTER,
+                )
+            )
+    return changes
 
 
 def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChange]:

@@ -12,6 +12,9 @@ goals:
 emotions:
   fear: 30
   curiosity: 60
+emotions_baseline:
+  fear: 30
+  curiosity: 60
 knowledge:
   knows:
     - 霧の駅には奇妙な噂がある
