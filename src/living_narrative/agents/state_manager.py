@@ -74,7 +74,9 @@ def build_state_diff(
         changes.append(change)
 
     for character_id, output in character_outputs or []:
-        changes.extend(_character_output_changes(character_id, output))
+        output_changes, output_rejected = _character_output_changes(context, character_id, output)
+        changes.extend(output_changes)
+        rejected.extend(output_rejected)
 
     timeline_event_ids = [event.id for event in resolved_events] + [
         event.id for event in synthetic_events
@@ -85,9 +87,9 @@ def build_state_diff(
                 target="timeline",
                 op="add",
                 path="",
-                value=TimelineEntry(
-                    turn=context.turn, event_ids=timeline_event_ids
-                ).model_dump(mode="json"),
+                value=TimelineEntry(turn=context.turn, event_ids=timeline_event_ids).model_dump(
+                    mode="json"
+                ),
                 visibility=Visibility.CANON,
             )
         )
@@ -165,20 +167,26 @@ def _reveal_now_change(
 
 
 def _character_output_changes(
-    character_id: CharacterId, output: CharacterAgentOutput
-) -> list[StateDiffChange]:
+    context: TurnContext, character_id: CharacterId, output: CharacterAgentOutput
+) -> tuple[list[StateDiffChange], list[RejectedChange]]:
+    character = next((c for c in context.bundle.characters if c.id == character_id), None)
+    known_emotions = set(character.emotions) if character else set()
     changes = []
+    rejected = []
     for emotion_delta in output.emotion_deltas:
-        changes.append(
-            StateDiffChange(
-                target="character",
-                id=character_id,
-                op="delta",
-                path=f"emotions.{emotion_delta.emotion}",
-                value=emotion_delta.delta,
-                visibility=emotion_delta.visibility,
-            )
+        change = StateDiffChange(
+            target="character",
+            id=character_id,
+            op="delta",
+            path=f"emotions.{emotion_delta.emotion}",
+            value=emotion_delta.delta,
+            visibility=emotion_delta.visibility,
         )
+        # delta opは既存パス必須(StateDiffError回避): キャラに無い感情キーは棄却
+        if emotion_delta.emotion not in known_emotions:
+            rejected.append(_reject(change, "unknown emotion key for character"))
+        else:
+            changes.append(change)
     for goal_update in output.goal_updates:
         changes.append(
             StateDiffChange(
@@ -190,7 +198,7 @@ def _character_output_changes(
                 visibility=goal_update.visibility,
             )
         )
-    return changes
+    return changes, rejected
 
 
 def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChange]:

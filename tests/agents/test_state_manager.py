@@ -48,7 +48,7 @@ def _context(gm_vault=None) -> TurnContext:
     )
     bundle = WorldStateBundle(
         world=WorldState(id="world_001", name="World", summary=""),
-        characters=[CharacterState(id="char_001", name="A", role="r")],
+        characters=[CharacterState(id="char_001", name="A", role="r", emotions={"fear": 30})],
         scenes=[SceneState(id="scene_001", location="loc", time="now")],
         gm_vault=gm_vault or [],
     )
@@ -274,6 +274,21 @@ def test_emotion_delta_produces_a_character_delta_change_with_character_visibili
     assert change.path == "emotions.fear"
     assert change.value == 20
     assert change.visibility == Visibility.CHARACTER
+
+
+def test_emotion_delta_for_unknown_emotion_key_is_rejected():
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[EmotionDeltaCandidate(emotion="nostalgia", delta=10)],
+        goal_updates=[],
+    )
+
+    result = build_state_diff(_context(), [], [], character_outputs=[("char_001", output)])
+
+    assert [c for c in result.diff.changes if c.target == "character"] == []
+    assert any(
+        item.reason == "unknown emotion key for character" for item in result.rejected_changes
+    )
 
 
 def test_emotion_delta_clamps_to_100_on_apply():

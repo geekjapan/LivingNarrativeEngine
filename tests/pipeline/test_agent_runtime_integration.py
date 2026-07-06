@@ -42,7 +42,7 @@ def test_agent_runtime_blocks_auto_apply_on_leak_and_continuity_errors(tmp_path,
     registry = default_registry()
     registry.register(
         "act",
-        lambda context, world_events, gateway, interventions=(): (
+        lambda context, world_events, gateway, interventions=(), past_events=None: (
             [
                 ActionCandidate(
                     character_id="char_001",
@@ -55,7 +55,11 @@ def test_agent_runtime_blocks_auto_apply_on_leak_and_continuity_errors(tmp_path,
                     character_id="char_001",
                     prompt_template_name="test",
                     request=[],
-                    response={},
+                    response={
+                        "action_candidates": [],
+                        "emotion_deltas": [],
+                        "goal_updates": [],
+                    },
                 )
             ],
         ),

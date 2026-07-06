@@ -49,6 +49,10 @@ from living_narrative.workspace.loader import load_project
 
 CommitMode = Literal["auto", "review"]
 
+# 直近何ターン分のtimelineイベントをActのキャラクター文脈へ渡すか(Issue 006)。
+# 個々のイベント数はbuild_character_contextのevent_limit(20)が上限。
+PAST_EVENT_TURNS = 5
+
 
 @dataclass(frozen=True)
 class TurnRunResult:
@@ -181,8 +185,18 @@ class TurnPipeline:
                 )
 
             with _timed_phase("act", durations, current_phase):
+                # D108/D113と同じ理由の遅延import: pipelineをimport時にagentsへ依存させない
+                from living_narrative.agents.event_history import load_recent_events
+
+                past_events = load_recent_events(
+                    paths.runs, bundle.timeline, max_turns=PAST_EVENT_TURNS
+                )
                 action_candidates, act_records = self.registry.get("act")(
-                    context, world_events, gateway, intervention_file.interventions
+                    context,
+                    world_events,
+                    gateway,
+                    intervention_file.interventions,
+                    past_events=past_events,
                 )
                 write_agent_io(turn_dir, act_records)
                 write_agent_io_component(
@@ -233,8 +247,18 @@ class TurnPipeline:
                 write_narration(turn_dir, turn, narration.style, narration.text)
 
             with _timed_phase("build_diff", durations, current_phase):
+                from living_narrative.agents.models import CharacterAgentOutput
+
+                character_outputs = [
+                    (record.character_id, CharacterAgentOutput.model_validate(record.response))
+                    for record in act_records
+                ]
                 build_diff_output = self.registry.get("build_diff")(
-                    context, resolved_events, intervention_file.interventions, allocate_event_id
+                    context,
+                    resolved_events,
+                    intervention_file.interventions,
+                    allocate_event_id,
+                    character_outputs=character_outputs,
                 )
                 if build_diff_output.synthetic_events:
                     resolved_events = [*resolved_events, *build_diff_output.synthetic_events]

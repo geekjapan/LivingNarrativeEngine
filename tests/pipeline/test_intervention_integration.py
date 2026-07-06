@@ -72,8 +72,12 @@ def test_permission_rejection_is_recorded_and_produces_no_state_change(tmp_path,
     assert intervention_file["rejections"][0]["type"] == "canon_edit"
 
     state_diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
-    non_timeline_changes = [c for c in state_diff["diff"]["changes"] if c["target"] != "timeline"]
-    assert non_timeline_changes == []
+    # timeline追記とキャラクター感情/目標のdiff(Issue 006)は介入とは独立に発生しうる。
+    # ここで見るのは「棄却された介入が状態変更を生まないこと」のみ。
+    intervention_changes = [
+        c for c in state_diff["diff"]["changes"] if c["target"] not in ("timeline", "character")
+    ]
+    assert intervention_changes == []
 
 
 def test_character_directive_routes_only_to_the_target_character(tmp_path, build_project):
