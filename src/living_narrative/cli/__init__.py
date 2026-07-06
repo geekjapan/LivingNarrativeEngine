@@ -10,6 +10,7 @@ from living_narrative.cli import auto as _auto
 from living_narrative.cli import branch as _branch
 from living_narrative.cli import export as _export
 from living_narrative.cli import init as _init
+from living_narrative.cli import metrics as _metrics
 from living_narrative.cli import review as _review
 from living_narrative.cli import rollback as _rollback
 from living_narrative.cli import serve as _serve
@@ -27,6 +28,7 @@ app.command("turn")(_turn.turn)
 app.command("auto")(_auto.auto)
 app.command("review")(_review.review)
 app.command("status")(_status.status)
+app.command("metrics")(_metrics.metrics)
 app.command("serve")(_serve.serve)
 app.command("rollback")(_rollback.rollback)
 app.command("branch")(_branch.branch)
