@@ -18,7 +18,7 @@ from living_narrative.pipeline import TurnPipeline  # noqa: E402
 from living_narrative.web.app import create_app  # noqa: E402
 from living_narrative.workspace.init import create_project  # noqa: E402
 
-CHAR_002_SECRET = "幼い頃にこの駅で何かを見た記憶がある"
+CHAR_002_SECRET = "幼い頃の記憶"
 CHAR_002_PRIVATE_MIND = "あの日見たものの正体を、まだリナに話せていない"
 SCENE_001_HIDDEN_FACT = "足音の主は、封印施設を探る追跡者である。"
 
