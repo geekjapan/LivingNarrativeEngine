@@ -9,6 +9,9 @@ from living_narrative.pipeline.status import TurnStatus
 from living_narrative.pipeline.turn_numbering import (
     determine_next_turn_number,
     discard_turn_directory,
+    existing_turn_numbers,
+    read_turn_status,
+    rollback_turn_directory,
     turn_dir_path,
 )
 from living_narrative.pipeline.version import PIPELINE_VERSION
@@ -25,6 +28,9 @@ __all__ = [
     "default_registry",
     "determine_next_turn_number",
     "discard_turn_directory",
+    "existing_turn_numbers",
+    "read_turn_status",
+    "rollback_turn_directory",
     "total_rng_draws_consumed",
     "turn_dir_path",
 ]

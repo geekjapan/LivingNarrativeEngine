@@ -7,9 +7,11 @@ diff computation, visibility judgment, or stop-condition logic lives in this pac
 import typer
 
 from living_narrative.cli import auto as _auto
+from living_narrative.cli import branch as _branch
 from living_narrative.cli import export as _export
 from living_narrative.cli import init as _init
 from living_narrative.cli import review as _review
+from living_narrative.cli import rollback as _rollback
 from living_narrative.cli import serve as _serve
 from living_narrative.cli import status as _status
 from living_narrative.cli import turn as _turn
@@ -26,6 +28,8 @@ app.command("auto")(_auto.auto)
 app.command("review")(_review.review)
 app.command("status")(_status.status)
 app.command("serve")(_serve.serve)
+app.command("rollback")(_rollback.rollback)
+app.command("branch")(_branch.branch)
 app.add_typer(_export.app, name="export")
 
 __all__ = ["app"]

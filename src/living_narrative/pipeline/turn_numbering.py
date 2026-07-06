@@ -35,7 +35,11 @@ def read_turn_status(turn_dir: Path) -> TurnStatus | None:
         return None
 
 
-def _existing_turn_numbers(runs_dir: Path) -> list[int]:
+def existing_turn_numbers(runs_dir: Path) -> list[int]:
+    """Sorted ``turn_NNNN`` numbers (excludes ``_discarded_``/``_rolledback_`` dirs).
+
+    Public: also used by ``session/rollback.py`` to find the current latest turn.
+    """
     if not runs_dir.exists():
         return []
     numbers = [
@@ -48,7 +52,7 @@ def _existing_turn_numbers(runs_dir: Path) -> list[int]:
 
 def determine_next_turn_number(runs_dir: Path) -> int:
     """ "Last applied turn + 1", blocking on an unresolved latest turn (SHALL/MUST NOT)."""
-    numbers = _existing_turn_numbers(runs_dir)
+    numbers = existing_turn_numbers(runs_dir)
     if not numbers:
         return 1
 
@@ -68,6 +72,25 @@ def discard_turn_directory(turn_dir: Path) -> Path:
     n = 1
     while True:
         candidate = turn_dir.parent / f"{turn_dir.name}_discarded_{n}"
+        if not candidate.exists():
+            break
+        n += 1
+    turn_dir.rename(candidate)
+    return candidate
+
+
+def rollback_turn_directory(turn_dir: Path) -> Path:
+    """Rename a rolled-back turn dir to ``turn_NNNN_rolledback_<n>`` (Issue 018).
+
+    Mirrors ``discard_turn_directory`` (D112 spirit: never destroy turn history, only
+    rename it aside) but with a distinct suffix so it does NOT match ``ANY_TURN_DIR_RE``:
+    rolled-back turns must fall out of RNG-draw/roll-id accounting (``pipeline/rng_state.py``)
+    and out of ``session/resume.py``'s next-id/last-applied-turn scans, since a rollback
+    means those turns' rolls/draws are no longer part of the project's live history.
+    """
+    n = 1
+    while True:
+        candidate = turn_dir.parent / f"{turn_dir.name}_rolledback_{n}"
         if not candidate.exists():
             break
         n += 1

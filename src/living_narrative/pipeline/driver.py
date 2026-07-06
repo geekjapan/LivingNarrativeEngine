@@ -42,7 +42,7 @@ from living_narrative.random.engine import RandomEngine, load_rolls, next_roll_n
 from living_narrative.session.mode import session_permission_table
 from living_narrative.session.review import write_review_yaml
 from living_narrative.session.stop_conditions import evaluate_stop_conditions
-from living_narrative.state.diff import apply_state_diff
+from living_narrative.state.diff import apply_state_diff, save_apply_artifacts
 from living_narrative.state.models import SceneStatus, UserMode
 from living_narrative.state.store import StateLoadError, StateStore
 from living_narrative.workspace.loader import load_project
@@ -311,6 +311,10 @@ class TurnPipeline:
                 elif commit_mode == "auto":
                     apply_result = apply_state_diff(bundle, build_diff_output.diff)
                     StateStore.save(apply_result.bundle, paths.state)
+                    # Issue 018: every auto-applied turn saves its inverse diff too, so
+                    # `rollback`/`branch` can always rewind past it (mirrors what the GM
+                    # review path and god-mode edits already do via save_apply_artifacts).
+                    save_apply_artifacts(apply_result, turn_dir)
                     status = TurnStatus.APPLIED
                     applied = True
                 else:
