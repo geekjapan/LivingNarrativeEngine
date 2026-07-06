@@ -1,7 +1,7 @@
 ---
 id: 004
 title: リークチェッカーの新規生成コンテンツ対応(characterスコープのkindが未開示でreaderに出たら検出)
-status: open
+status: done
 created: 2026-07-06
 ---
 
@@ -13,9 +13,9 @@ created: 2026-07-06
 
 ## 完了条件
 
-- [ ] 新チェック: `character_inner_reaction`(および他のcharacterスコープ相当kind)が、対応する開示diff(`op: add, target: reader_state`)なしに読者ナレーションへ現れたらfindingを出す
-- [ ] Issue 002(タグ正常化)完了後に着手 — クランプが先、検出は防衛第二層
-- [ ] テスト: 未開示inner_reactionを含むフィクスチャでfindingが出ること/開示済みなら出ないこと
+- [x] 新チェック: `character_inner_reaction`(および他のcharacterスコープ相当kind)が、対応する開示diff(`op: add, target: reader_state`)なしに読者ナレーションへ現れたらfindingを出す
+- [x] Issue 002(タグ正常化)完了後に着手 — クランプが先、検出は防衛第二層
+- [x] テスト: 未開示inner_reactionを含むフィクスチャでfindingが出ること/開示済みなら出ないこと
 
 ## 関連ファイル
 

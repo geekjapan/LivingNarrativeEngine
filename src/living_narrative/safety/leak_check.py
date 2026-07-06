@@ -8,6 +8,8 @@ from living_narrative.safety.registry import Finding
 from living_narrative.state.diff import StateDiff
 from living_narrative.state.models import Event, Visibility
 
+CHARACTER_SCOPED_EVENT_TYPES = frozenset({"character_inner_reaction"})
+
 
 def leak_checker(
     context: TurnContext,
@@ -37,6 +39,19 @@ def leak_checker(
                     severity="error",
                     message="hidden or private text leaked",
                     related_ids=[fact[0]],
+                )
+            )
+    for event in resolved_events:
+        if event.type not in CHARACTER_SCOPED_EVENT_TYPES:
+            continue
+        normalized = _normalize(event.text)
+        if normalized and normalized in text and normalized not in allowed:
+            findings.append(
+                Finding(
+                    checker="leak",
+                    severity="error",
+                    message=f"undisclosed character-scoped event reached reader: {event.id}",
+                    related_ids=[event.id],
                 )
             )
     return findings
