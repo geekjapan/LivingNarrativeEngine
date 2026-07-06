@@ -91,3 +91,36 @@ def test_speech_register_warn_does_not_block_auto_apply(tmp_path, build_project)
     assert speech_findings
     assert speech_findings[0]["severity"] == "warn"
     assert speech_findings[0]["related_ids"] == ["event_0001"]
+
+
+def test_character_consistency_warn_does_not_block_auto_apply(tmp_path, build_project):
+    """Issue 016: a dialogue event where the speaker mentions something they don't know is
+    only a warn -- auto-apply still commits."""
+    project_path = build_project(tmp_path, knowledge={"does_not_know": ["封印施設"]})
+    registry = default_registry()
+
+    def _resolve_with_know_violation_dialogue(
+        context, world_events, action_candidates, allocate_event_id, record_roll
+    ):
+        return [
+            Event(
+                id=allocate_event_id(),
+                turn=context.turn,
+                type="character_dialogue",
+                text="封印施設のことは聞いたことがある",
+                visibility=Visibility.READER,
+                effects={"character_id": "char_001"},
+            )
+        ]
+
+    registry.register("resolve", _resolve_with_know_violation_dialogue)
+
+    result = TurnPipeline(registry=registry).run(project_path, commit_mode="auto")
+
+    assert result.status == TurnStatus.APPLIED
+    checks = yaml.safe_load((result.turn_dir / "checks.yaml").read_text(encoding="utf-8"))
+    findings = checks["findings"] if isinstance(checks, dict) else checks
+    consistency_findings = [f for f in findings if f["source"] == "character_consistency_check"]
+    assert consistency_findings
+    assert consistency_findings[0]["severity"] == "warn"
+    assert consistency_findings[0]["related_ids"] == ["event_0001"]

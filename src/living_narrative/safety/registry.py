@@ -82,6 +82,9 @@ def write_checks_yaml(path: Path, result: CheckRunResult) -> None:
 
 
 def _install_defaults() -> None:
+    from living_narrative.safety.character_consistency_check import (
+        character_consistency_checker,
+    )
     from living_narrative.safety.continuity_check import continuity_checker
     from living_narrative.safety.leak_check import leak_checker
     from living_narrative.safety.pacing_check import pacing_checker
@@ -91,6 +94,7 @@ def _install_defaults() -> None:
     register_checker("continuity", continuity_checker)
     register_checker("pacing", pacing_checker)
     register_checker("speech", speech_register_checker)
+    register_checker("character_consistency", character_consistency_checker)
 
 
 _install_defaults()
