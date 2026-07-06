@@ -5,6 +5,7 @@ from living_narrative.agents.models import (
     RelationshipUpdateCandidate,
 )
 from living_narrative.agents.state_manager import build_state_diff
+from living_narrative.narration.models import ThreadUpdateCandidate
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.random.engine import RandomEngine
 from living_narrative.state.diff import apply_state_diff
@@ -19,6 +20,7 @@ from living_narrative.state.models import (
     SceneState,
     SceneStatus,
     ThreatTrack,
+    UnresolvedThread,
     Visibility,
     WorkspaceConfig,
     WorldState,
@@ -38,7 +40,13 @@ def _ids():
 
 
 def _context(
-    gm_vault=None, threats=None, scenes=None, characters=None, decay=0, relationships=None
+    gm_vault=None,
+    threats=None,
+    scenes=None,
+    characters=None,
+    decay=0,
+    relationships=None,
+    unresolved_threads=None,
 ) -> TurnContext:
     project = ProjectConfig(
         id="p",
@@ -67,6 +75,7 @@ def _context(
         else [SceneState(id="scene_001", location="loc", time="now")],
         gm_vault=gm_vault or [],
         relationships=relationships or [],
+        unresolved_threads=unresolved_threads or [],
     )
     return TurnContext(1, project, None, bundle, RandomEngine("seed"))
 
@@ -856,3 +865,202 @@ def test_active_scene_id_is_none_when_only_pending_scenes_exist():
     result = build_state_diff(context, [], [], scene_summary_update="次の場面へ。")
 
     assert [c for c in result.diff.changes if c.target == "scene"] == []
+
+
+# --- Issue 014: thread_updates -----------------------------------------------------------
+
+
+def test_open_thread_update_adds_a_new_thread_and_applies():
+    context = _context()
+    candidate = ThreadUpdateCandidate(action="open", description="お守りの由来は謎のままだ。")
+
+    result = build_state_diff(context, [], [], _ids(), thread_updates=[candidate])
+
+    thread_changes = [c for c in result.diff.changes if c.target == "threads"]
+    assert len(thread_changes) == 1
+    change = thread_changes[0]
+    assert change.op == "add"
+    assert change.path == ""
+    assert change.value["id"] == "thread_000101"
+    assert change.value["description"] == "お守りの由来は謎のままだ。"
+    assert change.value["status"] == "open"
+    assert change.value["opened_turn"] == 1
+    assert result.rejected_changes == []
+
+    applied = apply_state_diff(context.bundle, result.diff)
+    assert len(applied.bundle.unresolved_threads) == 1
+    assert applied.bundle.unresolved_threads[0].id == "thread_000101"
+
+    restored = apply_state_diff(applied.bundle, applied.inverse_diff).bundle
+    assert restored.unresolved_threads == []
+
+
+def test_open_thread_update_without_description_is_rejected():
+    context = _context()
+    candidate = ThreadUpdateCandidate(action="open")
+
+    result = build_state_diff(context, [], [], _ids(), thread_updates=[candidate])
+
+    assert [c for c in result.diff.changes if c.target == "threads"] == []
+    assert any(
+        item.reason == "open thread update missing description" for item in result.rejected_changes
+    )
+
+
+def test_advance_thread_update_appends_note_and_links_this_turns_events_and_applies():
+    thread = UnresolvedThread(id="thread_000101", description="お守りの由来", status="open")
+    context = _context(unresolved_threads=[thread])
+    event = Event(
+        id="event_0001",
+        turn=1,
+        type="character_action",
+        text="お守りを拾った",
+        visibility=Visibility.READER,
+    )
+    candidate = ThreadUpdateCandidate(
+        action="advance", thread_id="thread_000101", note="お守りを見つけた。"
+    )
+
+    result = build_state_diff(context, [event], [], _ids(), thread_updates=[candidate])
+
+    thread_changes = [c for c in result.diff.changes if c.target == "threads"]
+    note_changes = [c for c in thread_changes if c.path == "notes"]
+    event_link_changes = [c for c in thread_changes if c.path == "related_event_ids"]
+    assert len(note_changes) == 1
+    assert note_changes[0].value == "お守りを見つけた。"
+    assert len(event_link_changes) == 1
+    assert event_link_changes[0].value == "event_0001"
+    assert result.rejected_changes == []
+
+    applied = apply_state_diff(context.bundle, result.diff)
+    updated = applied.bundle.unresolved_threads[0]
+    assert updated.notes == ["お守りを見つけた。"]
+    assert updated.related_event_ids == ["event_0001"]
+    assert updated.status == "open"
+
+    restored = apply_state_diff(applied.bundle, applied.inverse_diff).bundle
+    assert restored.unresolved_threads[0].notes == []
+    assert restored.unresolved_threads[0].related_event_ids == []
+
+
+def test_advance_thread_update_without_note_only_links_events():
+    thread = UnresolvedThread(id="thread_000101", description="お守りの由来", status="open")
+    context = _context(unresolved_threads=[thread])
+    candidate = ThreadUpdateCandidate(action="advance", thread_id="thread_000101")
+
+    result = build_state_diff(context, [], [], _ids(), thread_updates=[candidate])
+
+    assert [c for c in result.diff.changes if c.target == "threads" and c.path == "notes"] == []
+    assert result.rejected_changes == []
+
+
+def test_resolve_thread_update_sets_status_and_applies():
+    thread = UnresolvedThread(id="thread_000101", description="お守りの由来", status="open")
+    context = _context(unresolved_threads=[thread])
+    candidate = ThreadUpdateCandidate(action="resolve", thread_id="thread_000101")
+
+    result = build_state_diff(context, [], [], _ids(), thread_updates=[candidate])
+
+    thread_changes = [c for c in result.diff.changes if c.target == "threads"]
+    assert len(thread_changes) == 1
+    assert thread_changes[0].op == "set"
+    assert thread_changes[0].path == "status"
+    assert thread_changes[0].value == "resolved"
+    assert result.rejected_changes == []
+
+    applied = apply_state_diff(context.bundle, result.diff)
+    assert applied.bundle.unresolved_threads[0].status == "resolved"
+
+    restored = apply_state_diff(applied.bundle, applied.inverse_diff).bundle
+    assert restored.unresolved_threads[0].status == "open"
+
+
+def test_advance_unknown_thread_id_is_rejected():
+    context = _context()
+    candidate = ThreadUpdateCandidate(action="advance", thread_id="thread_999999", note="x")
+
+    result = build_state_diff(context, [], [], _ids(), thread_updates=[candidate])
+
+    assert [c for c in result.diff.changes if c.target == "threads"] == []
+    assert any("unknown thread_id" in item.reason for item in result.rejected_changes)
+
+
+def test_resolve_unknown_thread_id_is_rejected():
+    context = _context()
+    candidate = ThreadUpdateCandidate(action="resolve", thread_id="thread_999999")
+
+    result = build_state_diff(context, [], [], _ids(), thread_updates=[candidate])
+
+    assert [c for c in result.diff.changes if c.target == "threads"] == []
+    assert any("unknown thread_id" in item.reason for item in result.rejected_changes)
+
+
+def test_advance_on_already_resolved_thread_is_rejected():
+    thread = UnresolvedThread(id="thread_000101", description="お守りの由来", status="resolved")
+    context = _context(unresolved_threads=[thread])
+    candidate = ThreadUpdateCandidate(action="advance", thread_id="thread_000101", note="x")
+
+    result = build_state_diff(context, [], [], _ids(), thread_updates=[candidate])
+
+    assert [c for c in result.diff.changes if c.target == "threads"] == []
+    assert any("already resolved" in item.reason for item in result.rejected_changes)
+
+
+def test_resolve_on_already_resolved_thread_is_rejected():
+    thread = UnresolvedThread(id="thread_000101", description="お守りの由来", status="resolved")
+    context = _context(unresolved_threads=[thread])
+    candidate = ThreadUpdateCandidate(action="resolve", thread_id="thread_000101")
+
+    result = build_state_diff(context, [], [], _ids(), thread_updates=[candidate])
+
+    assert [c for c in result.diff.changes if c.target == "threads"] == []
+    assert any("already resolved" in item.reason for item in result.rejected_changes)
+
+
+def test_thread_update_actions_emit_synthetic_thread_update_events_in_timeline():
+    thread = UnresolvedThread(id="thread_000501", description="お守りの由来", status="open")
+    context = _context(unresolved_threads=[thread])
+    candidates = [
+        ThreadUpdateCandidate(action="open", description="新しい謎"),
+        ThreadUpdateCandidate(action="advance", thread_id="thread_000501", note="進展した"),
+    ]
+
+    result = build_state_diff(context, [], [], _ids(), thread_updates=candidates)
+
+    thread_events = [e for e in result.synthetic_events if e.type == "thread_update"]
+    assert len(thread_events) == 2
+    assert {e.effects["action"] for e in thread_events} == {"open", "advance"}
+    for event in thread_events:
+        assert event.visibility == Visibility.GM_ONLY
+        assert event.cause == "narrator"
+
+    timeline_change = next(c for c in result.diff.changes if c.target == "timeline")
+    for event in thread_events:
+        assert event.id in timeline_change.value["event_ids"]
+
+
+def test_rejected_thread_updates_emit_no_synthetic_event():
+    context = _context()
+    candidate = ThreadUpdateCandidate(action="advance", thread_id="thread_999999", note="x")
+
+    result = build_state_diff(context, [], [], _ids(), thread_updates=[candidate])
+
+    assert result.synthetic_events == []
+
+
+def test_no_thread_updates_produces_no_threads_changes():
+    result = build_state_diff(_context(), [], [], thread_updates=None)
+
+    assert [c for c in result.diff.changes if c.target == "threads"] == []
+
+
+def test_multiple_open_thread_updates_get_distinct_ids():
+    candidates = [
+        ThreadUpdateCandidate(action="open", description="謎その1"),
+        ThreadUpdateCandidate(action="open", description="謎その2"),
+    ]
+
+    result = build_state_diff(_context(), [], [], _ids(), thread_updates=candidates)
+
+    thread_changes = [c for c in result.diff.changes if c.target == "threads"]
+    assert [c.value["id"] for c in thread_changes] == ["thread_000101", "thread_000102"]

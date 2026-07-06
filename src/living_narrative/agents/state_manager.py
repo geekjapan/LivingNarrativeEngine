@@ -5,6 +5,7 @@ from typing import Any
 
 from living_narrative.agents.models import CharacterAgentOutput
 from living_narrative.intervention.reveal import must_not_reveal_texts, reveal_now_sources
+from living_narrative.narration.models import ThreadUpdateCandidate
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import BuildDiffOutput, RejectedChange
 from living_narrative.state.diff import StateDiff, StateDiffChange
@@ -40,6 +41,7 @@ def build_state_diff(
     allocate_event_id: Callable[[], str] | None = None,
     character_outputs: list[tuple[CharacterId, CharacterAgentOutput]] | None = None,
     scene_summary_update: str | None = None,
+    thread_updates: list[ThreadUpdateCandidate] | None = None,
 ) -> BuildDiffOutput:
     allocate_event_id = allocate_event_id or _default_event_id_allocator()
     must_not_reveal = must_not_reveal_texts(context, interventions)
@@ -106,6 +108,15 @@ def build_state_diff(
                     visibility=Visibility.SCENE,
                 )
             )
+
+    # 014: ナレーターのthread_updatesをthreadsコレクションへの変換(leak-safe by construction:
+    # 007と同型 — ナレーターはreader可視情報しか見ていないので起票内容も漏洩しない)。
+    thread_changes, thread_rejected, thread_events = _thread_update_changes(
+        context, thread_updates or [], resolved_events, allocate_event_id
+    )
+    changes.extend(thread_changes)
+    rejected.extend(thread_rejected)
+    synthetic_events.extend(thread_events)
 
     timeline_event_ids = [event.id for event in resolved_events] + [
         event.id for event in synthetic_events
@@ -293,6 +304,151 @@ def _emotion_decay_changes(context: TurnContext) -> list[StateDiffChange]:
                 )
             )
     return changes
+
+
+def _thread_update_changes(
+    context: TurnContext,
+    thread_updates: list[ThreadUpdateCandidate],
+    resolved_events: list[Event],
+    allocate_event_id: Callable[[], str],
+) -> tuple[list[StateDiffChange], list[RejectedChange], list[Event]]:
+    """Issue 014: convert narrator ``thread_updates`` into ``threads``-target diff changes.
+
+    Each accepted update also emits a synthetic ``gm_only`` ``thread_update`` event (mirroring
+    ``_synthetic_edit_change``) so ``pacing.detect_stall`` can see advance/resolve as narrative
+    progress (open does not count — see ``agents/pacing.py``). Rejected updates never produce
+    an event: unknown ``thread_id``, an ``advance``/``resolve`` on an already-resolved thread,
+    and an ``open`` missing ``description`` are all declined without side effects.
+    """
+    known_threads = {thread.id: thread for thread in context.bundle.unresolved_threads}
+    this_turn_event_ids = [event.id for event in resolved_events]
+    changes: list[StateDiffChange] = []
+    rejected: list[RejectedChange] = []
+    events: list[Event] = []
+    open_index = 0
+
+    for update in thread_updates:
+        if update.action == "open":
+            if not update.description:
+                stub = StateDiffChange(
+                    target="threads", op="add", path="", value={}, visibility=Visibility.GM_ONLY
+                )
+                rejected.append(_reject(stub, "open thread update missing description"))
+                continue
+            open_index += 1
+            thread_id = f"thread_{context.turn:04d}{open_index:02d}"
+            event = Event(
+                id=allocate_event_id(),
+                turn=context.turn,
+                type="thread_update",
+                cause="narrator",
+                text=update.description,
+                visibility=Visibility.GM_ONLY,
+                effects={"action": "open", "thread_id": thread_id},
+            )
+            events.append(event)
+            changes.append(
+                StateDiffChange(
+                    target="threads",
+                    op="add",
+                    path="",
+                    value={
+                        "id": thread_id,
+                        "description": update.description,
+                        "status": "open",
+                        "related_event_ids": [],
+                        "notes": [],
+                        "opened_turn": context.turn,
+                    },
+                    visibility=Visibility.GM_ONLY,
+                    source_event=event.id,
+                )
+            )
+            continue
+
+        thread = known_threads.get(update.thread_id or "")
+        if thread is None:
+            stub = StateDiffChange(
+                target="threads",
+                op="set" if update.action == "resolve" else "add",
+                path="status" if update.action == "resolve" else "notes",
+                id=update.thread_id,
+                value=update.note if update.action == "advance" else "resolved",
+                visibility=Visibility.GM_ONLY,
+            )
+            rejected.append(_reject(stub, f"unknown thread_id: {update.thread_id!r}"))
+            continue
+        if thread.status == "resolved":
+            stub = StateDiffChange(
+                target="threads",
+                op="set" if update.action == "resolve" else "add",
+                path="status" if update.action == "resolve" else "notes",
+                id=thread.id,
+                value=update.note if update.action == "advance" else "resolved",
+                visibility=Visibility.GM_ONLY,
+            )
+            rejected.append(_reject(stub, f"thread already resolved: {thread.id}"))
+            continue
+
+        if update.action == "advance":
+            event = Event(
+                id=allocate_event_id(),
+                turn=context.turn,
+                type="thread_update",
+                cause="narrator",
+                text=update.note or thread.description,
+                visibility=Visibility.GM_ONLY,
+                effects={"action": "advance", "thread_id": thread.id},
+            )
+            events.append(event)
+            if update.note:
+                changes.append(
+                    StateDiffChange(
+                        target="threads",
+                        id=thread.id,
+                        op="add",
+                        path="notes",
+                        value=update.note,
+                        visibility=Visibility.GM_ONLY,
+                        source_event=event.id,
+                    )
+                )
+            for event_id in this_turn_event_ids:
+                changes.append(
+                    StateDiffChange(
+                        target="threads",
+                        id=thread.id,
+                        op="add",
+                        path="related_event_ids",
+                        value=event_id,
+                        visibility=Visibility.GM_ONLY,
+                        source_event=event.id,
+                    )
+                )
+        else:  # resolve
+            event = Event(
+                id=allocate_event_id(),
+                turn=context.turn,
+                type="thread_update",
+                cause="narrator",
+                text=thread.description,
+                visibility=Visibility.GM_ONLY,
+                effects={"action": "resolve", "thread_id": thread.id},
+            )
+            events.append(event)
+            changes.append(
+                StateDiffChange(
+                    target="threads",
+                    id=thread.id,
+                    op="set",
+                    path="status",
+                    value="resolved",
+                    visibility=Visibility.GM_ONLY,
+                    source_event=event.id,
+                )
+            )
+
+    return changes, rejected, events
 
 
 def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChange]:

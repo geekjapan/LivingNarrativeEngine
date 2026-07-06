@@ -4,13 +4,15 @@ from pathlib import Path
 
 import yaml
 
-from living_narrative.agents.pacing import detect_stall
+from living_narrative.agents.pacing import detect_stall, is_advancement_event
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.state.models import (
     CanonEntry,
+    Event,
     PacingConfig,
     ReaderStateEntry,
     TimelineEntry,
+    Visibility,
     WorldState,
     WorldStateBundle,
 )
@@ -154,6 +156,63 @@ def test_new_canon_entry_resets_stall_detection(tmp_path):
     context = _context(tmp_path, turn=4, stall_window=3, canon=canon)
 
     assert detect_stall(context) is None
+
+
+def _thread_event(action: str) -> Event:
+    return Event(
+        id="event_0001",
+        turn=1,
+        type="thread_update",
+        cause="narrator",
+        text="x",
+        visibility=Visibility.GM_ONLY,
+        effects={"action": action, "thread_id": "thread_000101"},
+    )
+
+
+def test_is_advancement_event_true_for_thread_advance_and_resolve():
+    assert is_advancement_event(_thread_event("advance")) is True
+    assert is_advancement_event(_thread_event("resolve")) is True
+
+
+def test_is_advancement_event_false_for_thread_open():
+    assert is_advancement_event(_thread_event("open")) is False
+
+
+def test_thread_advance_event_resets_stall_detection(tmp_path):
+    _write_events(
+        tmp_path / "runs",
+        2,
+        [_event("event_0001", 2, "thread_update", action="advance", thread_id="thread_000101")],
+    )
+    timeline = [TimelineEntry(turn=2, event_ids=["event_0001"])]
+    context = _context(tmp_path, turn=4, stall_window=3, timeline=timeline)
+
+    assert detect_stall(context) is None
+
+
+def test_thread_resolve_event_resets_stall_detection(tmp_path):
+    _write_events(
+        tmp_path / "runs",
+        2,
+        [_event("event_0001", 2, "thread_update", action="resolve", thread_id="thread_000101")],
+    )
+    timeline = [TimelineEntry(turn=2, event_ids=["event_0001"])]
+    context = _context(tmp_path, turn=4, stall_window=3, timeline=timeline)
+
+    assert detect_stall(context) is None
+
+
+def test_thread_open_event_does_not_count_as_advancement(tmp_path):
+    _write_events(
+        tmp_path / "runs",
+        3,
+        [_event("event_0001", 3, "thread_update", action="open", thread_id="thread_000101")],
+    )
+    timeline = [TimelineEntry(turn=3, event_ids=["event_0001"])]
+    context = _context(tmp_path, turn=4, stall_window=3, timeline=timeline)
+
+    assert detect_stall(context) == 3
 
 
 def test_reader_state_entry_outside_the_window_does_not_reset(tmp_path):

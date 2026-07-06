@@ -3,7 +3,7 @@
 from typing import Any
 
 from living_narrative.intervention.reveal import must_not_reveal_texts
-from living_narrative.narration.models import NarratorContext
+from living_narrative.narration.models import NarratorContext, OpenThreadInfo
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.state.models import Event, SceneStatus, Visibility
 
@@ -35,10 +35,18 @@ def build_narrator_context(
         for event in resolved_events
         if is_reader_visible_event(event) and event.text not in blocked
     ]
+    # 014: only open (not yet resolved) threads are meta-visible to the Narrator, never to
+    # characters (spec §4: characters must not "know" about narrative-ledger bookkeeping).
+    open_threads = [
+        OpenThreadInfo(id=thread.id, description=thread.description, opened_turn=thread.opened_turn)
+        for thread in context.bundle.unresolved_threads
+        if thread.status != "resolved"
+    ]
     return NarratorContext(
         turn=context.turn,
         reader_state_facts=reader_state_facts,
         scene_reader_visible_facts=scene_facts,
         reader_visible_events=reader_visible_events,
         scene_summary=scene_summary,
+        open_threads=open_threads,
     )

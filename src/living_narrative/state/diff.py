@@ -16,6 +16,7 @@ from living_narrative.state.models import (
     GmVaultEntry,
     ReaderStateEntry,
     TimelineEntry,
+    UnresolvedThread,
     Visibility,
     WorldStateBundle,
 )
@@ -23,10 +24,21 @@ from living_narrative.state.models import (
 DiffId = id_type("diff")
 EventId = id_type("event")
 Target = Literal[
-    "world", "character", "scene", "reader_state", "canon", "gm_vault", "relationship", "timeline"
+    "world",
+    "character",
+    "scene",
+    "reader_state",
+    "canon",
+    "gm_vault",
+    "relationship",
+    "timeline",
+    "threads",
 ]
 Op = Literal["add", "remove", "set", "delta"]
-COLLECTION_TARGETS = {"canon", "reader_state", "gm_vault", "timeline"}
+COLLECTION_TARGETS = {"canon", "reader_state", "gm_vault", "timeline", "threads"}
+# 014: "threads" is the diff-target name for the bundle's `unresolved_threads` collection
+# (kept short/stable in diff artifacts; the attribute name is the longer bundle field).
+_TARGET_ATTR = {"threads": "unresolved_threads"}
 
 
 class StateDiffError(ValueError):
@@ -139,7 +151,7 @@ def _apply_change(
     index: int,
 ) -> tuple[StateDiffChange, AppliedChange]:
     if change.target in COLLECTION_TARGETS and change.path == "":
-        current = getattr(bundle, change.target)
+        current = getattr(bundle, _TARGET_ATTR.get(change.target, change.target))
         old_value = deepcopy(current)
         report = AppliedChange(change_id=index, original_value=old_value)
         if change.op == "add":
@@ -218,7 +230,7 @@ def _target_object(bundle: WorldStateBundle, change: StateDiffChange) -> Any:
                 return relationship
         raise StateDiffError(f"relationship not found: {change.id}")
 
-    collection = getattr(bundle, change.target)
+    collection = getattr(bundle, _TARGET_ATTR.get(change.target, change.target))
     return _find_by_id(collection, change.id)
 
 
@@ -305,6 +317,7 @@ def _model_for_target(target: str) -> type[BaseModel]:
         "reader_state": ReaderStateEntry,
         "gm_vault": GmVaultEntry,
         "timeline": TimelineEntry,
+        "threads": UnresolvedThread,
     }[target]
 
 

@@ -1,8 +1,17 @@
+import yaml
+
 from living_narrative.narration import build_narrator_context
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.state.models import Event, Visibility
 from living_narrative.state.store import StateStore
 from living_narrative.workspace.loader import load_project
+
+
+def _write_unresolved_threads(project_path, threads: list[dict]) -> None:
+    state_dir = project_path.parent / "workspace" / "state"
+    (state_dir / "unresolved_threads.yaml").write_text(
+        yaml.safe_dump(threads, allow_unicode=True), encoding="utf-8"
+    )
 
 
 def _context(project_path, resolved_events) -> TurnContext:
@@ -93,6 +102,45 @@ def test_scene_summary_defaults_to_empty_string(tmp_path, build_project):
     narrator_context = build_narrator_context(_context(project_path, []), [])
 
     assert narrator_context.scene_summary == ""
+
+
+def test_open_threads_are_supplied_and_resolved_ones_are_excluded(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _write_unresolved_threads(
+        project_path,
+        [
+            {
+                "id": "thread_000101",
+                "description": "お守りの由来は謎のままだ。",
+                "status": "open",
+                "related_event_ids": [],
+                "notes": [],
+                "opened_turn": 1,
+            },
+            {
+                "id": "thread_000102",
+                "description": "案内板の謎はもう解けている。",
+                "status": "resolved",
+                "related_event_ids": [],
+                "notes": [],
+                "opened_turn": 1,
+            },
+        ],
+    )
+
+    narrator_context = build_narrator_context(_context(project_path, []), [])
+
+    assert [thread.id for thread in narrator_context.open_threads] == ["thread_000101"]
+    assert narrator_context.open_threads[0].description == "お守りの由来は謎のままだ。"
+    assert narrator_context.open_threads[0].opened_turn == 1
+
+
+def test_no_unresolved_threads_yields_empty_open_threads(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+
+    narrator_context = build_narrator_context(_context(project_path, []), [])
+
+    assert narrator_context.open_threads == []
 
 
 def test_pending_scene_facts_and_summary_are_excluded(tmp_path, build_project):

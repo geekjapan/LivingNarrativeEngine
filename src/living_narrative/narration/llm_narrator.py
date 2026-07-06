@@ -6,7 +6,11 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from living_narrative.llm.errors import ProviderConnectionError, StructuredOutputError
-from living_narrative.narration.models import NarrationResult, NarratorContext
+from living_narrative.narration.models import (
+    NarrationResult,
+    NarratorContext,
+    ThreadUpdateCandidate,
+)
 from living_narrative.narration.narrator import narrate
 from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.state.models import ProjectConfig
@@ -32,16 +36,30 @@ scene_summary のみ。
 - 1〜3段落の日本語のみ(固有名詞を除く)。箇条書き・見出し・\
 メタ言及(「ターン」「イベント」等)を書かない。
 
+## 未回収の糸(伏線)
+- open_threads に、この物語でまだ回収されていない謎・伏線の一覧(id / description / \
+turns_open=経過ターン数)が渡される。
+- 今回の地文で新しい謎・伏線に触れたら、thread_updates に action="open" の項目を追加し、\
+description にその内容を日本語で書く(reader可視情報だけを根拠にする。隠された真相を書かない)。
+- 既存の糸が今回の地文で進展したら action="advance" とし、thread_id にその糸のidを指定し、\
+note に進展の要約を日本語で書く。
+- 糸が今回の地文で決着したら action="resolve" とし、thread_id にその糸のidを指定する。
+- turns_open が大きい(長く放置されている)糸ほど、新しい謎を積むより advance か resolve を\
+優先して検討する。
+- 進展も決着もない糸は thread_updates に含めない。無理に埋めない。
+
 ## 出力
 - prose フィールドに完成した地文だけを入れる。
 - scene_summary_update フィールドに、このターン終了時点での場面の現在状況を日本語1〜2文で書く\
 (このターンで何が変わったかを含める)。reader可視情報だけを根拠にする。
+- thread_updates フィールドに、上記の糸の更新をリストで入れる(0件でもよい)。
 """
 
 
 class LLMNarratorOutput(BaseModel):
     prose: str = Field(min_length=1)
     scene_summary_update: str | None = None
+    thread_updates: list[ThreadUpdateCandidate] = Field(default_factory=list)
 
 
 def _narrator_payload(
@@ -57,6 +75,16 @@ def _narrator_payload(
         "scene_summary": context.scene_summary,
         "reader_visible_events": [
             {"type": event.type, "text": event.text} for event in context.reader_visible_events
+        ],
+        "open_threads": [
+            {
+                "id": thread.id,
+                "description": thread.description,
+                "turns_open": (
+                    context.turn - thread.opened_turn if thread.opened_turn is not None else None
+                ),
+            }
+            for thread in context.open_threads
         ],
     }
 
@@ -105,7 +133,10 @@ def run_narrate_phase(
     assert isinstance(output, LLMNarratorOutput)
     summary_update = output.scene_summary_update.strip() if output.scene_summary_update else None
     result = NarrationResult(
-        text=output.prose.strip(), style="novel", scene_summary_update=summary_update or None
+        text=output.prose.strip(),
+        style="novel",
+        scene_summary_update=summary_update or None,
+        thread_updates=output.thread_updates,
     )
     return result, {
         "mode": "llm",

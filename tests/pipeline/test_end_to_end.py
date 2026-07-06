@@ -1,6 +1,6 @@
 import yaml
 
-from living_narrative.narration.models import NarrationResult
+from living_narrative.narration.models import NarrationResult, ThreadUpdateCandidate
 from living_narrative.pipeline import TurnPipeline, TurnStatus
 from living_narrative.state.store import StateStore
 from living_narrative.workspace.loader import load_project
@@ -97,6 +97,45 @@ def test_narrator_scene_summary_update_is_committed_to_scene_state(
     read = load_project(project_path)
     bundle = StateStore.load(read.paths.state)
     assert bundle.scenes[0].summary == "霧の奥へ歩き始めた。"
+
+
+def test_narrator_thread_updates_are_committed_across_a_mock_turn(
+    tmp_path, build_project, monkeypatch
+):
+    """Issue 014: the narrator's thread_updates must flow through BuildDiff into the committed
+    unresolved-thread ledger (mock provider fills optional fields with their default of empty,
+    so the narrate phase is faked here, same as 007's scene-summary wiring test)."""
+    from living_narrative.pipeline import driver as driver_module
+
+    project_path = build_project(tmp_path)
+
+    def fake_run_narrate_phase(*, gateway, project, context, style, mood, tone_control):
+        return (
+            NarrationResult(
+                text="お守りを見つけた。",
+                style="novel",
+                thread_updates=[
+                    ThreadUpdateCandidate(action="open", description="お守りの由来は謎のままだ。")
+                ],
+            ),
+            {"mode": "llm", "style": "novel"},
+        )
+
+    monkeypatch.setattr(driver_module, "run_narrate_phase", fake_run_narrate_phase)
+
+    result = TurnPipeline().run(project_path)
+
+    assert result.status == TurnStatus.APPLIED
+    state_diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
+    thread_changes = [c for c in state_diff["diff"]["changes"] if c["target"] == "threads"]
+    assert len(thread_changes) == 1
+    assert thread_changes[0]["value"]["description"] == "お守りの由来は謎のままだ。"
+    assert thread_changes[0]["value"]["status"] == "open"
+
+    read = load_project(project_path)
+    bundle = StateStore.load(read.paths.state)
+    assert len(bundle.unresolved_threads) == 1
+    assert bundle.unresolved_threads[0].description == "お守りの由来は謎のままだ。"
 
 
 def test_threat_pressure_diff_is_applied_across_a_mock_turn(tmp_path, build_project):

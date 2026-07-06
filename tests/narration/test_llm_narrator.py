@@ -8,7 +8,7 @@ from living_narrative.narration.llm_narrator import (
     LLMNarratorOutput,
     run_narrate_phase,
 )
-from living_narrative.narration.models import NarratorContext
+from living_narrative.narration.models import NarratorContext, OpenThreadInfo, ThreadUpdateCandidate
 from living_narrative.state.models import Event, LLMConfig, ProjectConfig, Visibility
 
 
@@ -150,6 +150,73 @@ def test_llm_narrator_blank_scene_summary_update_normalizes_to_none():
     assert result.scene_summary_update is None
 
 
+def test_llm_narrator_output_carries_thread_updates():
+    gateway = FakeGateway(
+        result=LLMNarratorOutput(
+            prose="霧の底で、彼は歩き出した。",
+            thread_updates=[
+                ThreadUpdateCandidate(action="open", description="お守りの由来は謎のままだ。"),
+                ThreadUpdateCandidate(action="advance", thread_id="thread_000101", note="進展した"),
+                ThreadUpdateCandidate(action="resolve", thread_id="thread_000102"),
+            ],
+        )
+    )
+
+    result, record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=_context(),
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert [update.action for update in result.thread_updates] == ["open", "advance", "resolve"]
+    assert result.thread_updates[0].description == "お守りの由来は謎のままだ。"
+    assert result.thread_updates[1].thread_id == "thread_000101"
+    assert record["output"]["thread_updates"][2]["thread_id"] == "thread_000102"
+
+
+def test_llm_narrator_defaults_to_no_thread_updates():
+    gateway = FakeGateway(result=LLMNarratorOutput(prose="霧の底で、彼は歩き出した。"))
+
+    result, _record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=_context(),
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert result.thread_updates == []
+
+
+def test_llm_narrator_payload_includes_open_threads_with_turns_open():
+    gateway = FakeGateway(result=LLMNarratorOutput(prose="霧の底で、彼は歩き出した。"))
+    context = _context()
+    context.turn = 4
+    context.open_threads = [
+        OpenThreadInfo(id="thread_000101", description="お守りの由来", opened_turn=1),
+        OpenThreadInfo(id="thread_000201", description="turnなし糸", opened_turn=None),
+    ]
+
+    run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=context,
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    payload = json.loads(gateway.calls[0]["messages"][1]["content"])
+    assert payload["open_threads"] == [
+        {"id": "thread_000101", "description": "お守りの由来", "turns_open": 3},
+        {"id": "thread_000201", "description": "turnなし糸", "turns_open": None},
+    ]
+
+
 def test_mechanical_renderer_used_without_narrator_binding():
     gateway = FakeGateway()
 
@@ -166,6 +233,7 @@ def test_mechanical_renderer_used_without_narrator_binding():
     assert record["mode"] == "renderer"
     assert "彼は歩き出した" in result.text
     assert result.scene_summary_update is None
+    assert result.thread_updates == []
 
 
 def test_log_style_stays_mechanical_even_with_binding():
@@ -232,3 +300,4 @@ def test_llm_failure_falls_back_to_mechanical_renderer(error):
     assert "彼は歩き出した" in result.text
     assert result.style == "novel"
     assert result.scene_summary_update is None
+    assert result.thread_updates == []

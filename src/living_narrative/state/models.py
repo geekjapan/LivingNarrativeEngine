@@ -328,6 +328,8 @@ class UnresolvedThread(StateBaseModel):
     description: str
     status: str
     related_event_ids: list[EventId] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    opened_turn: int | None = None
 
 
 class Event(StateBaseModel):

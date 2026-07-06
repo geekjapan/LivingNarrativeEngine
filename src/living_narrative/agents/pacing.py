@@ -13,9 +13,20 @@ from living_narrative.state.models import Event
 ADVANCEMENT_EVENT_TYPES = frozenset({"threat_stage", "scene_end"})
 
 
+_THREAD_ADVANCEMENT_ACTIONS = frozenset({"advance", "resolve"})
+
+
 def is_advancement_event(event: Event) -> bool:
-    """Whether ``event`` counts as narrative progress for stall detection."""
-    return event.type in ADVANCEMENT_EVENT_TYPES or "scene_transition" in event.effects
+    """Whether ``event`` counts as narrative progress for stall detection.
+
+    014: a thread ``advance``/``resolve`` counts as progress; ``open`` does not (stacking a
+    new mystery isn't forward motion on its own).
+    """
+    if event.type in ADVANCEMENT_EVENT_TYPES or "scene_transition" in event.effects:
+        return True
+    if event.type == "thread_update":
+        return event.effects.get("action") in _THREAD_ADVANCEMENT_ACTIONS
+    return False
 
 
 def detect_stall(context: TurnContext) -> int | None:
