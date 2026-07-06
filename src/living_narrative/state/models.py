@@ -189,6 +189,13 @@ class ThreatTrack(StateBaseModel):
     stages: list[ThreatStage] = Field(default_factory=list)
 
 
+class PacingConfig(StateBaseModel):
+    """Issue 011: narrative-stall detection/response tuning (0 window = off, back-compat)."""
+
+    stall_window: Annotated[int, Field(ge=0)] = 0
+    pressure_boost: Annotated[int, Field(ge=0)] = 4
+
+
 class WorldState(StateBaseModel):
     id: WorldId
     name: str
@@ -199,6 +206,8 @@ class WorldState(StateBaseModel):
     threats: list[ThreatTrack] = Field(default_factory=list)
     # Issue 010: engine-side emotion homeostasis rate (0 = off, back-compat).
     emotion_decay_per_turn: Annotated[int, Field(ge=0)] = 0
+    # Issue 011: narrative-stall detection/response tuning.
+    pacing: PacingConfig = Field(default_factory=PacingConfig)
 
 
 class FactionState(StateBaseModel):

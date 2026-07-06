@@ -22,6 +22,7 @@ def _build_project(
     emotions: dict[str, int] | None = None,
     emotions_baseline: dict[str, int] | None = None,
     emotion_decay_per_turn: int = 0,
+    pacing: dict[str, int] | None = None,
 ) -> Path:
     """A minimal workspace with one character and one scene."""
     project_dir = tmp_path / "project"
@@ -57,6 +58,8 @@ def _build_project(
         world["threats"] = threats
     if emotion_decay_per_turn:
         world["emotion_decay_per_turn"] = emotion_decay_per_turn
+    if pacing is not None:
+        world["pacing"] = pacing
     (state_dir / "world.yaml").write_text(
         yaml.safe_dump(world, allow_unicode=True), encoding="utf-8"
     )

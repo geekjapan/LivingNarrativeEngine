@@ -119,6 +119,16 @@ def test_world_has_a_nonzero_emotion_decay_rate(tmp_path):
     assert bundle.world.emotion_decay_per_turn == 5
 
 
+def test_world_has_pacing_config(tmp_path):
+    """Issue 011: mist_station opts into stall detection/response."""
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    assert bundle.world.pacing.stall_window == 3
+    assert bundle.world.pacing.pressure_boost == 4
+
+
 def test_every_character_emotions_baseline_matches_its_initial_emotions(tmp_path):
     """Issue 010: each character's baseline is set to its starting emotion values so decay
     is a no-op until the LLM actually moves emotions away from them."""

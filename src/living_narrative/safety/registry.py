@@ -84,9 +84,11 @@ def write_checks_yaml(path: Path, result: CheckRunResult) -> None:
 def _install_defaults() -> None:
     from living_narrative.safety.continuity_check import continuity_checker
     from living_narrative.safety.leak_check import leak_checker
+    from living_narrative.safety.pacing_check import pacing_checker
 
     register_checker("leak", leak_checker)
     register_checker("continuity", continuity_checker)
+    register_checker("pacing", pacing_checker)
 
 
 _install_defaults()

@@ -1,7 +1,7 @@
 ---
 id: 011
 title: 物語停滞の検知と自動エスカレーションが無い(pacing/stall checker)
-status: open
+status: done
 created: 2026-07-06
 ---
 
@@ -27,11 +27,11 @@ created: 2026-07-06
 
 ## 完了条件
 
-- [ ] `PacingConfig` スキーマ(後方互換default、mist_station設定込み)
-- [ ] `detect_stall` が前進シグナル4種を正しく判定(threat_pressure/background_eventを前進と誤認しない)
-- [ ] pacing checkerが停滞時にwarn Findingを出し、非停滞時は沈黙。auto-applyは止まらない
-- [ ] Simulate相が停滞時にpressureロールへboostを付加し(roll log上notationで確認可能)、`pacing_stall` イベント(gm_only)を発行
-- [ ] mock全テストpass + 実LLMまたはmockで停滞→boost→stage発火加速の流れを確認(実LLMでの自然停滞待ちは不要、windowを小さくして誘発でよい)
+- [x] `PacingConfig` スキーマ(後方互換default、mist_station設定込み)
+- [x] `detect_stall` が前進シグナル4種を正しく判定(threat_pressure/background_eventを前進と誤認しない)
+- [x] pacing checkerが停滞時にwarn Findingを出し、非停滞時は沈黙。auto-applyは止まらない
+- [x] Simulate相が停滞時にpressureロールへboostを付加し(roll log上notationで確認可能)、`pacing_stall` イベント(gm_only)を発行
+- [x] mock全テストpass + 実LLMまたはmockで停滞→boost→stage発火加速の流れを確認(実LLMでの自然停滞待ちは不要、windowを小さくして誘発でよい)
 
 ## 関連ファイル
 

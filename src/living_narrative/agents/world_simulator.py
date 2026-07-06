@@ -3,6 +3,7 @@
 from typing import Any
 
 from living_narrative.agents.models import BackgroundEventCandidate, WorldSimulatorOutput
+from living_narrative.agents.pacing import detect_stall
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import WorldEventCandidate
 from living_narrative.random.tables import WeightedEntry
@@ -63,18 +64,34 @@ def simulate_world(
         )
         for event in output.background_events
     ]
+    stalled_turns = detect_stall(context)
+    boost = context.bundle.world.pacing.pressure_boost if stalled_turns is not None else 0
     threat_events = [
         event
         for threat in context.bundle.world.threats
-        for event in _threat_events(context, threat)
+        for event in _threat_events(context, threat, boost=boost)
     ]
-    return [*directive_events, *dice_events, *background_candidates, *threat_events]
+    pacing_events = _pacing_stall_events(stalled_turns, boost)
+    return [
+        *directive_events,
+        *dice_events,
+        *background_candidates,
+        *threat_events,
+        *pacing_events,
+    ]
 
 
-def _threat_events(context: TurnContext, threat: ThreatTrack) -> list[WorldEventCandidate]:
-    """Issue 008: roll the threat's pressure forward and fire any newly-crossed stages."""
+def _threat_events(
+    context: TurnContext, threat: ThreatTrack, *, boost: int = 0
+) -> list[WorldEventCandidate]:
+    """Issue 008: roll the threat's pressure forward and fire any newly-crossed stages.
+
+    Issue 011: when the story has stalled, ``boost`` is appended to the pressure roll's dice
+    notation (e.g. ``2d6`` -> ``2d6+4``) to escalate faster.
+    """
+    notation = f"{threat.pressure_per_turn}+{boost}" if boost else threat.pressure_per_turn
     roll = context.random_engine.roll_dice(
-        threat.pressure_per_turn,
+        notation,
         turn=context.turn,
         label=f"threat:{threat.id}",
     )
@@ -139,3 +156,18 @@ def _dice_roll_event(context: TurnContext, item: dict[str, Any]) -> WorldEventCa
         visibility=item["visibility"],
         effects={"_roll": roll.model_dump(mode="json")},
     )
+
+
+def _pacing_stall_events(stalled_turns: int | None, boost: int) -> list[WorldEventCandidate]:
+    """Issue 011: a single gm_only note when Simulate escalated threat pressure for a stall."""
+    if stalled_turns is None:
+        return []
+    return [
+        WorldEventCandidate(
+            type="pacing_stall",
+            cause="world_simulator",
+            text=f"物語が{stalled_turns}ターン前進していないため、脅威の圧力を強める。",
+            visibility=Visibility.GM_ONLY,
+            effects={"stalled_turns": stalled_turns, "pressure_boost": boost},
+        )
+    ]

@@ -38,3 +38,20 @@ def test_commit_mode_auto_applies_and_review_defers(tmp_path, build_project):
     )
     assert diff_auto["applied"] is True
     assert diff_review["applied"] is False
+
+
+def test_pacing_stall_warn_does_not_block_auto_apply(tmp_path, build_project):
+    """Issue 011: with no threats/scene-transitions ever firing, a story with pacing turned
+    on stalls quickly; the pacing checker's warn must not stop auto-apply."""
+    project_path = build_project(tmp_path, pacing={"stall_window": 1, "pressure_boost": 4})
+    pipeline = TurnPipeline()
+
+    pipeline.run(project_path, commit_mode="auto")  # turn 1: too early to judge (turn <= window)
+    result = pipeline.run(project_path, commit_mode="auto")  # turn 2: stalled
+
+    assert result.status == TurnStatus.APPLIED
+    checks = yaml.safe_load((result.turn_dir / "checks.yaml").read_text(encoding="utf-8"))
+    findings = checks["findings"] if isinstance(checks, dict) else checks
+    pacing_findings = [f for f in findings if f["source"] == "pacing_check"]
+    assert pacing_findings
+    assert pacing_findings[0]["severity"] == "warn"

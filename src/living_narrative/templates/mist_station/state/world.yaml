@@ -9,6 +9,9 @@ parameters:
   danger_level: 55
   mystery_level: 70
 emotion_decay_per_turn: 5
+pacing:
+  stall_window: 3
+  pressure_boost: 4
 background_events:
   - text: 静かな時間が流れる。ホームの縁で霧がゆっくりと渦を巻いている
     weight: 6

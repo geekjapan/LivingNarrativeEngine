@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -8,14 +10,17 @@ from living_narrative.random.engine import RandomEngine
 from living_narrative.state.models import (
     BackgroundEventTableEntry,
     LLMConfig,
+    PacingConfig,
     ProjectConfig,
     ThreatStage,
     ThreatTrack,
+    TimelineEntry,
     Visibility,
     WorkspaceConfig,
     WorldState,
     WorldStateBundle,
 )
+from living_narrative.workspace.loader import WorkspacePaths
 
 
 def _context(
@@ -23,6 +28,9 @@ def _context(
     background_events: list[BackgroundEventTableEntry] | None = None,
     threats: list[ThreatTrack] | None = None,
     turn: int = 1,
+    runs_dir: Path | None = None,
+    timeline: list[TimelineEntry] | None = None,
+    pacing: PacingConfig | None = None,
 ) -> TurnContext:
     project = ProjectConfig(
         id="p",
@@ -36,10 +44,17 @@ def _context(
         llm=LLMConfig(provider="mock", model="mock"),
         workspace=WorkspaceConfig(root=".", state="state", runs="runs", exports="exports"),
     )
+    paths = (
+        WorkspacePaths(
+            root=runs_dir, state=runs_dir / "state", runs=runs_dir, exports=runs_dir / "exports"
+        )
+        if runs_dir is not None
+        else None
+    )
     return TurnContext(
         turn=turn,
         project=project,
-        paths=None,
+        paths=paths,
         bundle=WorldStateBundle(
             world=WorldState(
                 id="world_001",
@@ -47,7 +62,9 @@ def _context(
                 summary="",
                 background_events=background_events or [],
                 threats=threats or [],
-            )
+                pacing=pacing or PacingConfig(),
+            ),
+            timeline=timeline or [],
         ),
         random_engine=RandomEngine(seed),
     )
@@ -314,3 +331,96 @@ def test_threat_events_are_deterministic_with_fixed_seed():
     second = simulate_world(_context("same-seed", threats=[threat]), [])
 
     assert first == second
+
+
+# Issue 011: pacing/stall detection and its Simulate-phase escalation response.
+
+
+def test_no_boost_and_no_pacing_event_when_pacing_is_off(tmp_path):
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure=0, pressure_per_turn="2d6")
+
+    events = simulate_world(
+        _context(threats=[threat], turn=10, runs_dir=tmp_path, pacing=PacingConfig()), []
+    )
+
+    pressure_event = next(e for e in events if e.type == "threat_pressure")
+    assert pressure_event.effects["_roll"]["dice"]["notation"] == "2d6"
+    assert all(e.type != "pacing_stall" for e in events)
+
+
+def test_no_boost_when_turn_is_too_early_to_judge_stall(tmp_path):
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure=0, pressure_per_turn="2d6")
+    pacing = PacingConfig(stall_window=3, pressure_boost=4)
+
+    events = simulate_world(
+        _context(threats=[threat], turn=3, runs_dir=tmp_path, pacing=pacing), []
+    )
+
+    pressure_event = next(e for e in events if e.type == "threat_pressure")
+    assert pressure_event.effects["_roll"]["dice"]["notation"] == "2d6"
+    assert all(e.type != "pacing_stall" for e in events)
+
+
+def test_boost_is_appended_to_threat_notation_when_stalled(tmp_path):
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure=0, pressure_per_turn="2d6")
+    pacing = PacingConfig(stall_window=3, pressure_boost=4)
+
+    events = simulate_world(
+        _context(threats=[threat], turn=4, runs_dir=tmp_path, pacing=pacing), []
+    )
+
+    pressure_event = next(e for e in events if e.type == "threat_pressure")
+    assert pressure_event.effects["_roll"]["dice"]["notation"] == "2d6+4"
+
+
+def test_pacing_stall_event_emitted_once_with_correct_effects(tmp_path):
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure=0, pressure_per_turn="2d6")
+    pacing = PacingConfig(stall_window=3, pressure_boost=4)
+
+    events = simulate_world(
+        _context(threats=[threat], turn=4, runs_dir=tmp_path, pacing=pacing), []
+    )
+
+    stall_events = [e for e in events if e.type == "pacing_stall"]
+    assert len(stall_events) == 1
+    assert stall_events[0].visibility == "gm_only"
+    assert stall_events[0].effects == {"stalled_turns": 3, "pressure_boost": 4}
+
+
+def test_no_boost_when_recent_turn_has_an_advancement_signal(tmp_path):
+    import yaml
+
+    turn_dir = tmp_path / "turn_0003"
+    turn_dir.mkdir(parents=True)
+    (turn_dir / "events.yaml").write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "id": "event_0001",
+                    "turn": 3,
+                    "type": "threat_stage",
+                    "text": "advances",
+                    "visibility": "scene",
+                }
+            ],
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    threat = ThreatTrack(id="threat_001", name="Pursuer", pressure=0, pressure_per_turn="2d6")
+    pacing = PacingConfig(stall_window=3, pressure_boost=4)
+
+    events = simulate_world(
+        _context(
+            threats=[threat],
+            turn=4,
+            runs_dir=tmp_path,
+            pacing=pacing,
+            timeline=[TimelineEntry(turn=3, event_ids=["event_0001"])],
+        ),
+        [],
+    )
+
+    pressure_event = next(e for e in events if e.type == "threat_pressure")
+    assert pressure_event.effects["_roll"]["dice"]["notation"] == "2d6"
+    assert all(e.type != "pacing_stall" for e in events)
