@@ -31,6 +31,7 @@ def test_mist_station_state_is_schema_valid(tmp_path):
 
     assert bundle.world.id == "world_001"
     assert len(bundle.characters) == 4
+    assert len(bundle.factions) == 1
     assert len(bundle.gm_vault) == 3
     assert len(bundle.scenes) == 2
 

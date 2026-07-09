@@ -17,6 +17,7 @@ from living_narrative.state.models import (
     CharacterState,
     CharacterStatus,
     Event,
+    FactionState,
     GmVaultEntry,
     HiddenFact,
     MemorySummary,
@@ -837,6 +838,53 @@ def test_world_threat_pressure_set_diff_unknown_threat_id_raises():
                 ],
             ),
         )
+
+
+def test_faction_delta_diff_updates_resource_and_relation_keys_and_rolls_back():
+    original = WorldStateBundle(
+        world=WorldState(id="world_001", name="World", summary=""),
+        factions=[
+            FactionState(
+                id="faction_001",
+                name="Mist Keepers",
+                public_face="old station committee",
+                resources={"influence": 45},
+                relations={"char_001": 40},
+            )
+        ],
+    )
+
+    result = apply_state_diff(
+        original,
+        StateDiff(
+            id="diff_001",
+            turn=1,
+            changes=[
+                StateDiffChange(
+                    target="faction",
+                    id="faction_001",
+                    op="delta",
+                    path="resources.influence",
+                    value=-5,
+                    visibility=Visibility.GM_ONLY,
+                ),
+                StateDiffChange(
+                    target="faction",
+                    id="faction_001",
+                    op="delta",
+                    path="relations.char_001",
+                    value=10,
+                    visibility=Visibility.GM_ONLY,
+                ),
+            ],
+        ),
+    )
+
+    assert result.bundle.factions[0].resources["influence"] == 40
+    assert result.bundle.factions[0].relations["char_001"] == 50
+
+    restored = apply_state_diff(result.bundle, result.inverse_diff).bundle
+    assert restored.model_dump(mode="json") == original.model_dump(mode="json")
 
 
 # Issue 012: speech register profile (first_person / forbidden_terms on CharacterState).

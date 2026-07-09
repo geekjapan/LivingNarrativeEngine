@@ -7,7 +7,7 @@ from living_narrative.agents.pacing import detect_stall
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import WorldEventCandidate
 from living_narrative.random.tables import WeightedEntry
-from living_narrative.state.models import ThreatTrack, Visibility
+from living_narrative.state.models import FactionState, ThreatTrack, Visibility
 
 # world_directive/event_injection become world event candidates verbatim (spec.md Requirement
 # "Type別ルーティング"): they *are* what the World Simulator should propose this turn.
@@ -71,12 +71,14 @@ def simulate_world(
         for threat in context.bundle.world.threats
         for event in _threat_events(context, threat, boost=boost)
     ]
+    faction_events = _faction_events(context)
     pacing_events = _pacing_stall_events(stalled_turns, boost)
     return [
         *directive_events,
         *dice_events,
         *background_candidates,
         *threat_events,
+        *faction_events,
         *pacing_events,
     ]
 
@@ -126,6 +128,47 @@ def _threat_events(
         if old_pressure < stage.at <= new_pressure
     ]
     return [pressure_event, *stage_events]
+
+
+def _faction_events(context: TurnContext) -> list[WorldEventCandidate]:
+    """Issue 017: at most one faction can make one stateful move per turn."""
+    if not context.bundle.factions:
+        return []
+    faction = context.bundle.factions[0]
+    resource_key = _first_key(faction.resources)
+    relation_key = _first_key(faction.relations)
+    if resource_key is None and relation_key is None:
+        return []
+    resource_deltas = {resource_key: -5} if resource_key is not None else {}
+    relation_deltas = {relation_key: 5} if relation_key is not None else {}
+    return [
+        WorldEventCandidate(
+            type="faction_move",
+            cause="world_simulator",
+            text=_faction_move_text(faction, resource_key, relation_key),
+            visibility=Visibility.GM_ONLY,
+            effects={
+                "faction_id": faction.id,
+                "resource_deltas": resource_deltas,
+                "relation_deltas": relation_deltas,
+            },
+        )
+    ]
+
+
+def _first_key(values: dict[str, int]) -> str | None:
+    return next(iter(sorted(values)), None)
+
+
+def _faction_move_text(
+    faction: FactionState, resource_key: str | None, relation_key: str | None
+) -> str:
+    parts = [f"{faction.name}が次の一手を進める"]
+    if resource_key is not None:
+        parts.append(f"{resource_key}-5")
+    if relation_key is not None:
+        parts.append(f"{relation_key}+5")
+    return " / ".join(parts)
 
 
 def _world_event_from_intervention(item: dict[str, Any]) -> WorldEventCandidate:

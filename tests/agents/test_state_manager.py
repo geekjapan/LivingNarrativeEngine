@@ -12,6 +12,7 @@ from living_narrative.state.diff import apply_state_diff
 from living_narrative.state.models import (
     CharacterState,
     Event,
+    FactionState,
     GmVaultEntry,
     LLMConfig,
     ProjectConfig,
@@ -47,6 +48,7 @@ def _context(
     decay=0,
     relationships=None,
     unresolved_threads=None,
+    factions=None,
 ) -> TurnContext:
     project = ProjectConfig(
         id="p",
@@ -74,6 +76,7 @@ def _context(
         if scenes is not None
         else [SceneState(id="scene_001", location="loc", time="now")],
         gm_vault=gm_vault or [],
+        factions=factions or [],
         relationships=relationships or [],
         unresolved_threads=unresolved_threads or [],
     )
@@ -682,6 +685,92 @@ def test_threat_pressure_diff_applies_to_the_matching_threat_and_rolls_back():
 
     restored = apply_state_diff(applied.bundle, applied.inverse_diff).bundle
     assert restored.world.threats[0].pressure == 10
+
+
+def _faction() -> FactionState:
+    return FactionState(
+        id="faction_001",
+        name="Mist Keepers",
+        public_face="old station committee",
+        resources={"influence": 45, "secrecy": 70},
+        relations={"char_001": 40, "char_004": 15},
+    )
+
+
+def _faction_move_event(**effects) -> Event:
+    return Event(
+        id="event_0001",
+        turn=1,
+        type="faction_move",
+        text="Mist Keepers move",
+        visibility=Visibility.GM_ONLY,
+        effects={
+            "faction_id": "faction_001",
+            "resource_deltas": {"influence": -5},
+            "relation_deltas": {"char_004": 10},
+            **effects,
+        },
+    )
+
+
+def test_faction_move_event_generates_resource_and_relation_delta_diffs():
+    output = build_state_diff(_context(factions=[_faction()]), [_faction_move_event()], [])
+
+    faction_changes = [c for c in output.diff.changes if c.target == "faction"]
+    assert [(c.path, c.value) for c in faction_changes] == [
+        ("resources.influence", -5),
+        ("relations.char_004", 10),
+    ]
+    assert all(c.id == "faction_001" for c in faction_changes)
+    assert all(c.visibility == Visibility.GM_ONLY for c in faction_changes)
+    assert all(c.source_event == "event_0001" for c in faction_changes)
+
+
+def test_faction_move_diff_applies_and_rolls_back():
+    context = _context(factions=[_faction()])
+
+    output = build_state_diff(context, [_faction_move_event()], [])
+    applied = apply_state_diff(context.bundle, output.diff)
+
+    assert applied.bundle.factions[0].resources["influence"] == 40
+    assert applied.bundle.factions[0].relations["char_004"] == 25
+
+    restored = apply_state_diff(applied.bundle, applied.inverse_diff).bundle
+    assert restored.factions[0].resources["influence"] == 45
+    assert restored.factions[0].relations["char_004"] == 15
+
+
+def test_faction_move_unknown_faction_is_rejected_with_reason():
+    output = build_state_diff(
+        _context(factions=[_faction()]),
+        [_faction_move_event(faction_id="faction_999")],
+        [],
+    )
+
+    assert [c for c in output.diff.changes if c.target == "faction"] == []
+    assert output.rejected_changes[0].reason == "unknown faction_id: 'faction_999'"
+
+
+def test_faction_move_unknown_resource_key_is_rejected_with_reason():
+    output = build_state_diff(
+        _context(factions=[_faction()]),
+        [_faction_move_event(resource_deltas={"unknown": -5}, relation_deltas={})],
+        [],
+    )
+
+    assert [c for c in output.diff.changes if c.target == "faction"] == []
+    assert output.rejected_changes[0].reason == "unknown faction resource key: 'unknown'"
+
+
+def test_faction_move_unknown_relation_key_is_rejected_with_reason():
+    output = build_state_diff(
+        _context(factions=[_faction()]),
+        [_faction_move_event(resource_deltas={}, relation_deltas={"char_999": 5})],
+        [],
+    )
+
+    assert [c for c in output.diff.changes if c.target == "faction"] == []
+    assert output.rejected_changes[0].reason == "unknown faction relation key: 'char_999'"
 
 
 def test_goal_update_appends_to_long_term_goals_on_apply():

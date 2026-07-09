@@ -53,12 +53,15 @@ def build_state_diff(
     for event in resolved_events:
         for candidate in _changes_for_event(context, event):
             transition_reason = _invalid_scene_transition_reason(context, candidate)
+            faction_reason = _invalid_faction_move_reason(context, candidate)
             if candidate.source_event is None:
                 rejected.append(_reject(candidate, "missing source_event"))
             elif _blocked_reveal(candidate, must_not_reveal):
                 rejected.append(_reject(candidate, "blocked by reveal_control must-not-reveal"))
             elif transition_reason is not None:
                 rejected.append(_reject(candidate, transition_reason))
+            elif faction_reason is not None:
+                rejected.append(_reject(candidate, faction_reason))
             elif not _valid_target(context, candidate):
                 rejected.append(_reject(candidate, "target id not found in current state"))
             else:
@@ -485,6 +488,32 @@ def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChan
                 source_event=event.id,
             )
         )
+    if event.type == "faction_move":
+        faction_id = event.effects.get("faction_id")
+        for key, delta in sorted((event.effects.get("resource_deltas") or {}).items()):
+            changes.append(
+                StateDiffChange(
+                    target="faction",
+                    id=faction_id,
+                    op="delta",
+                    path=f"resources.{key}",
+                    value=delta,
+                    visibility=Visibility.GM_ONLY,
+                    source_event=event.id,
+                )
+            )
+        for key, delta in sorted((event.effects.get("relation_deltas") or {}).items()):
+            changes.append(
+                StateDiffChange(
+                    target="faction",
+                    id=faction_id,
+                    op="delta",
+                    path=f"relations.{key}",
+                    value=delta,
+                    visibility=Visibility.GM_ONLY,
+                    source_event=event.id,
+                )
+            )
     if event.effects.get("status") == "dead" or event.type == "character_death":
         changes.append(
             StateDiffChange(
@@ -543,7 +572,23 @@ def _valid_target(context: TurnContext, change: StateDiffChange) -> bool:
         return any(character.id == change.id for character in context.bundle.characters)
     if change.target == "scene":
         return any(scene.id == change.id for scene in context.bundle.scenes)
+    if change.target == "faction":
+        return any(faction.id == change.id for faction in context.bundle.factions)
     return True
+
+
+def _invalid_faction_move_reason(context: TurnContext, change: StateDiffChange) -> str | None:
+    if change.target != "faction":
+        return None
+    faction = next((item for item in context.bundle.factions if item.id == change.id), None)
+    if faction is None:
+        return f"unknown faction_id: {change.id!r}"
+    scope, _, key = change.path.partition(".")
+    if scope == "resources" and key not in faction.resources:
+        return f"unknown faction resource key: {key!r}"
+    if scope == "relations" and key not in faction.relations:
+        return f"unknown faction relation key: {key!r}"
+    return None
 
 
 def _active_scene_id(context: TurnContext) -> str | None:

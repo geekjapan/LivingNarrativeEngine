@@ -9,6 +9,7 @@ from living_narrative.pipeline.context import TurnContext
 from living_narrative.random.engine import RandomEngine
 from living_narrative.state.models import (
     BackgroundEventTableEntry,
+    FactionState,
     LLMConfig,
     PacingConfig,
     ProjectConfig,
@@ -31,6 +32,7 @@ def _context(
     runs_dir: Path | None = None,
     timeline: list[TimelineEntry] | None = None,
     pacing: PacingConfig | None = None,
+    factions: list[FactionState] | None = None,
 ) -> TurnContext:
     project = ProjectConfig(
         id="p",
@@ -64,6 +66,7 @@ def _context(
                 threats=threats or [],
                 pacing=pacing or PacingConfig(),
             ),
+            factions=factions or [],
             timeline=timeline or [],
         ),
         random_engine=RandomEngine(seed),
@@ -187,6 +190,43 @@ def test_no_threats_produces_no_threat_events():
     events = simulate_world(_context(), [])
 
     assert all(e.type not in {"threat_pressure", "threat_stage"} for e in events)
+
+
+# Issue 017: faction state runtime.
+
+
+def test_no_factions_produces_no_faction_move_events():
+    events = simulate_world(_context(), [])
+
+    assert all(e.type != "faction_move" for e in events)
+
+
+def test_world_simulator_emits_one_faction_move_for_first_faction():
+    faction_a = FactionState(
+        id="faction_001",
+        name="Mist Keepers",
+        public_face="old station committee",
+        resources={"secrecy": 70, "influence": 45},
+        relations={"char_001": 40, "char_004": 15},
+    )
+    faction_b = FactionState(
+        id="faction_002",
+        name="Other",
+        public_face="other",
+        resources={"influence": 60},
+        relations={"char_001": 20},
+    )
+
+    events = simulate_world(_context(factions=[faction_a, faction_b]), [])
+
+    faction_events = [event for event in events if event.type == "faction_move"]
+    assert len(faction_events) == 1
+    assert faction_events[0].visibility == "gm_only"
+    assert faction_events[0].effects == {
+        "faction_id": "faction_001",
+        "resource_deltas": {"influence": -5},
+        "relation_deltas": {"char_001": 5},
+    }
 
 
 def test_threat_with_no_stages_emits_only_a_pressure_event():

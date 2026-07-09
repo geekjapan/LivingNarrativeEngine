@@ -31,6 +31,7 @@ Target = Literal[
     "reader_state",
     "canon",
     "gm_vault",
+    "faction",
     "relationship",
     "timeline",
     "threads",
@@ -41,7 +42,11 @@ COLLECTION_TARGETS = {"canon", "reader_state", "gm_vault", "timeline", "threads"
 # 014/015: "threads"/"memory" are the diff-target names for the bundle's `unresolved_threads`/
 # `memory_summaries` collections (kept short/stable in diff artifacts; the attribute names are
 # the longer bundle field names).
-_TARGET_ATTR = {"threads": "unresolved_threads", "memory": "memory_summaries"}
+_TARGET_ATTR = {
+    "faction": "factions",
+    "threads": "unresolved_threads",
+    "memory": "memory_summaries",
+}
 
 
 class StateDiffError(ValueError):

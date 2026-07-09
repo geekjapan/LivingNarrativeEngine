@@ -1,0 +1,13 @@
+- id: faction_001
+  name: 霧守り
+  public_face: 駅に残る古い管理組合という表向きの顔を持つ封印の守り手
+  goals:
+    - 封印施設の存在を外部に漏らさない
+    - リナたちが追跡者に捕まる前に駅から遠ざける
+  resources:
+    influence: 45
+    secrecy: 70
+  relations:
+    char_001: 40
+    char_002: 35
+    char_004: 15
