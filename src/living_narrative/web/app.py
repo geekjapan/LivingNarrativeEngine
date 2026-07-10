@@ -25,6 +25,7 @@ from living_narrative.web.service import (
     AutoRunAlreadyRunningError,
     NoPendingReviewError,
     ProjectNotFoundError,
+    SettingsValidationError,
     collect_narration,
     collect_structured_narration,
     get_gm_characters,
@@ -36,6 +37,7 @@ from living_narrative.web.service import (
     get_permissions,
     get_review_status,
     get_run_status,
+    get_settings_yaml,
     get_status,
     list_projects,
     request_stop,
@@ -43,6 +45,7 @@ from living_narrative.web.service import (
     run_turn,
     start_auto_run,
     submit_review,
+    update_settings_yaml,
 )
 
 _WEB_REVIEW_DECISIONS = (
@@ -72,6 +75,10 @@ class TurnRequest(BaseModel):
 
     free_text: str | None = None
     drafts: list[dict[str, Any]] | None = None
+
+
+class SettingsRequest(BaseModel):
+    yaml: str
 
 
 def create_app(project_root: Path) -> FastAPI:
@@ -113,6 +120,23 @@ def create_app(project_root: Path) -> FastAPI:
             "characters": status.characters,
             "llm_usage": status.llm_usage.model_dump(mode="json"),
         }
+
+    @app.get("/api/project/{name}/settings/{filename:path}")
+    def api_get_settings(name: str, filename: str) -> dict[str, str]:
+        project_yaml = _project_yaml(name)
+        try:
+            return {"filename": filename, "yaml": get_settings_yaml(project_yaml, filename)}
+        except SettingsValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/project/{name}/settings/{filename:path}")
+    def api_update_settings(name: str, filename: str, body: SettingsRequest) -> dict[str, str]:
+        project_yaml = _project_yaml(name)
+        try:
+            saved = update_settings_yaml(project_yaml, filename, body.yaml)
+        except (OSError, SettingsValidationError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"filename": filename, "yaml": saved}
 
     @app.get("/api/project/{name}/narration", response_class=PlainTextResponse)
     def api_narration(name: str, from_turn: int = Query(1, alias="from", ge=1)) -> str:
