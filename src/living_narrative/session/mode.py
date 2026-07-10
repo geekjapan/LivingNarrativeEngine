@@ -39,7 +39,11 @@ AUTHOR_INTERVENTIONS = frozenset(
     }
 )
 PLAYER_CHARACTER_INTERVENTIONS = frozenset(
-    {InterventionType.CHARACTER_DIRECTIVE, InterventionType.STOP_CONDITION}
+    {
+        InterventionType.CHARACTER_DIRECTIVE,
+        InterventionType.DICE_ROLL_REQUEST,
+        InterventionType.STOP_CONDITION,
+    }
 )
 
 
@@ -71,12 +75,11 @@ def is_intervention_allowed(
     type_ = InterventionType(intervention_type)
     if type_ not in MODE_PERMISSIONS[mode].allowed_interventions:
         return False
-    if (
-        mode == UserMode.PLAYER_CHARACTER
-        and type_ == InterventionType.CHARACTER_DIRECTIVE
-        and player_char_id is not None
-    ):
-        return target_id == player_char_id
+    if mode == UserMode.PLAYER_CHARACTER and type_ in {
+        InterventionType.CHARACTER_DIRECTIVE,
+        InterventionType.DICE_ROLL_REQUEST,
+    }:
+        return player_char_id is not None and target_id == player_char_id
     return True
 
 

@@ -40,6 +40,7 @@ from living_narrative.pipeline.writer import (
 )
 from living_narrative.random.engine import RandomEngine, load_rolls, next_roll_number
 from living_narrative.session.mode import session_permission_table
+from living_narrative.session.player_character import apply_player_character_intervention_policy
 from living_narrative.session.review import write_review_yaml
 from living_narrative.session.stop_conditions import evaluate_stop_conditions
 from living_narrative.state.diff import apply_state_diff, save_apply_artifacts
@@ -160,14 +161,18 @@ class TurnPipeline:
                     free_text=intervention_text,
                     direct_drafts=intervention_drafts,
                 )
+                pc_policy = apply_player_character_intervention_policy(
+                    project, bundle, intervene_result.interventions
+                )
                 intervention_file = InterventionFile(
                     turn=turn,
                     interventions=[
-                        item.model_dump(mode="json") for item in intervene_result.interventions
+                        item.model_dump(mode="json") for item in pc_policy.interventions
                     ],
                     rejections=[
                         item.model_dump(mode="json") for item in intervene_result.rejections
-                    ],
+                    ]
+                    + [item.model_dump(mode="json") for item in pc_policy.rejections],
                 )
                 write_intervention(turn_dir, intervention_file)
 

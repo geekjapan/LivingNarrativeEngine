@@ -64,6 +64,51 @@ def test_status_never_leaks_gm_vault_or_secrets(tmp_path, build_project):
     assert "private_mind" not in response.json()["characters"][0]
 
 
+def test_player_status_uses_safe_own_character_projection(tmp_path, build_project):
+    project_path = build_project(
+        tmp_path,
+        knowledge={
+            "knows": ["既知"],
+            "believes": ["推測"],
+            "does_not_know": ["未知の秘密"],
+        },
+        secrets=["本人の秘密"],
+    )
+    project = yaml.safe_load(project_path.read_text(encoding="utf-8"))
+    project.update({"user_mode": "player_character", "player_char_id": "char_001"})
+    project_path.write_text(
+        yaml.safe_dump(project, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+    response = _client(tmp_path).get("/api/project/project/status")
+
+    assert response.status_code == 200
+    character = response.json()["characters"][0]
+    assert character["knowledge"] == {"knows": ["既知"], "believes": ["推測"]}
+    assert character["secrets"] == ["本人の秘密"]
+    assert "未知の秘密" not in response.text
+
+
+def test_player_status_hides_active_scene_when_player_is_not_participant(tmp_path, build_project):
+    project_path = build_project(tmp_path, reader_visible_facts=["場面の公開情報"])
+    project = yaml.safe_load(project_path.read_text(encoding="utf-8"))
+    project.update({"user_mode": "player_character", "player_char_id": "char_001"})
+    project_path.write_text(
+        yaml.safe_dump(project, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    scene_path = project_path.parent / "workspace/state/scenes/scene_001.yaml"
+    scene = yaml.safe_load(scene_path.read_text(encoding="utf-8"))
+    scene["active_characters"] = []
+    scene_path.write_text(yaml.safe_dump(scene, allow_unicode=True), encoding="utf-8")
+
+    response = _client(tmp_path).get("/api/project/project/status")
+
+    assert response.status_code == 200
+    assert response.json()["scene"] is None
+    assert response.json()["visible_facts"] == []
+    assert "場面の公開情報" not in response.text
+
+
 def test_status_unknown_project_is_404(tmp_path):
     response = _client(tmp_path).get("/api/project/does-not-exist/status")
 
@@ -150,9 +195,18 @@ def test_gm_character_pane_renders_stats_and_skills_with_escaped_keys(tmp_path, 
 
     assert "const stats = renderSheet(c.stats);" in page
     assert "const skills = renderSheet(c.skills);" in page
-    assert "`${escapeHtml(name)}: ${value}`" in page
+    assert "`${escapeHtml(name)}: ${escapeHtml(value)}`" in page
     assert "<div>stats: ${stats}</div>" in page
     assert "<div>skills: ${skills}</div>" in page
+
+
+def test_status_character_name_and_status_are_html_escaped(tmp_path, build_project):
+    build_project(tmp_path)
+
+    page = _client(tmp_path).get("/").text
+
+    assert "${escapeHtml(c.name)} [${escapeHtml(c.status)}]" in page
+    assert "${c.name} [${c.status}]" not in page
 
 
 def test_gm_character_pane_renders_one_escaped_visual_profile_line(tmp_path, build_project):

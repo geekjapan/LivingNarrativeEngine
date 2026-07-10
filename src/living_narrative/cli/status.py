@@ -1,5 +1,6 @@
 """``living-narrative status``: human-readable and ``--json`` project summary (cli/spec.md
-"status の人間可読出力とJSON出力"). Never includes gm_vault/hidden_facts/secrets/private_mind."""
+"status の人間可読出力とJSON出力"). PC mode includes only the bound character's intended
+private fields and never another character's private state or unknown GM facts."""
 
 import json
 from pathlib import Path
@@ -10,8 +11,9 @@ from living_narrative.cli._common import load_project_or_exit
 from living_narrative.llm.costs import collect_project_costs
 from living_narrative.pipeline import turn_dir_path
 from living_narrative.pipeline.turn_numbering import read_turn_status
+from living_narrative.session.player_character import build_player_character_projection
 from living_narrative.session.resume import restore_resume_state
-from living_narrative.state.models import SceneStatus
+from living_narrative.state.models import SceneStatus, UserMode
 from living_narrative.state.store import StateStore
 
 
@@ -32,6 +34,12 @@ def status(
     active_scene = next((s for s in bundle.scenes if s.status == SceneStatus.ACTIVE), None)
     llm_usage = collect_project_costs(project, read.paths.runs)
 
+    player_mode = read.config.user_mode is UserMode.PLAYER_CHARACTER
+    pc_projection = (
+        build_player_character_projection(read.config, bundle, active_scene)
+        if player_mode
+        else None
+    )
     summary = {
         "current_turn": resume_state.last_applied_turn or 0,
         "pending_review": pending_turn is not None,
@@ -40,21 +48,36 @@ def status(
         "user_mode": read.config.user_mode.value,
         "autonomy_level": read.config.autonomy_level.value,
         "scene": (
-            {"id": active_scene.id, "location": active_scene.location, "mood": active_scene.mood}
-            if active_scene is not None
-            else None
+            pc_projection.scene.model_dump(mode="json")
+            if pc_projection and pc_projection.scene
+            else (
+                {
+                    "id": active_scene.id,
+                    "location": active_scene.location,
+                    "mood": active_scene.mood,
+                }
+                if active_scene is not None and not player_mode
+                else None
+            )
         ),
-        "world_parameters": dict(bundle.world.parameters),
-        "characters": [
-            {
-                "id": character.id,
-                "name": character.name,
-                "status": character.status.value,
-                "stats": dict(character.stats),
-                "skills": dict(character.skills),
-            }
-            for character in bundle.characters
-        ],
+        "world_parameters": (
+            pc_projection.world_parameters if pc_projection else dict(bundle.world.parameters)
+        ),
+        "visible_facts": pc_projection.visible_facts if pc_projection else [],
+        "characters": (
+            [item.model_dump(mode="json") for item in pc_projection.characters]
+            if pc_projection
+            else [
+                {
+                    "id": character.id,
+                    "name": character.name,
+                    "status": character.status.value,
+                    "stats": dict(character.stats),
+                    "skills": dict(character.skills),
+                }
+                for character in bundle.characters
+            ]
+        ),
         "llm_usage": llm_usage.model_dump(mode="json"),
     }
 
@@ -73,11 +96,12 @@ def status(
         f"user_mode: {summary['user_mode']}",
         f"autonomy_level: {summary['autonomy_level']}",
         (
-            f"現在のシーン: {active_scene.location} ({active_scene.mood})"
-            if active_scene is not None
+            f"現在のシーン: {summary['scene']['location']} ({summary['scene']['mood']})"
+            if summary["scene"] is not None
             else "現在のシーン: なし"
         ),
         f"world parameters: {summary['world_parameters']}",
+        *([f"可視情報: {summary['visible_facts']}"] if player_mode else []),
         "キャラクター:",
         *(
             f"  {character['id']} {character['name']} [{character['status']}] "

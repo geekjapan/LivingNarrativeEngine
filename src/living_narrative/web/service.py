@@ -22,9 +22,16 @@ from living_narrative.llm.costs import ModelPricing, ProjectCostSummary, collect
 from living_narrative.pipeline import TurnPipeline, TurnRunResult, TurnStatus
 from living_narrative.pipeline.turn_numbering import read_turn_status, turn_dir_path
 from living_narrative.session.mode import MODE_PERMISSIONS
+from living_narrative.session.player_character import build_player_character_projection
 from living_narrative.session.resume import restore_resume_state
 from living_narrative.session.review import ReviewDecision, ReviewResult, resolve_review
-from living_narrative.state.models import Event, ProjectConfig, SceneStatus, ThreatTrack, UserMode
+from living_narrative.state.models import (
+    Event,
+    ProjectConfig,
+    SceneStatus,
+    ThreatTrack,
+    UserMode,
+)
 from living_narrative.state.store import StateStore
 from living_narrative.workspace.loader import load_project
 
@@ -210,15 +217,16 @@ class ProjectStatus:
     pending_review_turn: int | None
     scene: dict | None
     characters: list[dict]
+    visible_facts: list[str]
     llm_usage: ProjectCostSummary
 
 
 def get_status(project_yaml: Path) -> ProjectStatus:
     """Status summary: turn count, active scene, character names/status.
 
-    Deliberately excludes ``private_mind``/``secrets``/``knowledge`` and anything under
-    ``gm_vault`` — mirrors ``cli/status.py``'s no-leak contract (see ``spec-foundation.md``
-    §4 information-scope model).
+    Non-PC modes receive the public character summary. PC mode receives the shared bound-PC
+    projection (own intended private fields, never ``does_not_know``/another character's private
+    state/unknown GM facts), mirroring ``cli/status.py`` and spec-foundation §4.
     """
     read = load_project(project_yaml)
     if not read.is_valid:
@@ -228,18 +236,35 @@ def get_status(project_yaml: Path) -> ProjectStatus:
     resume_state = restore_resume_state(read.paths.runs, read.paths.root / "interventions.yaml")
     active_scene = next((s for s in bundle.scenes if s.status == SceneStatus.ACTIVE), None)
 
+    player_mode = read.config.user_mode is UserMode.PLAYER_CHARACTER
+    pc_projection = (
+        build_player_character_projection(read.config, bundle, active_scene)
+        if player_mode
+        else None
+    )
     return ProjectStatus(
         current_turn=resume_state.last_applied_turn or 0,
         pending_review=resume_state.pending_review_turn is not None,
         pending_review_turn=resume_state.pending_review_turn,
         scene=(
-            {"id": active_scene.id, "location": active_scene.location, "mood": active_scene.mood}
-            if active_scene is not None
-            else None
+            pc_projection.scene.model_dump(mode="json")
+            if pc_projection and pc_projection.scene
+            else (
+                {
+                    "id": active_scene.id,
+                    "location": active_scene.location,
+                    "mood": active_scene.mood,
+                }
+                if active_scene is not None and not player_mode
+                else None
+            )
         ),
-        characters=[
-            {"id": c.id, "name": c.name, "status": c.status.value} for c in bundle.characters
-        ],
+        characters=(
+            [item.model_dump(mode="json") for item in pc_projection.characters]
+            if pc_projection
+            else [{"id": c.id, "name": c.name, "status": c.status.value} for c in bundle.characters]
+        ),
+        visible_facts=pc_projection.visible_facts if pc_projection else [],
         llm_usage=collect_project_costs(project_yaml, read.paths.runs),
     )
 

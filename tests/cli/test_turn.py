@@ -6,6 +6,14 @@ from living_narrative.cli import app
 runner = CliRunner()
 
 
+def _set_player_mode(project_path):
+    data = yaml.safe_load(project_path.read_text(encoding="utf-8"))
+    data.update({"user_mode": "player_character", "player_char_id": "char_001"})
+    project_path.write_text(
+        yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+
 def test_turn_prints_narration_and_status_line_with_exit_zero(tmp_path, build_project):
     project_path = build_project(tmp_path)
 
@@ -139,3 +147,23 @@ def test_turn_as_player_character_is_rejected(tmp_path, build_project):
     )
 
     assert result.exit_code == 2
+
+
+def test_turn_pc_action_persists_bound_directive_and_candidate(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _set_player_mode(project_path)
+
+    result = runner.invoke(
+        app, ["turn", "--project", str(project_path), "--pc-action", "扉を静かに開ける"]
+    )
+
+    assert result.exit_code == 0, result.output
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    intervention = yaml.safe_load((turn_dir / "intervention.yaml").read_text(encoding="utf-8"))
+    assert intervention["interventions"][0]["type"] == "character_directive"
+    assert intervention["interventions"][0]["target"]["id"] == "char_001"
+    candidates = yaml.safe_load(
+        (turn_dir / "agent_io" / "act_candidates.yaml").read_text(encoding="utf-8")
+    )
+    pc_candidates = [item for item in candidates if item["character_id"] == "char_001"]
+    assert [item["action_text"] for item in pc_candidates] == ["扉を静かに開ける"]

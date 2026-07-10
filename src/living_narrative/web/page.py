@@ -328,7 +328,7 @@ function renderGmCharacters(characters) {
   gmCharactersEl.innerHTML = characters
     .map((c) => {
       const renderSheet = (values) => Object.entries(values || {})
-        .map(([name, value]) => `${escapeHtml(name)}: ${value}`)
+        .map(([name, value]) => `${escapeHtml(name)}: ${escapeHtml(value)}`)
         .join(", ");
       const stats = renderSheet(c.stats);
       const skills = renderSheet(c.skills);
@@ -340,24 +340,26 @@ function renderGmCharacters(characters) {
           const [name, value] = entry;
           const baseline = (c.emotions_baseline || {})[name];
           const baselineNote = baseline !== undefined ? ` (baseline ${baseline})` : "";
-          return `<span class="emotion">${name}: ${value}${baselineNote}</span>`;
+          return `<span class="emotion">${escapeHtml(name)}: ${escapeHtml(value)}` +
+            `${escapeHtml(baselineNote)}</span>`;
         })
         .join("");
       const secrets = (c.secrets || [])
-        .map((s) => `<div class="gm-secret">secret: ${s}</div>`)
+        .map((s) => `<div class="gm-secret">secret: ${escapeHtml(s)}</div>`)
         .join("");
       const privateMind = (c.private_mind || [])
-        .map((p) => `<div class="gm-secret">private_mind: ${p}</div>`)
+        .map((p) => `<div class="gm-secret">private_mind: ${escapeHtml(p)}</div>`)
         .join("");
       const relationships = (c.relationships || [])
         .map(
           (r) =>
-            `<div class="emotion">→ ${r.to}: trust=${r.trust} affection=${r.affection} ` +
-            `tension=${r.tension} suspicion=${r.suspicion}</div>`
+            `<div class="emotion">→ ${escapeHtml(r.to)}: trust=${escapeHtml(r.trust)} ` +
+            `affection=${escapeHtml(r.affection)} ` +
+            `tension=${escapeHtml(r.tension)} suspicion=${escapeHtml(r.suspicion)}</div>`
         )
         .join("");
       return `<div class="gm-char-card">
-        <strong>${c.name}</strong> [${c.status}]
+        <strong>${escapeHtml(c.name)}</strong> [${escapeHtml(c.status)}]
         <div>stats: ${stats}</div>
         <div>skills: ${skills}</div>
         <div>visual: ${visualProfile}</div>
@@ -527,21 +529,34 @@ async function loadProjects() {
 async function refresh() {
   const name = currentProject();
   if (!name) return;
-  const [statusRes, turnsRes, runStatusRes, permissionsRes, interventionsRes, reviewRes] =
+  const [statusRes, turnsRes, runStatusRes, permissionsRes] =
     await Promise.all([
       fetch(`/api/project/${encodeURIComponent(name)}/status`),
       fetch(`/api/project/${encodeURIComponent(name)}/turns`),
       fetch(`/api/project/${encodeURIComponent(name)}/run_status`),
       fetch(`/api/project/${encodeURIComponent(name)}/permissions`),
-      fetch(`/api/project/${encodeURIComponent(name)}/interventions`),
-      fetch(`/api/project/${encodeURIComponent(name)}/review`),
     ]);
   const status = await statusRes.json();
   const turns = await turnsRes.json();
   const runStatus = await runStatusRes.json();
   const permissions = await permissionsRes.json();
-  const interventionsData = await interventionsRes.json();
-  renderReview(await reviewRes.json());
+  const privileged = permissions.user_mode !== "player_character";
+  if (privileged) {
+    const [interventionsRes, reviewRes] = await Promise.all([
+      fetch(`/api/project/${encodeURIComponent(name)}/interventions`),
+      fetch(`/api/project/${encodeURIComponent(name)}/review`),
+    ]);
+    renderInterventionHistory(await interventionsRes.json());
+    renderReview(await reviewRes.json());
+  } else {
+    renderReview({pending: false});
+    interventionHistoryEl.innerHTML = "";
+  }
+  gmToggleButton.hidden = !privileged;
+  if (!privileged) {
+    gmOpen = false;
+    gmPanelEl.classList.remove("open");
+  }
   renderGmLlmUsage(status.llm_usage);
 
   turnCountEl.textContent = `(turn ${status.current_turn})`;
@@ -551,7 +566,7 @@ async function refresh() {
     (status.pending_review ? ` — レビュー待ち (turn ${status.pending_review_turn})` : "") +
     (runStatus.running ? " — 実行中..." : "");
   charactersEl.innerHTML = status.characters
-    .map((c) => `<span class="char">${c.name} [${c.status}]</span>`)
+    .map((c) => `<span class="char">${escapeHtml(c.name)} [${escapeHtml(c.status)}]</span>`)
     .join("");
 
   storyEl.innerHTML = turns
@@ -579,9 +594,7 @@ async function refresh() {
   const interventionBlocked = runStatus.running || reviewPending;
   interventionFreetextButton.disabled = interventionBlocked;
   interventionDraftButton.disabled = interventionBlocked || permissions.allowed_types.length === 0;
-  renderInterventionHistory(interventionsData);
-
-  if (gmOpen) await loadGm();
+  if (privileged && gmOpen) await loadGm();
 
   if (runStatus.running && pollHandle === null) {
     pollHandle = setInterval(poll, 1000);

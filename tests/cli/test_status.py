@@ -9,6 +9,14 @@ from living_narrative.pipeline import TurnPipeline
 runner = CliRunner()
 
 
+def _set_player_mode(project_path):
+    project = yaml.safe_load(project_path.read_text(encoding="utf-8"))
+    project.update({"user_mode": "player_character", "player_char_id": "char_001"})
+    project_path.write_text(
+        yaml.safe_dump(project, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+
 def test_status_human_readable_before_any_turn(tmp_path, build_project):
     project_path = build_project(tmp_path)
 
@@ -125,3 +133,48 @@ def test_status_displays_llm_usage_and_unknown_price(tmp_path, build_project):
     usage = json.loads(json_result.output)["llm_usage"]
     assert usage["by_model"][0]["model"] == "auto/best-coding"
     assert usage["by_profile"][0]["profile_name"] == "main"
+
+
+def test_player_status_omits_does_not_know_and_out_of_scene_scene_facts(tmp_path, build_project):
+    project_path = build_project(
+        tmp_path,
+        reader_visible_facts=["読者には見える"],
+        hidden_facts=[
+            {
+                "id": "fact_001",
+                "text": "現場にいる者だけ",
+                "visibility": "scene",
+                "known_by": [],
+            },
+            {
+                "id": "fact_002",
+                "text": "本人が知っている",
+                "visibility": "character",
+                "known_by": ["char_001"],
+            },
+        ],
+        knowledge={
+            "knows": ["既知"],
+            "believes": ["推測"],
+            "does_not_know": ["秘密の正体"],
+        },
+        secrets=["本人の秘密"],
+    )
+    _set_player_mode(project_path)
+    scene_path = project_path.parent / "workspace/state/scenes/scene_001.yaml"
+    scene = yaml.safe_load(scene_path.read_text(encoding="utf-8"))
+    scene["active_characters"] = []
+    scene_path.write_text(yaml.safe_dump(scene, allow_unicode=True), encoding="utf-8")
+
+    result = runner.invoke(app, ["status", "--project", str(project_path), "--json"])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["characters"][0]["knowledge"] == {"knows": ["既知"], "believes": ["推測"]}
+    assert data["characters"][0]["secrets"] == ["本人の秘密"]
+    assert data["scene"] is None
+    assert data["visible_facts"] == []
+    assert "秘密の正体" not in result.output
+    assert "現場にいる者だけ" not in result.output
+    assert "読者には見える" not in result.output
+    assert "本人が知っている" not in result.output

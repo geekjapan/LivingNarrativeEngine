@@ -11,6 +11,7 @@ from living_narrative.cli._intervention_flags import DEFAULT_VISIBILITY, TYPE_TA
 from living_narrative.intervention.schema import InterventionType
 from living_narrative.pipeline import LoadError, TurnPipeline, TurnStatus, UnresolvedTurnError
 from living_narrative.state.models import UserMode, Visibility
+from living_narrative.state.store import StateStore
 
 
 @contextlib.contextmanager
@@ -58,7 +59,12 @@ def turn(
     as_mode: UserMode | None = typer.Option(
         None, "--as", help="Temporarily override user_mode for this turn only"
     ),
+    pc_action: str | None = typer.Option(
+        None, "--pc-action", help="プレイヤーキャラクター本人の行動"
+    ),
 ) -> None:
+    if pc_action is not None and (intervention is not None or type_ is not None):
+        usage_error("--pc-action cannot be combined with --intervention or --type")
     if intervention is not None and type_ is not None:
         usage_error("--intervention and --type cannot be specified together")
     if type_ is None and (target is not None or content is not None or constraint or visibility):
@@ -68,9 +74,25 @@ def turn(
     if as_mode is UserMode.PLAYER_CHARACTER:
         usage_error("--as player_character is not supported (requires a session char_id binding)")
 
-    load_project_or_exit(project)
+    project_read = load_project_or_exit(project)
 
     direct_drafts = None
+    if pc_action is not None:
+        if project_read.config.user_mode is not UserMode.PLAYER_CHARACTER:
+            usage_error("--pc-action requires project user_mode=player_character")
+        player_char_id = project_read.config.player_char_id
+        bundle = StateStore.load(project_read.paths.state)
+        if player_char_id is None or not any(c.id == player_char_id for c in bundle.characters):
+            usage_error("--pc-action requires a valid player_char_id in project state")
+        direct_drafts = [
+            {
+                "type": InterventionType.CHARACTER_DIRECTIVE.value,
+                "target": {"kind": "character", "id": player_char_id},
+                "content": pc_action,
+                "constraints": {},
+                "visibility": Visibility.READER.value,
+            }
+        ]
     if type_ is not None:
         draft: dict[str, object] = {
             "type": type_.value,

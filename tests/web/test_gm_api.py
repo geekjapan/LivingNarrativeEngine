@@ -35,6 +35,49 @@ def _load_yaml(path):
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def _set_mode(project_path, mode):
+    project = _load_yaml(project_path)
+    project["user_mode"] = mode
+    if mode == "player_character":
+        project["player_char_id"] = "char_001"
+    else:
+        project.pop("player_char_id", None)
+    project_path.write_text(
+        yaml.safe_dump(project, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize("mode", ["watcher", "author", "player_character"])
+def test_non_gm_modes_reject_all_gm_views(tmp_path, mode):
+    project_path = _build_mist_station(tmp_path)
+    _set_mode(project_path, mode)
+
+    client = _client(tmp_path)
+    for suffix in ("characters", "world", "timeline", "threads", "turn/1"):
+        assert client.get(f"/api/project/mist_station/gm/{suffix}").status_code == 403
+
+
+def test_full_gm_mode_can_access_gm_views(tmp_path):
+    project_path = _build_mist_station(tmp_path)
+    _set_mode(project_path, "full_gm")
+
+    assert _client(tmp_path).get("/api/project/mist_station/gm/characters").status_code == 200
+
+
+def test_player_character_mode_rejects_sensitive_session_views(tmp_path):
+    project_path = _build_mist_station(tmp_path)
+    _set_mode(project_path, "player_character")
+
+    client = _client(tmp_path)
+    assert client.get("/api/project/mist_station/review").status_code == 403
+    assert (
+        client.post("/api/project/mist_station/review", json={"decision": "accept_all"}).status_code
+        == 403
+    )
+    assert client.get("/api/project/mist_station/interventions").status_code == 403
+    assert client.get("/api/project/mist_station/status").status_code == 200
+
+
 # --- gm/characters --------------------------------------------------------------------
 
 

@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from living_narrative.pipeline import LoadError, UnresolvedTurnError
+from living_narrative.session.mode import is_gm_vault_visible
 from living_narrative.session.review import ReviewDecision, ReviewStateError
 from living_narrative.web.page import INDEX_HTML
 from living_narrative.web.service import (
@@ -97,6 +98,16 @@ def create_app(project_root: Path) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
         return project_dir / "project.yaml"
 
+    def _require_sensitive_session_access(project_yaml: Path) -> None:
+        info = get_permissions(project_yaml)
+        if info.user_mode == "player_character":
+            raise HTTPException(status_code=403, detail="sensitive session view is unavailable")
+
+    def _require_gm_vault_access(project_yaml: Path) -> None:
+        info = get_permissions(project_yaml)
+        if not is_gm_vault_visible(info.user_mode):
+            raise HTTPException(status_code=403, detail="GM-only view is unavailable")
+
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return INDEX_HTML
@@ -118,6 +129,7 @@ def create_app(project_root: Path) -> FastAPI:
             "pending_review_turn": status.pending_review_turn,
             "scene": status.scene,
             "characters": status.characters,
+            "visible_facts": status.visible_facts,
             "llm_usage": status.llm_usage.model_dump(mode="json"),
         }
 
@@ -215,6 +227,7 @@ def create_app(project_root: Path) -> FastAPI:
         below refers to), plus rejected-change candidates and this turn's check findings.
         ``pending: false`` (no turn/status/changes) when nothing is awaiting review."""
         project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
         try:
             info = get_review_status(project_yaml)
         except ProjectNotFoundError:
@@ -234,6 +247,8 @@ def create_app(project_root: Path) -> FastAPI:
         ``partial``). ``partial`` requires a non-empty ``selected_indexes`` (422 otherwise) and
         delegates to the same ``session.review.resolve_review`` primitive the CLI's
         ``review --decision partial --apply`` uses — no separate resolution logic here."""
+        project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
         if body.decision not in _WEB_REVIEW_DECISIONS:
             raise HTTPException(
                 status_code=400,
@@ -247,7 +262,6 @@ def create_app(project_root: Path) -> FastAPI:
                 status_code=422,
                 detail="decision=partial requires a non-empty selected_indexes",
             )
-        project_yaml = _project_yaml(name)
         selected_indices = (
             set(body.selected_indexes) if body.decision == ReviewDecision.PARTIAL else None
         )
@@ -281,6 +295,7 @@ def create_app(project_root: Path) -> FastAPI:
         """Project-wide intervention history + the most recent turn's accepted/rejected
         interventions, rejection reasons included (docs/issues/023)."""
         project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
         try:
             info = get_interventions(project_yaml)
         except ProjectNotFoundError:
@@ -292,6 +307,7 @@ def create_app(project_root: Path) -> FastAPI:
         """Omniscient character dump (emotions/goals/knowledge/secrets/private_mind/speech/
         status + each character's outgoing relationships) for the GM pane (docs/issues/024)."""
         project_yaml = _project_yaml(name)
+        _require_gm_vault_access(project_yaml)
         try:
             return get_gm_characters(project_yaml)
         except ProjectNotFoundError:
@@ -302,6 +318,7 @@ def create_app(project_root: Path) -> FastAPI:
         """World summary/parameters, threat pressure tracks (with next uncrossed stage),
         pacing config, and full scene state incl. ``hidden_facts`` (docs/issues/024)."""
         project_yaml = _project_yaml(name)
+        _require_gm_vault_access(project_yaml)
         try:
             info = get_gm_world(project_yaml)
         except ProjectNotFoundError:
@@ -322,6 +339,7 @@ def create_app(project_root: Path) -> FastAPI:
         """Timeline entries from ``from`` turn onward (up to ``limit``), each with its
         hydrated ``events.yaml`` bodies incl. visibility (docs/issues/024)."""
         project_yaml = _project_yaml(name)
+        _require_gm_vault_access(project_yaml)
         try:
             return get_gm_timeline(project_yaml, from_turn, limit)
         except ProjectNotFoundError:
@@ -331,6 +349,7 @@ def create_app(project_root: Path) -> FastAPI:
     def api_gm_threads(name: str) -> dict:
         """``unresolved_threads`` (full fields) + ``memory_summaries`` (docs/issues/024)."""
         project_yaml = _project_yaml(name)
+        _require_gm_vault_access(project_yaml)
         try:
             info = get_gm_threads(project_yaml)
         except ProjectNotFoundError:
@@ -342,6 +361,7 @@ def create_app(project_root: Path) -> FastAPI:
         """That turn's ``rolls.yaml``/``checks.yaml``/``state_diff.yaml`` contents
         (docs/issues/024). 404 if the turn directory does not exist."""
         project_yaml = _project_yaml(name)
+        _require_gm_vault_access(project_yaml)
         try:
             detail = get_gm_turn_detail(project_yaml, turn)
         except ProjectNotFoundError:

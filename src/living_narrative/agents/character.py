@@ -3,13 +3,17 @@
 from typing import Any
 
 from living_narrative.agents.context_builder import build_character_context
-from living_narrative.agents.models import CharacterAgentOutput
+from living_narrative.agents.models import (
+    ActionCandidate,
+    CharacterAgentOutput,
+    InventoryUpdateCandidate,
+)
 from living_narrative.intervention.router import character_directives_for
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.pipeline.models import ActionCandidate as PipelineActionCandidate
 from living_narrative.pipeline.models import ActRecord, WorldEventCandidate
-from living_narrative.state.models import CharacterStatus, Event
+from living_narrative.state.models import CharacterStatus, Event, UserMode, Visibility
 
 PROMPT_TEMPLATE_NAME = "agent-runtime-character-v6"
 PROMPT_TEXT = """\
@@ -95,17 +99,46 @@ def run_character_agent(
         scoped = build_character_context(
             context.bundle, character.id, events=events, directives=directives
         )
-        messages = [
-            {"role": "system", "content": PROMPT_TEXT},
-            {"role": "user", "content": scoped.model_dump_json()},
-        ]
-        output = gateway.complete(
-            f"character:{character.id}",
-            messages,
-            CharacterAgentOutput,
-            prompt_template_name=PROMPT_TEMPLATE_NAME,
-        )
-        assert isinstance(output, CharacterAgentOutput)
+        if (
+            context.project.user_mode is UserMode.PLAYER_CHARACTER
+            and character.id == context.project.player_char_id
+        ):
+            output = CharacterAgentOutput(
+                action_candidates=[
+                    ActionCandidate(
+                        kind="action",
+                        content=item["content"],
+                        visibility=Visibility(item["visibility"]),
+                    )
+                    for item in directives
+                ],
+                emotion_deltas=[],
+                goal_updates=[],
+                inventory_updates=[
+                    InventoryUpdateCandidate(
+                        action="use",
+                        item_id=item["constraints"]["item_id"],
+                        qty=item["constraints"]["qty"],
+                    )
+                    for item in directives
+                    if item.get("constraints", {}).get("inventory_action") == "use"
+                ],
+            )
+            messages = []
+            prompt_template_name = "player-character-direct-input-v1"
+        else:
+            messages = [
+                {"role": "system", "content": PROMPT_TEXT},
+                {"role": "user", "content": scoped.model_dump_json()},
+            ]
+            output = gateway.complete(
+                f"character:{character.id}",
+                messages,
+                CharacterAgentOutput,
+                prompt_template_name=PROMPT_TEMPLATE_NAME,
+            )
+            assert isinstance(output, CharacterAgentOutput)
+            prompt_template_name = PROMPT_TEMPLATE_NAME
         for index, candidate in enumerate(output.action_candidates):
             actions.append(
                 PipelineActionCandidate(
@@ -121,7 +154,7 @@ def run_character_agent(
         records.append(
             ActRecord(
                 character_id=character.id,
-                prompt_template_name=PROMPT_TEMPLATE_NAME,
+                prompt_template_name=prompt_template_name,
                 request=messages,
                 response=output.model_dump(mode="json"),
                 input_context=scoped.model_dump(mode="json"),

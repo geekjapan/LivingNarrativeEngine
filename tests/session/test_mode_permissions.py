@@ -53,3 +53,18 @@ def test_player_character_directive_must_target_bound_character():
         )
         is False
     )
+
+
+def test_player_character_check_must_target_bound_character():
+    assert is_intervention_allowed(
+        "player_character",
+        "dice_roll_request",
+        player_char_id="char_002",
+        target_id="char_002",
+    )
+    assert not is_intervention_allowed(
+        "player_character",
+        "dice_roll_request",
+        player_char_id="char_002",
+        target_id="char_001",
+    )
