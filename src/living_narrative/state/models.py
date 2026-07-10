@@ -42,6 +42,7 @@ ThreadId = id_type("thread")
 QuestId = id_type("quest")
 FactId = id_type("fact")
 ThreatId = id_type("threat")
+EncounterId = id_type("encounter")
 MemoryId = id_type("memory")
 
 _BINDING_KEY_FIXED = {
@@ -171,6 +172,34 @@ class StateBaseModel(BaseModel):
 class BackgroundEventTableEntry(StateBaseModel):
     text: str = Field(min_length=1)
     weight: int = Field(ge=1)
+
+
+class EncounterThreatCondition(StateBaseModel):
+    threat_id: ThreatId
+    min_pressure: Annotated[int, Field(ge=0, le=100)] | None = None
+    min_stage: Annotated[int, Field(strict=True, ge=1)] | None = None
+
+    @model_validator(mode="after")
+    def _require_threshold(self) -> "EncounterThreatCondition":
+        if self.min_pressure is None and self.min_stage is None:
+            raise ValueError("threat condition requires min_pressure or min_stage")
+        return self
+
+
+class EncounterEntry(StateBaseModel):
+    id: EncounterId
+    text: str = Field(min_length=1)
+    weight: Annotated[int, Field(strict=True, gt=0)]
+    visibility: Visibility
+    scene_id: SceneId | None = None
+    threat: EncounterThreatCondition | None = None
+
+    @field_validator("text")
+    @classmethod
+    def _reject_blank_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("text must not be blank")
+        return value
 
 
 class ThreatStage(StateBaseModel):
@@ -500,3 +529,4 @@ class WorldStateBundle(StateBaseModel):
     quests: list[Quest] = Field(default_factory=list)
     memory_summaries: list[MemorySummary] = Field(default_factory=list)
     visual_profiles: VisualProfilesState = Field(default_factory=VisualProfilesState)
+    encounters: list[EncounterEntry] = Field(default_factory=list)

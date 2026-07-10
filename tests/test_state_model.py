@@ -18,6 +18,8 @@ from living_narrative.state.models import (
     CharacterState,
     CharacterStatus,
     CharacterVisualProfile,
+    EncounterEntry,
+    EncounterThreatCondition,
     Event,
     FactionState,
     GmVaultEntry,
@@ -192,6 +194,57 @@ def test_state_store_roundtrip_preserves_content_and_bytes(tmp_path):
 
     assert first == {path.name: path.read_bytes() for path in state_dir.glob("*.yaml")}
     assert StateStore.load(state_dir).model_dump(mode="json") == loaded.model_dump(mode="json")
+
+
+def test_encounter_schema_validation_and_store_roundtrip(tmp_path):
+    encounter = EncounterEntry(
+        id="encounter_001",
+        text="霧の奥に人影が立つ",
+        weight=2,
+        visibility="reader",
+        scene_id="scene_001",
+        threat=EncounterThreatCondition(threat_id="threat_001", min_pressure=25),
+    )
+    state = bundle().model_copy(update={"encounters": [encounter]})
+
+    StateStore.save(state, tmp_path / "state")
+    loaded = StateStore.load(tmp_path / "state")
+
+    assert loaded.encounters == [encounter]
+    assert yaml.safe_load((tmp_path / "state" / "encounters.yaml").read_text()) == [
+        encounter.model_dump(mode="json", by_alias=True)
+    ]
+
+
+def test_missing_encounters_file_loads_empty_for_backward_compatibility(tmp_path):
+    StateStore.save(bundle(), tmp_path / "state")
+    (tmp_path / "state" / "encounters.yaml").unlink()
+
+    assert StateStore.load(tmp_path / "state").encounters == []
+
+
+@pytest.mark.parametrize("weight", [0, -1, 1.5, True])
+def test_encounter_weight_must_be_a_positive_integer(weight):
+    with pytest.raises(ValidationError):
+        EncounterEntry(id="encounter_001", text="遭遇", weight=weight, visibility="reader")
+
+
+def test_encounter_threat_condition_requires_a_threshold():
+    with pytest.raises(ValidationError):
+        EncounterThreatCondition(threat_id="threat_001")
+
+
+def test_schema_export_includes_encounter_models(tmp_path):
+    export_state_schemas(tmp_path / "schemas")
+
+    entry_schema = yaml.safe_load(
+        (tmp_path / "schemas" / "EncounterEntry.schema.yaml").read_text(encoding="utf-8")
+    )
+    condition_schema = yaml.safe_load(
+        (tmp_path / "schemas" / "EncounterThreatCondition.schema.yaml").read_text(encoding="utf-8")
+    )
+    assert entry_schema["required"] == ["id", "text", "weight", "visibility"]
+    assert condition_schema["required"] == ["threat_id"]
 
 
 def test_state_store_missing_variable_directory_loads_empty_collection(tmp_path):

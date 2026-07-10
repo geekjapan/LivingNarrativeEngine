@@ -166,6 +166,36 @@ def test_dice_roll_request_is_recorded_in_rolls_yaml(tmp_path, build_project):
     assert any(roll["dice"]["notation"] == "2d6" for roll in rolls)
 
 
+def test_encounter_roll_is_recorded_by_existing_pipeline_extraction(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    (state_dir / "encounters.yaml").write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "id": "encounter_001",
+                    "text": "霧の中から旅人が現れる",
+                    "weight": 1,
+                    "visibility": "reader",
+                    "scene_id": "scene_001",
+                }
+            ],
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    result = TurnPipeline().run(project_path)
+
+    rolls = yaml.safe_load((result.turn_dir / "rolls.yaml").read_text(encoding="utf-8"))
+    events = yaml.safe_load((result.turn_dir / "events.yaml").read_text(encoding="utf-8"))
+    encounter = next(event for event in events if event["type"] == "encounter")
+    roll = next(item for item in rolls if item["table"]["table"] == "encounters")
+    assert encounter["text"] == "霧の中から旅人が現れる"
+    assert encounter["effects"]["encounter_id"] == "encounter_001"
+    assert encounter["roll_ids"] == [roll["id"]]
+
+
 def test_legacy_dice_roll_request_links_roll_to_event(tmp_path, build_project):
     project_path = build_project(tmp_path)
     _set_user_mode(project_path, "full_gm")

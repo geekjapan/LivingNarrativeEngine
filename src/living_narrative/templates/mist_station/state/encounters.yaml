@@ -1,0 +1,12 @@
+- id: encounter_001
+  text: 霧の向こうから、古い切符を握った子どもがこちらを見つめている。
+  weight: 3
+  visibility: reader
+  scene_id: scene_001
+- id: encounter_002
+  text: 追跡者の影がホームの柱を横切り、すぐに霧へ溶けた。
+  weight: 1
+  visibility: scene
+  threat:
+    threat_id: threat_001
+    min_pressure: 50

@@ -10,10 +10,12 @@ from living_narrative.random.engine import RandomEngine
 from living_narrative.state.models import (
     BackgroundEventTableEntry,
     CharacterState,
+    EncounterEntry,
     FactionState,
     LLMConfig,
     PacingConfig,
     ProjectConfig,
+    SceneState,
     ThreatStage,
     ThreatTrack,
     TimelineEntry,
@@ -34,6 +36,8 @@ def _context(
     timeline: list[TimelineEntry] | None = None,
     pacing: PacingConfig | None = None,
     factions: list[FactionState] | None = None,
+    encounters: list[EncounterEntry] | None = None,
+    scenes: list[SceneState] | None = None,
 ) -> TurnContext:
     project = ProjectConfig(
         id="p",
@@ -68,6 +72,8 @@ def _context(
                 pacing=pacing or PacingConfig(),
             ),
             factions=factions or [],
+            encounters=encounters or [],
+            scenes=scenes or [],
             timeline=timeline or [],
         ),
         random_engine=RandomEngine(seed),
@@ -89,6 +95,76 @@ def test_world_simulator_uses_weighted_table_roll():
 
 def test_world_simulator_is_deterministic_with_fixed_seed():
     assert simulate_world(_context("same"), []) == simulate_world(_context("same"), [])
+
+
+def test_eligible_encounter_is_selected_deterministically_after_existing_events():
+    encounters = [
+        EncounterEntry(
+            id="encounter_001",
+            text="足音が近づく",
+            weight=1,
+            visibility="scene",
+            scene_id="scene_001",
+        )
+    ]
+    scenes = [SceneState(id="scene_001", location="駅", time="夜", status="active")]
+
+    first = simulate_world(_context("same", encounters=encounters, scenes=scenes), [])
+    second = simulate_world(_context("same", encounters=encounters, scenes=scenes), [])
+
+    assert first == second
+    assert [event.type for event in first][-1] == "encounter"
+    encounter = first[-1]
+    assert encounter.text == "足音が近づく"
+    assert encounter.visibility == "scene"
+    assert encounter.effects["encounter_id"] == "encounter_001"
+    assert encounter.effects["roll_id"] == encounter.effects["_roll"]["id"]
+    assert encounter.effects["_roll"]["table"]["table"] == "encounters"
+
+
+def test_ineligible_encounters_consume_no_rng_and_preserve_existing_event_contract():
+    encounter = EncounterEntry(
+        id="encounter_001",
+        text="まだ現れない",
+        weight=1,
+        visibility="gm_only",
+        scene_id="scene_999",
+    )
+    context = _context(encounters=[encounter])
+
+    events = simulate_world(context, [])
+
+    assert [event.type for event in events] == ["background_event"]
+    assert context.random_engine.draws_consumed == 1
+    assert events[0].effects["_roll"]["id"] == "roll_0001"
+
+
+def test_threat_condition_requires_pressure_and_stage_thresholds():
+    threat = ThreatTrack(
+        id="threat_001",
+        name="追跡者",
+        pressure=50,
+        pressure_per_turn="1d1",
+        stages=[
+            ThreatStage(at=25, text="近づく", visibility="gm_only"),
+            ThreatStage(at=50, text="目前", visibility="scene"),
+        ],
+    )
+    encounter = EncounterEntry.model_validate(
+        {
+            "id": "encounter_001",
+            "text": "追跡者が姿を見せる",
+            "weight": 1,
+            "visibility": "reader",
+            "threat": {"threat_id": "threat_001", "min_pressure": 50, "min_stage": 2},
+        }
+    )
+
+    context = _context(threats=[threat], encounters=[encounter])
+    events = simulate_world(context, [])
+
+    assert any(event.type == "encounter" for event in events)
+    assert context.random_engine.draws_consumed == 3
 
 
 def test_background_event_visibility_is_required():

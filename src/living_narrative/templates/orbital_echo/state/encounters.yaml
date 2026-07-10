@@ -1,0 +1,12 @@
+- id: encounter_001
+  text: 無人のはずの予備回線から、短い呼吸音が三度だけ届く。
+  weight: 4
+  visibility: reader
+  scene_id: scene_001
+- id: encounter_002
+  text: 閉鎖区画の監視端末に、乗員ではない生体反応が一瞬だけ現れる。
+  weight: 1
+  visibility: gm_only
+  threat:
+    threat_id: threat_001
+    min_stage: 2

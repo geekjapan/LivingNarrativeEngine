@@ -7,7 +7,7 @@ from living_narrative.agents.pacing import detect_stall
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import WorldEventCandidate
 from living_narrative.random.tables import WeightedEntry
-from living_narrative.state.models import FactionState, ThreatTrack, Visibility
+from living_narrative.state.models import EncounterEntry, FactionState, ThreatTrack, Visibility
 
 # world_directive/event_injection become world event candidates verbatim (spec.md Requirement
 # "Type別ルーティング"): they *are* what the World Simulator should propose this turn.
@@ -73,6 +73,7 @@ def simulate_world(
     ]
     faction_events = _faction_events(context)
     pacing_events = _pacing_stall_events(stalled_turns, boost)
+    encounter_events = _encounter_events(context)
     return [
         *directive_events,
         *dice_events,
@@ -80,7 +81,55 @@ def simulate_world(
         *threat_events,
         *faction_events,
         *pacing_events,
+        *encounter_events,
     ]
+
+
+def _encounter_events(context: TurnContext) -> list[WorldEventCandidate]:
+    eligible = [
+        entry for entry in context.bundle.encounters if _encounter_is_eligible(context, entry)
+    ]
+    if not eligible:
+        return []
+    by_id = {entry.id: entry for entry in eligible}
+    roll = context.random_engine.select_from_table(
+        [WeightedEntry(name=entry.id, weight=entry.weight) for entry in eligible],
+        turn=context.turn,
+        table_name="encounters",
+        label="world_simulator.encounter",
+    )
+    selected = by_id[str(roll.result)]
+    return [
+        WorldEventCandidate(
+            type="encounter",
+            cause="world_simulator",
+            text=selected.text,
+            visibility=selected.visibility,
+            effects={
+                "encounter_id": selected.id,
+                "roll_id": roll.id,
+                "_roll": roll.model_dump(mode="json"),
+            },
+        )
+    ]
+
+
+def _encounter_is_eligible(context: TurnContext, entry: EncounterEntry) -> bool:
+    if entry.scene_id is not None and not any(
+        scene.id == entry.scene_id and scene.status == "active" for scene in context.bundle.scenes
+    ):
+        return False
+    if entry.threat is None:
+        return True
+    threat = next(
+        (item for item in context.bundle.world.threats if item.id == entry.threat.threat_id), None
+    )
+    if threat is None:
+        return False
+    if entry.threat.min_pressure is not None and threat.pressure < entry.threat.min_pressure:
+        return False
+    reached_stages = sum(stage.at <= threat.pressure for stage in threat.stages)
+    return entry.threat.min_stage is None or reached_stages >= entry.threat.min_stage
 
 
 def _threat_events(

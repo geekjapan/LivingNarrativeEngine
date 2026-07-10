@@ -14,6 +14,7 @@ from pydantic import BaseModel, ValidationError
 from living_narrative.state.models import (
     CanonEntry,
     CharacterState,
+    EncounterEntry,
     FactionState,
     GmVaultEntry,
     MemorySummary,
@@ -88,6 +89,9 @@ class StateStore:
             VisualProfilesState,
             issues,
         )
+        encounters = _load_list(
+            state_dir / "encounters.yaml", EncounterEntry, issues, optional=True
+        )
 
         if issues:
             raise StateLoadError(issues)
@@ -106,6 +110,7 @@ class StateStore:
             quests=quests,
             memory_summaries=memory_summaries,
             visual_profiles=visual_profiles,
+            encounters=encounters,
         )
         _warn_unknowns(bundle, state_dir)
         return bundle
@@ -137,6 +142,9 @@ class StateStore:
             [_dump_model(item) for item in bundle.memory_summaries],
         )
         _atomic_yaml(state_dir / "visual_profiles.yaml", _dump_model(bundle.visual_profiles))
+        _atomic_yaml(
+            state_dir / "encounters.yaml", [_dump_model(item) for item in bundle.encounters]
+        )
         _save_dir(state_dir / "characters", bundle.characters)
         _save_dir(state_dir / "scenes", bundle.scenes)
 

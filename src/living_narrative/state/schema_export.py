@@ -14,6 +14,8 @@ SCHEMA_MODELS = [
     models.InventoryItem,
     models.CharacterVisualProfile,
     models.BackgroundVisualProfile,
+    models.EncounterThreatCondition,
+    models.EncounterEntry,
     models.StyleLockProfile,
     models.VisualProfilesState,
     models.RelationshipState,
