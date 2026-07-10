@@ -6,7 +6,7 @@ State-first, LLM-driven interactive narrative engine. See `docs/project_plan.md`
 ## Setup
 
 ```bash
-uv sync
+uv sync --extra web
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
@@ -14,14 +14,75 @@ uv run ruff format --check .
 
 ## Quickstart
 
+### Local (uv)
+
+Install [uv](https://docs.astral.sh/uv/), then run the following commands from this
+repository's root:
+
 ```bash
-uv sync
+uv sync --extra web
 
 uv run living-narrative init \
   --title "霧の駅" \
   --template mist_station \
   --output projects/mist_station
 
+uv run living-narrative serve \
+  --project-root projects \
+  --port 8000
+```
+
+Open <http://127.0.0.1:8000> in a browser. Stop the server with `Ctrl+C`.
+
+### Docker Compose
+
+Docker Compose mounts the local `projects/` directory into the container, so projects and
+their run artifacts remain on the host. Build the image and create the sample project once:
+
+```bash
+docker compose build
+
+docker compose run --rm app living-narrative init \
+  --title "霧の駅" \
+  --template mist_station \
+  --output /projects/mist_station
+
+docker compose up
+```
+
+Open <http://127.0.0.1:8000>. The Compose port is deliberately published only on the host's
+loopback interface. Stop and remove the container and network with:
+
+```bash
+docker compose down
+```
+
+### OpenAI-compatible gateway
+
+The sample project uses the mock provider. To use an OpenAI-compatible gateway, copy the
+environment template and edit the untracked `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+```dotenv
+OPENAI_BASE_URL=https://gateway.example.com/v1
+OPENAI_API_KEY=replace-with-your-real-secret
+```
+
+`OPENAI_BASE_URL` selects the gateway endpoint and `OPENAI_API_KEY` supplies its credential.
+Also change the project's `llm.provider` to `openai-compatible` and choose a model. Compose
+loads `.env` automatically; local uv commands inherit variables exported by your shell (for
+example, `set -a; . ./.env; set +a`). Never commit `.env` or put a real secret in
+`project.yaml`, `compose.yml`, or `.env.example`; `.env` is ignored by Git and excluded from
+the Docker build context.
+
+### CLI workflow
+
+After creating a project, the CLI can also advance and export it directly:
+
+```bash
 uv run living-narrative turn \
   --project projects/mist_station/project.yaml
 
@@ -32,8 +93,6 @@ uv run living-narrative auto \
 uv run living-narrative export replay \
   --project projects/mist_station/project.yaml \
   --output projects/mist_station/workspace/exports/replay.md
-
-uv run pytest -q
 ```
 
 `init --template` accepts `mist_station` (the "霧の駅" sample world: 4 characters, 3
