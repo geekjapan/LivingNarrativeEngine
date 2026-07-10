@@ -1,7 +1,7 @@
 ---
 id: 041
 title: 画像provider interfaceとasset cache
-status: in_progress
+status: done
 created: 2026-07-11
 ---
 
@@ -22,15 +22,19 @@ Issue 040で監査可能な画像promptは生成できるが、providerへ委譲
 
 ## 完了条件
 
-- [ ] `ImageProvider` Protocolとdict registry、unknown provider errorがある
-- [ ] 決定論的mock providerだけがbuilt-in登録される
-- [ ] `exports/assets/`とatomicな`assets.yaml`へ生成履歴を保存する
-- [ ] 同一prompt/provider/profileはcache hitとなり再生成されない
-- [ ] pending/accepted/discardedをCLIまたは安全なmanifest経路で更新できる
-- [ ] path traversal、不正manifest、unknown assetを拒否する
-- [ ] output metadataと権利・セキュリティ文書にprovider依存リスクがある
-- [ ] 実画像providerを先取りせず、全テスト・ruffがpassする
-- [ ] 無関係変更がなく、GitNexus `detect_changes`で影響範囲を確認している
+- [x] `ImageProvider` Protocolとdict registry、unknown provider errorがある
+- [x] 決定論的mock providerだけがbuilt-in登録される
+- [x] `exports/assets/`とatomicな`assets.yaml`へ生成履歴を保存する
+- [x] 同一prompt/provider/profileはcache hitとなり再生成されない
+- [x] pending/accepted/discardedをCLIまたは安全なmanifest経路で更新できる
+- [x] path traversal、不正manifest、unknown assetを拒否する
+- [x] output metadataと権利・セキュリティ文書にprovider依存リスクがある
+- [x] 実画像providerを先取りせず、全テスト・ruffがpassする
+- [x] 無関係変更がなく、GitNexus `detect_changes`で影響範囲を確認している
+
+## 完了記録
+
+実装commitは`87acfb4`。レビューで`exports/assets`および`assets.yaml`のsymlink escapeを拒否する境界と回帰テストを追加し、Wave 6最終統合状態で886 testsとruffの通過を確認した。
 
 ## 関連ファイル
 
