@@ -306,6 +306,9 @@ function renderGmCharacters(characters) {
         .join(", ");
       const stats = renderSheet(c.stats);
       const skills = renderSheet(c.skills);
+      const visualProfile = c.visual_profile
+        ? escapeHtml(c.visual_profile.summary)
+        : "未設定";
       const emotions = Object.entries(c.emotions || {})
         .map((entry) => {
           const [name, value] = entry;
@@ -331,6 +334,7 @@ function renderGmCharacters(characters) {
         <strong>${c.name}</strong> [${c.status}]
         <div>stats: ${stats}</div>
         <div>skills: ${skills}</div>
+        <div>visual: ${visualProfile}</div>
         <div>${emotions}</div>
         ${secrets}${privateMind}${relationships}
       </div>`;

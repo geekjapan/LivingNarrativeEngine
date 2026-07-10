@@ -155,6 +155,25 @@ def test_gm_character_pane_renders_stats_and_skills_with_escaped_keys(tmp_path, 
     assert "<div>skills: ${skills}</div>" in page
 
 
+def test_gm_character_pane_renders_one_escaped_visual_profile_line(tmp_path, build_project):
+    project_yaml = build_project(tmp_path)
+    character_path = project_yaml.parent / "workspace" / "state" / "characters" / "char_001.yaml"
+    character = yaml.safe_load(character_path.read_text(encoding="utf-8"))
+    character["visual_profile"] = {"summary": '<img src=x onerror="alert(1)">'}
+    character_path.write_text(
+        yaml.safe_dump(character, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+    client = _client(tmp_path)
+    response = client.get("/api/project/project/gm/characters")
+    page = client.get("/").text
+
+    assert response.json()[0]["visual_profile"]["summary"] == '<img src=x onerror="alert(1)">'
+    assert "escapeHtml(c.visual_profile.summary)" in page
+    assert "<div>visual: ${visualProfile}</div>" in page
+
+
 @pytest.mark.parametrize("name", ["..", "../etc", "a/b", "a\\b", ""])
 def test_path_traversal_rejected(tmp_path, build_project, name):
     build_project(tmp_path)
