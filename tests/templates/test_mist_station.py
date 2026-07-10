@@ -159,3 +159,22 @@ def test_every_character_emotions_baseline_matches_its_initial_emotions(tmp_path
 
     for character in bundle.characters:
         assert character.emotions_baseline == character.emotions
+
+
+def test_every_character_has_non_empty_stats_and_skills_after_template_init(tmp_path):
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    assert {character.id for character in bundle.characters} == {
+        "char_001",
+        "char_002",
+        "char_003",
+        "char_004",
+    }
+    for character in bundle.characters:
+        assert character.stats
+        assert character.skills
+        assert all(isinstance(value, int) for value in character.stats.values())
+        assert all(isinstance(value, int) for value in character.skills.values())

@@ -1,6 +1,14 @@
 id: char_004
 name: 追跡者
 role: 追跡者
+stats:
+  体力: 8
+  知力: 6
+  意志: 7
+skills:
+  追跡: 9
+  威圧: 7
+  隠密: 6
 traits:
   - 執拗
   - 冷徹

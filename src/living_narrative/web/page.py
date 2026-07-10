@@ -301,6 +301,11 @@ async function loadReview() {
 function renderGmCharacters(characters) {
   gmCharactersEl.innerHTML = characters
     .map((c) => {
+      const renderSheet = (values) => Object.entries(values || {})
+        .map(([name, value]) => `${escapeHtml(name)}: ${value}`)
+        .join(", ");
+      const stats = renderSheet(c.stats);
+      const skills = renderSheet(c.skills);
       const emotions = Object.entries(c.emotions || {})
         .map((entry) => {
           const [name, value] = entry;
@@ -324,6 +329,8 @@ function renderGmCharacters(characters) {
         .join("");
       return `<div class="gm-char-card">
         <strong>${c.name}</strong> [${c.status}]
+        <div>stats: ${stats}</div>
+        <div>skills: ${skills}</div>
         <div>${emotions}</div>
         ${secrets}${privateMind}${relationships}
       </div>`;

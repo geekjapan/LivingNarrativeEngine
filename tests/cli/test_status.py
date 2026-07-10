@@ -49,6 +49,36 @@ def test_status_never_leaks_gm_vault_or_secrets(tmp_path, build_project):
     assert "a deep secret" not in result.output
 
 
+def test_status_character_sheet_is_available_in_human_and_json_output(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    character_path = project_path.parent / "workspace" / "state" / "characters" / "char_001.yaml"
+    character = yaml.safe_load(character_path.read_text(encoding="utf-8"))
+    character["stats"] = {"力": 6}
+    character["skills"] = {"観察": 7}
+    character_path.write_text(
+        yaml.safe_dump(character, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+    human_result = runner.invoke(app, ["status", "--project", str(project_path)])
+    json_result = runner.invoke(app, ["status", "--project", str(project_path), "--json"])
+
+    assert human_result.exit_code == 0, human_result.output
+    assert "char_001 Aoi [alive] stats={'力': 6} skills={'観察': 7}" in human_result.output
+    data = json.loads(json_result.output)
+    assert data["characters"] == [
+        {
+            "id": "char_001",
+            "name": "Aoi",
+            "status": "alive",
+            "stats": {"力": 6},
+            "skills": {"観察": 7},
+        }
+    ]
+    serialized = json.dumps(data["characters"], ensure_ascii=False)
+    assert "secrets" not in serialized
+    assert "private_mind" not in serialized
+
+
 def test_status_exits_2_for_missing_project(tmp_path):
     result = runner.invoke(
         app, ["status", "--project", str(tmp_path / "does_not_exist" / "project.yaml")]

@@ -249,6 +249,8 @@ class CharacterState(StateBaseModel):
     id: CharacterId
     name: str
     role: str
+    stats: dict[str, int] = Field(default_factory=dict)
+    skills: dict[str, int] = Field(default_factory=dict)
     traits: list[str] = Field(default_factory=list)
     goals: CharacterGoals = Field(default_factory=CharacterGoals)
     emotions: dict[str, Percent] = Field(default_factory=dict)

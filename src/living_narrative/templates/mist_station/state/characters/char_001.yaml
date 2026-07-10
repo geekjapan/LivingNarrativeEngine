@@ -1,6 +1,14 @@
 id: char_001
 name: リナ
 role: 主人公
+stats:
+  体力: 5
+  知力: 7
+  意志: 6
+skills:
+  観察: 6
+  探索: 5
+  交渉: 4
 traits:
   - 好奇心旺盛
   - 慎重

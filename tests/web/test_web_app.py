@@ -143,6 +143,18 @@ def test_gm_cost_pane_escapes_hostile_model_and_profile_names(tmp_path, build_pr
     assert '${p.profile_name || "未設定"}' not in page
 
 
+def test_gm_character_pane_renders_stats_and_skills_with_escaped_keys(tmp_path, build_project):
+    build_project(tmp_path)
+
+    page = _client(tmp_path).get("/").text
+
+    assert "const stats = renderSheet(c.stats);" in page
+    assert "const skills = renderSheet(c.skills);" in page
+    assert "`${escapeHtml(name)}: ${value}`" in page
+    assert "<div>stats: ${stats}</div>" in page
+    assert "<div>skills: ${skills}</div>" in page
+
+
 @pytest.mark.parametrize("name", ["..", "../etc", "a/b", "a\\b", ""])
 def test_path_traversal_rejected(tmp_path, build_project, name):
     build_project(tmp_path)

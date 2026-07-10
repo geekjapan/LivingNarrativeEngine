@@ -725,6 +725,25 @@ def test_schema_export_writes_world_state_schema(tmp_path):
     assert (tmp_path / "schemas" / "WorldState.schema.yaml").exists()
 
 
+def test_character_stats_and_skills_default_empty_for_legacy_data():
+    character = CharacterState.model_validate({"id": "char_001", "name": "Aoi", "role": "lead"})
+
+    assert character.stats == {}
+    assert character.skills == {}
+
+
+def test_schema_export_includes_character_stats_and_skills(tmp_path):
+    export_state_schemas(tmp_path / "schemas")
+
+    schema = yaml.safe_load(
+        (tmp_path / "schemas" / "CharacterState.schema.yaml").read_text(encoding="utf-8")
+    )
+    for field in ("stats", "skills"):
+        assert schema["properties"][field]["type"] == "object"
+        assert schema["properties"][field]["additionalProperties"]["type"] == "integer"
+        assert field not in schema.get("required", [])
+
+
 # Issue 008: threat escalation tracks (ThreatTrack/ThreatStage on WorldState).
 
 

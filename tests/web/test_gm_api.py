@@ -70,6 +70,17 @@ def test_gm_characters_relationships_are_from_side_only(tmp_path):
     assert rel_targets == {("char_001", "char_002"), ("char_001", "char_003")}
 
 
+def test_gm_characters_include_stats_and_skills_from_character_model(tmp_path):
+    _build_mist_station(tmp_path)
+
+    response = _client(tmp_path).get("/api/project/mist_station/gm/characters")
+
+    assert response.status_code == 200
+    char_003 = next(c for c in response.json() if c["id"] == "char_003")
+    assert char_003["stats"] == {"体力": 5, "知力": 8, "意志": 8}
+    assert char_003["skills"] == {"観察": 8, "封印術": 9, "隠密": 7}
+
+
 def test_gm_characters_unknown_project_is_404(tmp_path):
     response = _client(tmp_path).get("/api/project/does-not-exist/gm/characters")
 

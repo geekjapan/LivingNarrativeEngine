@@ -45,6 +45,16 @@ def status(
             else None
         ),
         "world_parameters": dict(bundle.world.parameters),
+        "characters": [
+            {
+                "id": character.id,
+                "name": character.name,
+                "status": character.status.value,
+                "stats": dict(character.stats),
+                "skills": dict(character.skills),
+            }
+            for character in bundle.characters
+        ],
         "llm_usage": llm_usage.model_dump(mode="json"),
     }
 
@@ -68,6 +78,12 @@ def status(
             else "現在のシーン: なし"
         ),
         f"world parameters: {summary['world_parameters']}",
+        "キャラクター:",
+        *(
+            f"  {character['id']} {character['name']} [{character['status']}] "
+            f"stats={character['stats']} skills={character['skills']}"
+            for character in summary["characters"]
+        ),
         (
             f"LLM利用: {llm_usage.calls} calls / {llm_usage.total_tokens} tokens "
             f"(prompt {llm_usage.prompt_tokens}, completion {llm_usage.completion_tokens})"

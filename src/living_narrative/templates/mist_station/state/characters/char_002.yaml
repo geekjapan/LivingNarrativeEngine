@@ -1,6 +1,14 @@
 id: char_002
 name: カイ
 role: リナの幼馴染
+stats:
+  体力: 7
+  知力: 5
+  意志: 7
+skills:
+  護衛: 7
+  忍耐: 6
+  隠密: 5
 traits:
   - 寡黙
   - 忠実
