@@ -1,7 +1,7 @@
 ---
 id: 031
 title: stats/skills スキーマとキャラクターシート表示
-status: in_progress
+status: done
 created: 2026-07-11
 ---
 
@@ -20,13 +20,13 @@ E7のゲーム拡張では能力値と技能が判定・戦闘・所持品の共
 
 ## 完了条件
 
-- [ ] `CharacterState.stats` / `skills` が `dict[str, int]`・default空の正フィールドである
-- [ ] schema exportに両フィールドが現れ、既存データは後方互換でloadできる
-- [ ] mist_station全キャラクターにstats/skillsの実値がある
-- [ ] status CLIの人間可読/JSON出力にキャラクターシートが表示される
-- [ ] web GM characters API/paneにstats/skillsが表示される
-- [ ] runtime mutation経路を追加せず、全テスト・ruff check・ruff format checkがpassする
-- [ ] 無関係変更がなく、GitNexus `detect_changes` で影響範囲を確認している
+- [x] `CharacterState.stats` / `skills` が `dict[str, int]`・default空の正フィールドである
+- [x] schema exportに両フィールドが現れ、既存データは後方互換でloadできる
+- [x] mist_station全キャラクターにstats/skillsの実値がある
+- [x] status CLIの人間可読/JSON出力にキャラクターシートが表示される
+- [x] web GM characters API/paneにstats/skillsが表示される
+- [x] runtime mutation経路を追加せず、全テスト・ruff check・ruff format checkがpassする
+- [x] 無関係変更がなく、GitNexus `detect_changes` で影響範囲を確認している
 
 ## 関連ファイル
 

@@ -1,7 +1,7 @@
 ---
 id: 047
 title: プロジェクトbackup/restore CLI
-status: in_progress
+status: done
 created: 2026-07-11
 ---
 
@@ -21,19 +21,23 @@ created: 2026-07-11
 
 ## 完了条件
 
-- [ ] backup CLIがproject directory全体をtimestamp付きdirectoryへコピーする
-- [ ] manifest.yamlに元path・作成日時・schema_versionが記録される
-- [ ] restore CLIがbackupから独立project directoryを復元し、schema_versionを表示する
-- [ ] backup/restoreが既存非空directoryの上書きを拒否する
-- [ ] manifest欠落・不正backup・copy失敗などの境界テストがある
-- [ ] 既存branch/rollbackの回帰がなく、全テスト・ruff check・ruff format checkがpassする
-- [ ] 無関係変更がなく、GitNexus `detect_changes` で影響範囲を確認している
+- [x] backup CLIがproject directory全体をtimestamp付きdirectoryへコピーする
+- [x] manifest.yamlに元path・作成日時・schema_versionが記録される
+- [x] restore CLIがbackupから独立project directoryを復元し、schema_versionを表示する
+- [x] backup/restoreが既存非空directoryの上書きを拒否する
+- [x] manifest欠落・不正backup・copy失敗などの境界テストがある
+- [x] 既存branch/rollbackの回帰がなく、全テスト・ruff check・ruff format checkがpassする
+- [x] 無関係変更がなく、GitNexus `detect_changes` で影響範囲を確認している
+
+## レビュー時の是正
+
+初回実装後の二軸レビューで、backup側のatomic publish/cleanup手順が共通copy primitiveと重複している点を是正した。`publish_directory_atomic` を共通化し、backup/restore双方のcopy失敗時にpartial destinationと一時directoryを残さない回帰テストを追加して既存commitへamendした。
 
 ## 関連ファイル
 
 - `src/living_narrative/session/rollback.py` (`copy_project_for_branch`)
-- `src/living_narrative/workspace/` (共通copy/backup primitive新設候補)
+- `src/living_narrative/workspace/backup.py`, `src/living_narrative/workspace/copy.py`
 - `src/living_narrative/cli/__init__.py`
 - `src/living_narrative/cli/branch.py`
-- `src/living_narrative/cli/backup.py`, `src/living_narrative/cli/restore.py` (新設候補)
+- `src/living_narrative/cli/backup.py` (`backup` / `restore`)
 - `tests/cli/test_rollback_branch.py`, `tests/cli/` backup/restore tests
