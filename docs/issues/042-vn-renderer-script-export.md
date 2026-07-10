@@ -1,7 +1,7 @@
 ---
 id: 042
 title: VNレンダラとVN台本export
-status: in_progress
+status: done
 created: 2026-07-11
 ---
 
@@ -21,14 +21,21 @@ created: 2026-07-11
 
 ## 完了条件
 
-- [ ] `vn` rendererが登録され、既存rendererの挙動とdefaultが不変
-- [ ] 台詞、地の文、立ち絵、背景、BGM/SFX指示を表現できる
-- [ ] session全体を`script.yaml`と`script.md`へexportできる
-- [ ] CLI subcommandからprofile bindingを選択できる（LLM使用時）
-- [ ] reader可視のnarrator出力だけを入力とし、GM専用情報を参照しない
-- [ ] 決定論的構造抽出とLLM整形が分離されている
-- [ ] 全テスト、ruff check、ruff format checkがpassする
-- [ ] 無関係変更がなく、GitNexus `detect_changes`で影響範囲を確認している
+- [x] `vn` rendererが登録され、既存rendererの挙動とdefaultが不変
+- [x] 台詞、地の文、立ち絵、背景、BGM/SFX指示を表現できる
+- [x] session全体を`script.yaml`と`script.md`へexportできる
+- [x] CLI subcommandからprofile bindingを選択できる（LLM使用時）
+- [x] reader可視のnarrator出力だけを入力とし、GM専用情報を参照しない
+- [x] 決定論的構造抽出とLLM整形が分離されている
+- [x] 全テスト、ruff check、ruff format checkがpassする
+- [x] 無関係変更がなく、GitNexus `detect_changes`で影響範囲を確認している
+
+## 検証記録
+
+- 2026-07-11: 034統合済みmainで`NO_COLOR=1 uv run pytest` 829件、
+  `uv run ruff check .`、`uv run ruff format --check .`がpass。
+- 2026-07-11: canonical turn採用、reader-only入力境界、LLM構造化、
+  visual profile ID allowlist、未知参照warningを二軸レビューで確認。
 
 ## 関連ファイル
 

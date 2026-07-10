@@ -1,7 +1,7 @@
 ---
 id: 034
 title: クエスト台帳ランタイム
-status: in_progress
+status: done
 created: 2026-07-11
 ---
 
@@ -22,15 +22,22 @@ created: 2026-07-11
 
 ## 完了条件
 
-- [ ] `Quest`モデルと`quests.yaml`のoptional load/save経路がある
-- [ ] character/narratorの`quest_updates`がdefault空で後方互換を保つ
-- [ ] open/advance/resolveが`StateDiff`経由で適用される
-- [ ] 未知questと不正遷移が理由付きでrejectされる
-- [ ] 未完了questがcharacter/narrator文脈にreader-safeに供給される
-- [ ] schema exportとmist_stationにquest実値がある
-- [ ] threadとquestの役割分担が文書化されている
-- [ ] 全テスト、ruff check、ruff format checkがpassする
-- [ ] 無関係変更がなく、GitNexus `detect_changes`で影響範囲を確認している
+- [x] `Quest`モデルと`quests.yaml`のoptional load/save経路がある
+- [x] character/narratorの`quest_updates`がdefault空で後方互換を保つ
+- [x] open/advance/resolveが`StateDiff`経由で適用される
+- [x] 未知questと不正遷移が理由付きでrejectされる
+- [x] 未完了questがcharacter/narrator文脈にreader-safeに供給される
+- [x] schema exportとmist_stationにquest実値がある
+- [x] threadとquestの役割分担が文書化されている
+- [x] 全テスト、ruff check、ruff format checkがpassする
+- [x] 無関係変更がなく、GitNexus `detect_changes`で影響範囲を確認している
+
+## 検証記録
+
+- 2026-07-11: main統合後に`NO_COLOR=1 uv run pytest` 818件、
+  `uv run ruff check .`、`uv run ruff format --check .`がpass。
+- 2026-07-11: reader可視questのopenをnarratorに限定し、character更新の型境界、
+  reader eventだけの関連付け、GitNexus影響範囲を再レビュー。
 
 ## 関連ファイル
 
