@@ -15,6 +15,19 @@ from living_narrative.export_replay.assemble import (
     UnknownReplayStyleError,
     assemble_replay,
 )
+from living_narrative.export_replay.image_prompts import (
+    DEFAULT_IMAGE_PROMPT_PROFILE,
+    RIGHTS_NOTICE,
+    EmptySceneError,
+    ImagePromptError,
+    ImagePromptExport,
+    ImagePromptLLMOutput,
+    MissingVisualProfileError,
+    SceneImagePrompt,
+    generate_image_prompts,
+    render_image_prompts_markdown,
+    write_image_prompt_exports,
+)
 from living_narrative.export_replay.novel import DEFAULT_PROFILE, NovelChapterOutput, render_novel
 from living_narrative.export_replay.outline import (
     Chapter,
@@ -48,6 +61,17 @@ __all__ = [
     "NoReplayableTurnsError",
     "UnknownReplayStyleError",
     "assemble_replay",
+    "DEFAULT_IMAGE_PROMPT_PROFILE",
+    "RIGHTS_NOTICE",
+    "EmptySceneError",
+    "ImagePromptError",
+    "ImagePromptExport",
+    "ImagePromptLLMOutput",
+    "MissingVisualProfileError",
+    "SceneImagePrompt",
+    "generate_image_prompts",
+    "render_image_prompts_markdown",
+    "write_image_prompt_exports",
     "DEFAULT_PROFILE",
     "NovelChapterOutput",
     "render_novel",
