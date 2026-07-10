@@ -1,14 +1,18 @@
 """Resolves llm-provider profiles by binding key and records call metadata (D122)."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
 from living_narrative.llm.metadata import CallMetadata
 from living_narrative.llm.profiles import resolve_llm_profile
-from living_narrative.llm.registry import create_provider
 from living_narrative.state.models import ProjectConfig
+
+if TYPE_CHECKING:
+    from living_narrative.plugins import PluginRuntime
 
 
 @dataclass
@@ -17,6 +21,13 @@ class LLMGateway:
     random_seed: str = ""
     calls: list[CallMetadata] = field(default_factory=list)
     scripted_responses: dict[str, Any] = field(default_factory=dict)
+    runtime: PluginRuntime | None = None
+
+    def __post_init__(self) -> None:
+        if self.runtime is None:
+            from living_narrative.plugins import create_plugin_runtime
+
+            self.runtime = create_plugin_runtime(self.project)
 
     def complete(
         self,
@@ -34,7 +45,8 @@ class LLMGateway:
         def _record(metadata: CallMetadata) -> None:
             self.calls.append(metadata.model_copy(update={"binding_key": binding_key}))
 
-        provider = create_provider(profile.config, recorder=_record, **kwargs)
+        assert self.runtime is not None
+        provider = self.runtime.create_llm_provider(profile.config, recorder=_record, **kwargs)
         return provider.complete(
             messages, response_schema, prompt_template_name=prompt_template_name
         )

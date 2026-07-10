@@ -156,6 +156,12 @@ llm:
 Named profiles can be bound per role or character with `llm_profiles` and
 `llm_bindings`, for example `character:char_002: large_model`.
 
+## Plugins
+
+外部packageからLLM/checker/renderer/pipeline/image/voiceの既存レジストリを拡張する方法は
+[`docs/plugin-sdk.md`](docs/plugin-sdk.md)を参照してください。plugin loadは任意コード実行を
+伴うため、信頼できるpackageだけをinstallし、`project.yaml`で明示的に有効化してください。
+
 ## Turn Pipeline
 
 `TurnPipeline().run(project_path)` drives one turn through 8 phases (Load, Intervene,

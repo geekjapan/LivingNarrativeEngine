@@ -47,6 +47,20 @@ def test_loader_defaults_legacy_project_to_schema_version_one(tmp_path):
     assert "schema_version" not in yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def test_legacy_schema_version_one_project_defaults_to_empty_plugin_allowlist(tmp_path):
+    path = tmp_path / "project.yaml"
+    data = _project_data()
+    data.pop("plugins", None)
+    _write_project(path, data)
+
+    report = load_project_config(path)
+
+    assert report.errors == []
+    assert report.config is not None
+    assert report.config.schema_version == 1
+    assert report.config.plugins == []
+
+
 def test_loader_rejects_future_schema_version_with_clear_error(tmp_path):
     path = tmp_path / "project.yaml"
     _write_project(path, {**_project_data(), "schema_version": 2})

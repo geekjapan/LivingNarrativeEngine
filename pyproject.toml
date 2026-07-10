@@ -21,6 +21,9 @@ web = [
 living-narrative = "living_narrative.cli:app"
 living-narrative-state-schemas = "living_narrative.state.schema_export:main"
 
+[project.entry-points."living_narrative.plugins"]
+living-narrative-noop = "living_narrative.plugins.builtin:register_noop"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",

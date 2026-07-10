@@ -18,7 +18,7 @@ from living_narrative.pipeline.errors import LoadError
 from living_narrative.pipeline.ids import make_event_id_allocator
 from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.pipeline.models import ErrorReport, InterventionFile
-from living_narrative.pipeline.registry import SlotRegistry, default_registry
+from living_narrative.pipeline.registry import SlotRegistry
 from living_narrative.pipeline.rng_state import load_all_rolls, total_rng_draws_consumed
 from living_narrative.pipeline.status import TurnStatus
 from living_narrative.pipeline.turn_numbering import (
@@ -89,7 +89,7 @@ class TurnPipeline:
     """
 
     def __init__(self, registry: SlotRegistry | None = None) -> None:
-        self.registry = registry or default_registry()
+        self.registry = registry
 
     def run(
         self,
@@ -112,6 +112,13 @@ class TurnPipeline:
             raise LoadError(f"invalid project at {project_path}: {_format_issues(read.errors)}")
         paths = read.paths
         project = read.config
+        from living_narrative.plugins import create_plugin_runtime
+
+        runtime = create_plugin_runtime(project, slot_registry=self.registry)
+        registry = runtime.slots
+        checker_plugins_loaded = frozenset(runtime.checkers) != runtime.baseline_checkers
+        if checker_plugins_loaded and self.registry is None:
+            registry.register("check", runtime.run_checkers)
 
         turn = determine_next_turn_number(paths.runs)
         turn_dir = turn_dir_path(paths.runs, turn)
@@ -141,7 +148,7 @@ class TurnPipeline:
         context = TurnContext(
             turn=turn, project=project, paths=paths, bundle=bundle, random_engine=engine
         )
-        gateway = LLMGateway(project=project, random_seed=project.random_seed)
+        gateway = LLMGateway(project=project, random_seed=project.random_seed, runtime=runtime)
 
         turn_dir.mkdir(parents=True, exist_ok=True)
         current_phase = ["intervene"]
@@ -177,9 +184,7 @@ class TurnPipeline:
                 write_intervention(turn_dir, intervention_file)
 
             with _timed_phase("simulate", durations, current_phase):
-                world_events = self.registry.get("simulate")(
-                    context, intervention_file.interventions
-                )
+                world_events = registry.get("simulate")(context, intervention_file.interventions)
                 write_agent_io_component(
                     turn_dir,
                     "simulate",
@@ -196,7 +201,7 @@ class TurnPipeline:
                 past_events = load_recent_events(
                     paths.runs, bundle.timeline, max_turns=PAST_EVENT_TURNS
                 )
-                action_candidates, act_records = self.registry.get("act")(
+                action_candidates, act_records = registry.get("act")(
                     context,
                     world_events,
                     gateway,
@@ -213,7 +218,7 @@ class TurnPipeline:
             with _timed_phase("resolve", durations, current_phase):
                 allocate_event_id = make_event_id_allocator(paths.runs)
                 record_roll = make_roll_recorder(turn_dir)
-                resolved_events = self.registry.get("resolve")(
+                resolved_events = registry.get("resolve")(
                     context, world_events, action_candidates, allocate_event_id, record_roll
                 )
                 write_agent_io_component(
@@ -240,13 +245,18 @@ class TurnPipeline:
                 effective_tone_control = resolve_tone_control(
                     intervention_file.interventions, tone_control
                 )
+                narrate_kwargs = {
+                    "gateway": gateway,
+                    "project": project,
+                    "context": narrator_context,
+                    "style": style,
+                    "mood": mood,
+                    "tone_control": effective_tone_control,
+                }
+                if project.plugins:
+                    narrate_kwargs["registry"] = runtime.renderers
                 narration, narrate_record = run_narrate_phase(
-                    gateway=gateway,
-                    project=project,
-                    context=narrator_context,
-                    style=style,
-                    mood=mood,
-                    tone_control=effective_tone_control,
+                    **narrate_kwargs,
                 )
                 write_agent_io_component(turn_dir, "narrate", narrate_record)
                 write_narration(turn_dir, turn, narration.style, narration.text)
@@ -258,7 +268,7 @@ class TurnPipeline:
                     (record.character_id, CharacterAgentOutput.model_validate(record.response))
                     for record in act_records
                 ]
-                build_diff_output = self.registry.get("build_diff")(
+                build_diff_output = registry.get("build_diff")(
                     context,
                     resolved_events,
                     intervention_file.interventions,
@@ -279,7 +289,7 @@ class TurnPipeline:
                 )
 
             with _timed_phase("check", durations, current_phase):
-                check_results = self.registry.get("check")(
+                check_results = registry.get("check")(
                     context, narration.text, resolved_events, build_diff_output.diff
                 )
                 write_agent_io_component(

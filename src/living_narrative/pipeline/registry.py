@@ -12,6 +12,14 @@ class SlotRegistry:
     def register(self, name: str, slot: Any) -> None:
         self._slots[name] = slot
 
+    def contains(self, name: str) -> bool:
+        return name in self._slots
+
+    def copy(self) -> "SlotRegistry":
+        registry = SlotRegistry()
+        registry._slots = self._slots.copy()
+        return registry
+
     def get(self, name: str) -> Any:
         try:
             return self._slots[name]

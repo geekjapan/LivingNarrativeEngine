@@ -25,6 +25,14 @@ class RendererRegistry:
     def register(self, name: str, renderer: RendererFunc) -> None:
         self._renderers[name] = renderer
 
+    def contains(self, name: str) -> bool:
+        return name in self._renderers
+
+    def copy(self) -> "RendererRegistry":
+        registry = RendererRegistry()
+        registry._renderers = self._renderers.copy()
+        return registry
+
     def get(self, name: str) -> RendererFunc:
         try:
             return self._renderers[name]

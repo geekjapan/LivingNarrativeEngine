@@ -47,12 +47,12 @@ from living_narrative.export_replay import (
 from living_narrative.export_replay.loader import load_turn_records
 from living_narrative.media import (
     MediaError,
-    create_image_provider,
     generate_cached_asset,
     resolve_assets_directory,
     update_asset_status,
 )
 from living_narrative.pipeline.llm_gateway import LLMGateway
+from living_narrative.plugins import create_plugin_runtime
 from living_narrative.state.store import StateLoadError, StateStore
 
 app = typer.Typer(name="export", help="Export commands")
@@ -217,7 +217,8 @@ def images(
             )
         except (OSError, yaml.YAMLError, ValidationError) as exc:
             runtime_error(f"invalid image prompt export {prompt_path}: {exc}")
-        image_provider = create_image_provider(provider)
+        runtime = create_plugin_runtime(read.config)
+        image_provider = runtime.create_image_provider(provider)
         for prompt in prompt_export.prompts:
             entry = generate_cached_asset(
                 assets_dir,

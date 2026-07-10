@@ -113,6 +113,7 @@ class ProjectConfig(BaseModel):
     llm_bindings: dict[str, str] = Field(default_factory=dict)
     stop_conditions: dict[str, StopConditionConfig] = Field(default_factory=dict)
     player_char_id: str | None = None
+    plugins: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_session_fields(self) -> "ProjectConfig":

@@ -13,6 +13,7 @@ from living_narrative.narration.models import (
     ThreadUpdateCandidate,
 )
 from living_narrative.narration.narrator import narrate
+from living_narrative.narration.renderers import RendererRegistry
 from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.state.models import ProjectConfig
 
@@ -123,6 +124,7 @@ def run_narrate_phase(
     style: str,
     mood: str,
     tone_control: str | None,
+    registry: RendererRegistry | None = None,
 ) -> tuple[NarrationResult, dict[str, Any]]:
     """Narrate via the ``narrator``-bound LLM when eligible, else the mechanical renderer.
 
@@ -132,7 +134,9 @@ def run_narrate_phase(
     """
     has_material = bool(context.reader_visible_events or context.scene_reader_visible_facts)
     if style != "novel" or NARRATOR_BINDING_KEY not in project.llm_bindings or not has_material:
-        result = narrate(context, style=style, mood=mood, tone_control=tone_control)
+        result = narrate(
+            context, style=style, mood=mood, tone_control=tone_control, registry=registry
+        )
         return result, {"mode": "renderer", "style": result.style}
 
     payload = _narrator_payload(context, project, mood, tone_control)
@@ -148,7 +152,9 @@ def run_narrate_phase(
             prompt_template_name=PROMPT_TEMPLATE_NAME,
         )
     except (ProviderConnectionError, StructuredOutputError) as exc:
-        fallback = narrate(context, style=style, mood=mood, tone_control=tone_control)
+        fallback = narrate(
+            context, style=style, mood=mood, tone_control=tone_control, registry=registry
+        )
         return fallback, {
             "mode": "renderer_fallback",
             "style": fallback.style,
