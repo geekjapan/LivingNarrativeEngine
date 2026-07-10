@@ -1,7 +1,7 @@
 ---
 id: 033
 title: 構造化inventory runtime
-status: in_progress
+status: done
 created: 2026-07-11
 ---
 
@@ -21,14 +21,14 @@ created: 2026-07-11
 
 ## 完了条件
 
-- [ ] `InventoryItem(id/name/qty)` がPydantic v2の正モデルで、qty境界を検証する
-- [ ] 旧 `list[str]` を決定的な `item_NNN`・qty=1へ読み替え、schema version 1の後方互換を保つ
-- [ ] character agent出力/promptにdefault空のinventory更新がある
-- [ ] gain/use/loseがStateDiffとして適用され、直接mutationしない
-- [ ] 未知item、負/ゼロqty、在庫超過を理由付きで拒否する
-- [ ] mist_stationとschema exportが新形式に対応する
-- [ ] 全テスト、ruff check、ruff format checkがpassする
-- [ ] 無関係変更がなく、GitNexus `detect_changes` で影響範囲を確認している
+- [x] `InventoryItem(id/name/qty)` がPydantic v2の正モデルで、qty境界を検証する
+- [x] 旧 `list[str]` を決定的な `item_NNN`・qty=1へ読み替え、schema version 1の後方互換を保つ
+- [x] character agent出力/promptにdefault空のinventory更新がある
+- [x] gain/use/loseがStateDiffとして適用され、直接mutationしない
+- [x] 未知item、負/ゼロqty、在庫超過を理由付きで拒否する
+- [x] mist_stationとschema exportが新形式に対応する
+- [x] 全テスト、ruff check、ruff format checkがpassする
+- [x] 無関係変更がなく、GitNexus `detect_changes` で影響範囲を確認している
 
 ## 関連ファイル
 

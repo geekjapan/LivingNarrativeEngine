@@ -11,6 +11,7 @@ SCHEMA_MODELS = [
     models.WorldState,
     models.FactionState,
     models.CharacterState,
+    models.InventoryItem,
     models.CharacterVisualProfile,
     models.BackgroundVisualProfile,
     models.StyleLockProfile,

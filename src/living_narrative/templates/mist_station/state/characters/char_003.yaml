@@ -31,7 +31,9 @@ secrets:
 private_mind:
   - この子たちに真実を知られるわけにはいかない
 inventory:
-  - 古い鍵
+  - id: item_001
+    name: 古い鍵
+    qty: 1
 constraints: {}
 status: alive
 speech:

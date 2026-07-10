@@ -73,6 +73,11 @@ def test_character_agent_prompt_mentions_scope_and_language_rules():
     assert '"character"' in PROMPT_TEXT
 
 
+def test_character_agent_prompt_only_requests_inventory_updates_for_real_changes():
+    assert "inventory_updates" in PROMPT_TEXT
+    assert "実際に増減したときだけ" in PROMPT_TEXT
+
+
 def test_character_agent_is_deterministic_with_same_seed():
     first_context = _context()
     second_context = _context()

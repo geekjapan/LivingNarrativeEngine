@@ -61,6 +61,22 @@ class RelationshipUpdateCandidate(BaseModel):
     delta: int
 
 
+class InventoryUpdateCandidate(BaseModel):
+    action: Literal["gain", "use", "lose"]
+    item_id: str | None = None
+    name: str | None = None
+    qty: int = 1
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _require_action_fields(self) -> "InventoryUpdateCandidate":
+        if self.action == "gain" and (not self.name or not self.name.strip()):
+            raise ValueError("inventory gain requires name")
+        if self.action in {"use", "lose"} and self.item_id is None:
+            raise ValueError(f"inventory {self.action} requires item_id")
+        return self
+
+
 class CharacterAgentOutput(BaseModel):
     action_candidates: list[ActionCandidate]
     emotion_deltas: list[EmotionDeltaCandidate]
@@ -69,6 +85,7 @@ class CharacterAgentOutput(BaseModel):
     # random-fill path never has to invent a relationship update, keeping existing
     # CharacterAgentOutput constructions back-compat.
     relationship_updates: list[RelationshipUpdateCandidate] = Field(default_factory=list)
+    inventory_updates: list[InventoryUpdateCandidate] = Field(default_factory=list)
 
 
 class ParameterDriftCandidate(BaseModel):

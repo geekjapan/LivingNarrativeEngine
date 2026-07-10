@@ -1,7 +1,10 @@
+import pytest
+
 from living_narrative.agents.models import (
     CharacterAgentOutput,
     EmotionDeltaCandidate,
     GoalUpdateCandidate,
+    InventoryUpdateCandidate,
     RelationshipUpdateCandidate,
 )
 from living_narrative.agents.state_manager import build_state_diff
@@ -613,6 +616,140 @@ def test_character_agent_output_default_empty_relationship_updates_is_back_compa
     result = build_state_diff(_context(), [], [], character_outputs=[("char_001", output)])
 
     assert [c for c in result.diff.changes if c.target == "relationship"] == []
+    assert [c for c in result.diff.changes if c.path.startswith("inventory")] == []
+
+
+def test_inventory_gain_allocates_after_max_item_number_and_applies_as_diff():
+    character = CharacterState.model_validate(
+        {
+            "id": "char_001",
+            "name": "A",
+            "role": "r",
+            "inventory": [{"id": "item_004", "name": "鍵", "qty": 1}],
+        }
+    )
+    context = _context(characters=[character])
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[],
+        inventory_updates=[InventoryUpdateCandidate(action="gain", name="包帯", qty=2)],
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+
+    assert context.bundle.characters[0].inventory == character.inventory
+    change = next(change for change in result.diff.changes if change.path == "inventory")
+    assert change.op == "add"
+    assert change.value.id == "item_005"
+    applied = apply_state_diff(context.bundle, result.diff)
+    assert applied.bundle.characters[0].inventory[-1].name == "包帯"
+    assert applied.bundle.characters[0].inventory[-1].qty == 2
+
+
+@pytest.mark.parametrize("action", ["use", "lose"])
+def test_inventory_use_or_lose_reduces_qty_through_diff(action):
+    character = CharacterState.model_validate(
+        {
+            "id": "char_001",
+            "name": "A",
+            "role": "r",
+            "inventory": [{"id": "item_001", "name": "包帯", "qty": 3}],
+        }
+    )
+    context = _context(characters=[character])
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[],
+        inventory_updates=[InventoryUpdateCandidate(action=action, item_id="item_001", qty=2)],
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+
+    assert context.bundle.characters[0].inventory[0].qty == 3
+    change = next(change for change in result.diff.changes if "inventory" in change.path)
+    assert (change.op, change.path, change.value) == ("set", "inventory.item_001.qty", 1)
+    applied = apply_state_diff(context.bundle, result.diff)
+    assert applied.bundle.characters[0].inventory[0].qty == 1
+
+
+def test_inventory_use_of_all_stock_removes_item_through_diff():
+    character = CharacterState.model_validate(
+        {
+            "id": "char_001",
+            "name": "A",
+            "role": "r",
+            "inventory": [{"id": "item_001", "name": "包帯", "qty": 2}],
+        }
+    )
+    context = _context(characters=[character])
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[],
+        inventory_updates=[InventoryUpdateCandidate(action="use", item_id="item_001", qty=2)],
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+    applied = apply_state_diff(context.bundle, result.diff)
+
+    assert applied.bundle.characters[0].inventory == []
+
+
+def test_inventory_updates_reject_cumulative_stock_overrun():
+    character = CharacterState.model_validate(
+        {
+            "id": "char_001",
+            "name": "A",
+            "role": "r",
+            "inventory": [{"id": "item_001", "name": "包帯", "qty": 2}],
+        }
+    )
+    context = _context(characters=[character])
+    output = CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[],
+        inventory_updates=[
+            InventoryUpdateCandidate(action="use", item_id="item_001", qty=1),
+            InventoryUpdateCandidate(action="lose", item_id="item_001", qty=2),
+        ],
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+
+    assert len([change for change in result.diff.changes if "inventory" in change.path]) == 1
+    assert any("exceeds stock" in rejected.reason for rejected in result.rejected_changes)
+
+
+@pytest.mark.parametrize(
+    ("update", "reason"),
+    [
+        (InventoryUpdateCandidate(action="use", item_id="item_999"), "unknown inventory item"),
+        (InventoryUpdateCandidate(action="lose", item_id="item_001", qty=3), "exceeds stock"),
+        (InventoryUpdateCandidate(action="gain", name="鍵", qty=0), "qty must be positive"),
+    ],
+)
+def test_invalid_inventory_updates_are_rejected_without_partial_mutation(update, reason):
+    character = CharacterState.model_validate(
+        {
+            "id": "char_001",
+            "name": "A",
+            "role": "r",
+            "inventory": [{"id": "item_001", "name": "包帯", "qty": 2}],
+        }
+    )
+    context = _context(characters=[character])
+    output = CharacterAgentOutput(
+        action_candidates=[], emotion_deltas=[], goal_updates=[], inventory_updates=[update]
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+
+    assert [change for change in result.diff.changes if "inventory" in change.path] == []
+    assert any(reason in rejected.reason for rejected in result.rejected_changes)
+    assert context.bundle.characters[0].inventory[0].qty == 2
 
 
 def test_scene_summary_update_produces_a_scene_summary_set_diff():

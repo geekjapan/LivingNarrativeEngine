@@ -37,6 +37,12 @@ def test_mist_station_state_is_schema_valid(tmp_path):
     rina = next(character for character in bundle.characters if character.id == "char_001")
     assert rina.visual_profile is not None
     assert rina.visual_profile.hair == "艶のある黒髪のボブ"
+    assert rina.inventory[0].model_dump(mode="json") == {
+        "id": "item_001",
+        "name": "懐中電灯",
+        "qty": 1,
+        "note": None,
+    }
     assert bundle.visual_profiles.backgrounds[0].id == "background_001"
     assert bundle.visual_profiles.style_lock is not None
     assert bundle.visual_profiles.style_lock.art_style == "静謐な現代日本ミステリーのアニメ背景美術"

@@ -4,7 +4,7 @@ import re
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
 from living_narrative.state.ids import id_type
 
@@ -235,6 +235,32 @@ class CharacterKnowledge(StateBaseModel):
     does_not_know: list[str] = Field(default_factory=list)
 
 
+class InventoryItem(StateBaseModel):
+    id: str = Field(pattern=r"^item_\d+$")
+    name: str = Field(min_length=1)
+    qty: Annotated[int, Field(strict=True, gt=0)]
+    note: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _reject_blank_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("name must not be blank")
+        return value
+
+
+def _upgrade_legacy_inventory(value: Any) -> Any:
+    if not isinstance(value, list):
+        return value
+    return [
+        {"id": f"item_{index:03d}", "name": item, "qty": 1} if isinstance(item, str) else item
+        for index, item in enumerate(value, start=1)
+    ]
+
+
+Inventory = Annotated[list[InventoryItem], BeforeValidator(_upgrade_legacy_inventory)]
+
+
 class SpeechProfile(StateBaseModel):
     """Issue 012: this character's speech register, so first-person pronoun errors and
     other register slips can be prevented (prompt) and detected (checker)."""
@@ -305,7 +331,7 @@ class CharacterState(StateBaseModel):
     knowledge: CharacterKnowledge = Field(default_factory=CharacterKnowledge)
     secrets: list[str] = Field(default_factory=list)
     private_mind: list[str] = Field(default_factory=list)
-    inventory: list[str] = Field(default_factory=list)
+    inventory: Inventory = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
     status: CharacterStatus = CharacterStatus.ALIVE
     # Issue 012: speech register (first-person pronoun, forbidden terms). Default is an
@@ -313,6 +339,18 @@ class CharacterState(StateBaseModel):
     speech: SpeechProfile = Field(default_factory=SpeechProfile)
     # Issue 039: absent for projects created before visual profiles were introduced.
     visual_profile: CharacterVisualProfile | None = None
+
+    @model_validator(mode="after")
+    def _validate_inventory_ids_unique(self) -> "CharacterState":
+        seen: set[str] = set()
+        duplicate_ids: set[str] = set()
+        for item in self.inventory:
+            if item.id in seen:
+                duplicate_ids.add(item.id)
+            seen.add(item.id)
+        if duplicate_ids:
+            raise ValueError(f"inventory item ids must be unique: {sorted(duplicate_ids)}")
+        return self
 
 
 class RelationshipState(StateBaseModel):

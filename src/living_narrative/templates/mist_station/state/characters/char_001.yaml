@@ -33,7 +33,9 @@ secrets: []
 private_mind:
   - カイの様子がいつもと違う気がする
 inventory:
-  - 懐中電灯
+  - id: item_001
+    name: 懐中電灯
+    qty: 1
 constraints: {}
 status: alive
 speech:

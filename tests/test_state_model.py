@@ -22,6 +22,7 @@ from living_narrative.state.models import (
     FactionState,
     GmVaultEntry,
     HiddenFact,
+    InventoryItem,
     MemorySummary,
     RelationshipState,
     SceneState,
@@ -746,6 +747,91 @@ def test_schema_export_includes_character_stats_and_skills(tmp_path):
         assert schema["properties"][field]["type"] == "object"
         assert schema["properties"][field]["additionalProperties"]["type"] == "integer"
         assert field not in schema.get("required", [])
+
+
+def test_legacy_inventory_strings_upgrade_deterministically_and_round_trip():
+    character = CharacterState.model_validate(
+        {"id": "char_001", "name": "Aoi", "role": "lead", "inventory": ["古い鍵", "古い鍵"]}
+    )
+
+    assert [item.model_dump(mode="json") for item in character.inventory] == [
+        {"id": "item_001", "name": "古い鍵", "qty": 1, "note": None},
+        {"id": "item_002", "name": "古い鍵", "qty": 1, "note": None},
+    ]
+    assert CharacterState.model_validate_json(character.model_dump_json()) == character
+
+
+def test_character_inventory_rejects_duplicate_structured_item_ids():
+    with pytest.raises(ValidationError, match="inventory item ids must be unique"):
+        CharacterState.model_validate(
+            {
+                "id": "char_001",
+                "name": "Aoi",
+                "role": "lead",
+                "inventory": [
+                    {"id": "item_001", "name": "古い鍵", "qty": 1},
+                    {"id": "item_001", "name": "懐中電灯", "qty": 1},
+                ],
+            }
+        )
+
+
+def test_character_inventory_rejects_legacy_and_structured_id_collision():
+    with pytest.raises(ValidationError, match="inventory item ids must be unique"):
+        CharacterState.model_validate(
+            {
+                "id": "char_001",
+                "name": "Aoi",
+                "role": "lead",
+                "inventory": [
+                    "古い鍵",
+                    {"id": "item_001", "name": "懐中電灯", "qty": 1},
+                ],
+            }
+        )
+
+
+@pytest.mark.parametrize("qty", [0, -1])
+def test_inventory_item_rejects_non_positive_qty(qty):
+    with pytest.raises(ValidationError, match="greater than 0"):
+        InventoryItem(id="item_001", name="鍵", qty=qty)
+
+
+def test_inventory_item_requires_id_name_and_qty():
+    with pytest.raises(ValidationError):
+        InventoryItem.model_validate({})
+
+
+def test_inventory_item_rejects_blank_name():
+    with pytest.raises(ValidationError, match="name must not be blank"):
+        InventoryItem(id="item_001", name="   ", qty=1)
+
+
+def test_state_store_loads_legacy_string_inventory(tmp_path):
+    state_dir = tmp_path / "state"
+    StateStore.save(bundle(), state_dir)
+    character_path = state_dir / "characters" / "char_001.yaml"
+    raw = yaml.safe_load(character_path.read_text(encoding="utf-8"))
+    raw["inventory"] = ["懐中電灯", "古い鍵"]
+    character_path.write_text(
+        yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+    loaded = StateStore.load(state_dir)
+
+    assert [(item.id, item.name, item.qty) for item in loaded.characters[0].inventory] == [
+        ("item_001", "懐中電灯", 1),
+        ("item_002", "古い鍵", 1),
+    ]
+
+
+def test_schema_export_includes_inventory_item(tmp_path):
+    export_state_schemas(tmp_path / "schemas")
+
+    schema = yaml.safe_load(
+        (tmp_path / "schemas" / "InventoryItem.schema.yaml").read_text(encoding="utf-8")
+    )
+    assert schema["required"] == ["id", "name", "qty"]
 
 
 def test_visual_profiles_are_explicit_and_character_profile_is_optional():

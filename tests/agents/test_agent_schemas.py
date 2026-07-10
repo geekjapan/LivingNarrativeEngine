@@ -1,7 +1,11 @@
+import pytest
+from pydantic import ValidationError
+
 from living_narrative.agents.models import (
     ActionCandidate,
     CharacterAgentOutput,
     ConflictResolverOutput,
+    InventoryUpdateCandidate,
     RelationshipUpdateCandidate,
     StateManagerOutput,
     WorldSimulatorOutput,
@@ -33,6 +37,26 @@ def test_character_agent_output_defaults_relationship_updates_to_empty_list():
     )
 
     assert output.relationship_updates == []
+    assert output.inventory_updates == []
+
+
+def test_inventory_update_candidate_round_trips():
+    candidate = InventoryUpdateCandidate(action="gain", name="古い鍵", qty=2)
+
+    assert InventoryUpdateCandidate.model_validate_json(candidate.model_dump_json()) == candidate
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"action": "gain"},
+        {"action": "use"},
+        {"action": "lose"},
+    ],
+)
+def test_inventory_update_candidate_requires_action_specific_fields(data):
+    with pytest.raises(ValidationError):
+        InventoryUpdateCandidate.model_validate(data)
 
 
 def test_relationship_update_candidate_round_trips():

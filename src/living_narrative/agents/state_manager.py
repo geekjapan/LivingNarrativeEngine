@@ -13,6 +13,7 @@ from living_narrative.state.models import (
     CharacterId,
     CharacterStatus,
     Event,
+    InventoryItem,
     SceneStatus,
     TimelineEntry,
     Visibility,
@@ -291,6 +292,97 @@ def _character_output_changes(
             rejected.append(_reject(change, "relationship pair not found"))
         else:
             changes.append(change)
+    inventory_changes, inventory_rejected = _inventory_update_changes(
+        character_id, character, output
+    )
+    changes.extend(inventory_changes)
+    rejected.extend(inventory_rejected)
+    return changes, rejected
+
+
+def _inventory_update_changes(
+    character_id: CharacterId, character: Any, output: CharacterAgentOutput
+) -> tuple[list[StateDiffChange], list[RejectedChange]]:
+    changes: list[StateDiffChange] = []
+    rejected: list[RejectedChange] = []
+    inventory = character.inventory if character is not None else []
+    known_items = {item.id: item for item in inventory}
+    remaining_qty = {item.id: item.qty for item in inventory}
+    item_numbers = [
+        int(item.id.removeprefix("item_"))
+        for item in inventory
+        if item.id.removeprefix("item_").isdigit()
+    ]
+    next_item_number = max(item_numbers, default=0) + 1
+
+    for update in output.inventory_updates:
+        stub = StateDiffChange(
+            target="character",
+            id=character_id,
+            op="add",
+            path="inventory",
+            value=update.model_dump(mode="json"),
+            visibility=Visibility.CHARACTER,
+        )
+        if update.qty <= 0:
+            rejected.append(_reject(stub, "inventory update qty must be positive"))
+            continue
+        if update.action == "gain":
+            if not update.name or not update.name.strip():
+                rejected.append(_reject(stub, "inventory gain requires name"))
+                continue
+            item = InventoryItem(
+                id=f"item_{next_item_number:03d}",
+                name=update.name,
+                qty=update.qty,
+                note=update.note,
+            )
+            next_item_number += 1
+            changes.append(
+                StateDiffChange(
+                    target="character",
+                    id=character_id,
+                    op="add",
+                    path="inventory",
+                    value=item,
+                    visibility=Visibility.CHARACTER,
+                )
+            )
+            continue
+
+        item = known_items.get(update.item_id or "")
+        if item is None:
+            rejected.append(_reject(stub, f"unknown inventory item: {update.item_id!r}"))
+            continue
+        available = remaining_qty[item.id]
+        if update.qty > available:
+            rejected.append(
+                _reject(stub, f"inventory update exceeds stock for {item.id}: {available}")
+            )
+            continue
+        remaining_qty[item.id] -= update.qty
+        if remaining_qty[item.id] == 0:
+            changes.append(
+                StateDiffChange(
+                    target="character",
+                    id=character_id,
+                    op="remove",
+                    path="inventory",
+                    value={"id": item.id},
+                    visibility=Visibility.CHARACTER,
+                )
+            )
+        else:
+            changes.append(
+                StateDiffChange(
+                    target="character",
+                    id=character_id,
+                    op="set",
+                    path=f"inventory.{item.id}.qty",
+                    value=remaining_qty[item.id],
+                    visibility=Visibility.CHARACTER,
+                )
+            )
     return changes, rejected
 
 
