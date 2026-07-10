@@ -1,0 +1,31 @@
+backgrounds:
+  - id: background_001
+    name: 霧の駅ホーム
+    summary: 深夜の青白い霧に包まれた古い地方駅のホーム
+    architecture:
+      - 昭和期の木造駅舎
+      - 錆びた鉄骨の屋根
+    lighting: 古い蛍光灯の冷たい明滅
+    atmosphere: 静寂と湿気、遠景を覆う濃霧
+    color_palette:
+      - 青灰色
+      - 錆茶色
+      - 蛍光灯の白
+    recurring_elements:
+      - 読めない行先表示板
+      - 濡れた線路
+style_lock:
+  art_style: 静謐な現代日本ミステリーのアニメ背景美術
+  medium: 緻密なデジタルペインティング
+  line_work: 繊細で抑制された輪郭線
+  lighting: 低照度で映画的な青い夜間照明
+  color_palette:
+    - 低彩度の青灰色
+    - 差し色の深紅
+  composition_rules:
+    - 人物の外見と衣装色を全カットで維持する
+    - 霧による奥行きの層を残す
+  avoid:
+    - 写実的な写真表現
+    - 明るい昼光
+    - 過度なデフォルメ

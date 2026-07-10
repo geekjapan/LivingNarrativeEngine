@@ -13,9 +13,11 @@ from living_narrative.state.diff import (
     rollback,
 )
 from living_narrative.state.models import (
+    BackgroundVisualProfile,
     CanonEntry,
     CharacterState,
     CharacterStatus,
+    CharacterVisualProfile,
     Event,
     FactionState,
     GmVaultEntry,
@@ -25,9 +27,11 @@ from living_narrative.state.models import (
     SceneState,
     SceneStatus,
     SpeechProfile,
+    StyleLockProfile,
     ThreatStage,
     ThreatTrack,
     Visibility,
+    VisualProfilesState,
     WorldState,
     WorldStateBundle,
 )
@@ -742,6 +746,76 @@ def test_schema_export_includes_character_stats_and_skills(tmp_path):
         assert schema["properties"][field]["type"] == "object"
         assert schema["properties"][field]["additionalProperties"]["type"] == "integer"
         assert field not in schema.get("required", [])
+
+
+def test_visual_profiles_are_explicit_and_character_profile_is_optional():
+    legacy = CharacterState.model_validate({"id": "char_001", "name": "Aoi", "role": "lead"})
+    profiles = VisualProfilesState(
+        backgrounds=[
+            BackgroundVisualProfile(
+                id="background_001",
+                name="Platform",
+                summary="A foggy station platform",
+            )
+        ],
+        style_lock=StyleLockProfile(art_style="watercolor anime"),
+    )
+
+    assert legacy.visual_profile is None
+    assert profiles.backgrounds[0].name == "Platform"
+    assert profiles.style_lock is not None
+    assert profiles.style_lock.art_style == "watercolor anime"
+
+
+def test_state_store_missing_visual_profiles_file_loads_defaults(tmp_path):
+    state_dir = tmp_path / "state"
+    StateStore.save(bundle(), state_dir)
+    (state_dir / "visual_profiles.yaml").unlink()
+
+    loaded = StateStore.load(state_dir)
+
+    assert loaded.visual_profiles == VisualProfilesState()
+
+
+def test_state_store_round_trips_visual_profiles(tmp_path):
+    state_dir = tmp_path / "state"
+    populated = bundle().model_copy(
+        update={
+            "characters": [
+                bundle()
+                .characters[0]
+                .model_copy(
+                    update={"visual_profile": CharacterVisualProfile(summary="short black hair")}
+                )
+            ],
+            "visual_profiles": VisualProfilesState(
+                style_lock=StyleLockProfile(art_style="ink wash"),
+            ),
+        }
+    )
+
+    StateStore.save(populated, state_dir)
+    loaded = StateStore.load(state_dir)
+
+    assert loaded.characters[0].visual_profile is not None
+    assert loaded.characters[0].visual_profile.summary == "short black hair"
+    assert loaded.visual_profiles.style_lock is not None
+    assert loaded.visual_profiles.style_lock.art_style == "ink wash"
+
+
+def test_schema_export_includes_visual_profile_models(tmp_path):
+    export_state_schemas(tmp_path / "schemas")
+
+    for name in (
+        "CharacterVisualProfile",
+        "BackgroundVisualProfile",
+        "StyleLockProfile",
+        "VisualProfilesState",
+    ):
+        schema = yaml.safe_load(
+            (tmp_path / "schemas" / f"{name}.schema.yaml").read_text(encoding="utf-8")
+        )
+        assert schema["title"] == name
 
 
 # Issue 008: threat escalation tracks (ThreatTrack/ThreatStage on WorldState).

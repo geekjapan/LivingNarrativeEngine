@@ -243,6 +243,51 @@ class SpeechProfile(StateBaseModel):
     forbidden_terms: list[str] = Field(default_factory=list)
 
 
+class CharacterVisualProfile(StateBaseModel):
+    """Stable, user-authored appearance facts for one character."""
+
+    summary: str = Field(min_length=1)
+    apparent_age: str | None = None
+    build: str | None = None
+    hair: str | None = None
+    eyes: str | None = None
+    clothing: list[str] = Field(default_factory=list)
+    distinguishing_features: list[str] = Field(default_factory=list)
+    color_palette: list[str] = Field(default_factory=list)
+
+
+class BackgroundVisualProfile(StateBaseModel):
+    """Stable visual facts for a recurring location or background."""
+
+    id: str = Field(pattern=r"^background_\d+$")
+    name: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    architecture: list[str] = Field(default_factory=list)
+    lighting: str | None = None
+    atmosphere: str | None = None
+    color_palette: list[str] = Field(default_factory=list)
+    recurring_elements: list[str] = Field(default_factory=list)
+
+
+class StyleLockProfile(StateBaseModel):
+    """Project-wide art-direction constraints kept stable across generated assets."""
+
+    art_style: str = Field(min_length=1)
+    medium: str | None = None
+    line_work: str | None = None
+    lighting: str | None = None
+    color_palette: list[str] = Field(default_factory=list)
+    composition_rules: list[str] = Field(default_factory=list)
+    avoid: list[str] = Field(default_factory=list)
+
+
+class VisualProfilesState(StateBaseModel):
+    """Optional project-level visual profiles stored in ``visual_profiles.yaml``."""
+
+    backgrounds: list[BackgroundVisualProfile] = Field(default_factory=list)
+    style_lock: StyleLockProfile | None = None
+
+
 class CharacterState(StateBaseModel):
     """Character state. ``private_mind`` is visible only to this character."""
 
@@ -266,6 +311,8 @@ class CharacterState(StateBaseModel):
     # Issue 012: speech register (first-person pronoun, forbidden terms). Default is an
     # empty profile (back-compat) that never affects prompts or checkers.
     speech: SpeechProfile = Field(default_factory=SpeechProfile)
+    # Issue 039: absent for projects created before visual profiles were introduced.
+    visual_profile: CharacterVisualProfile | None = None
 
 
 class RelationshipState(StateBaseModel):
@@ -393,3 +440,4 @@ class WorldStateBundle(StateBaseModel):
     timeline: list[TimelineEntry] = Field(default_factory=list)
     unresolved_threads: list[UnresolvedThread] = Field(default_factory=list)
     memory_summaries: list[MemorySummary] = Field(default_factory=list)
+    visual_profiles: VisualProfilesState = Field(default_factory=VisualProfilesState)

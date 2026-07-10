@@ -22,6 +22,7 @@ from living_narrative.state.models import (
     SceneState,
     TimelineEntry,
     UnresolvedThread,
+    VisualProfilesState,
     WorldState,
     WorldStateBundle,
 )
@@ -80,6 +81,11 @@ class StateStore:
             issues,
             optional=True,
         )
+        visual_profiles = _load_optional_one(
+            state_dir / "visual_profiles.yaml",
+            VisualProfilesState,
+            issues,
+        )
 
         if issues:
             raise StateLoadError(issues)
@@ -96,6 +102,7 @@ class StateStore:
             timeline=timeline,
             unresolved_threads=unresolved_threads,
             memory_summaries=memory_summaries,
+            visual_profiles=visual_profiles,
         )
         _warn_unknowns(bundle, state_dir)
         return bundle
@@ -125,6 +132,7 @@ class StateStore:
             state_dir / "memory_summaries.yaml",
             [_dump_model(item) for item in bundle.memory_summaries],
         )
+        _atomic_yaml(state_dir / "visual_profiles.yaml", _dump_model(bundle.visual_profiles))
         _save_dir(state_dir / "characters", bundle.characters)
         _save_dir(state_dir / "scenes", bundle.scenes)
 
@@ -147,6 +155,16 @@ def _load_one(path: Path, model: type[BaseModel], issues: list[StateValidationIs
     except ValidationError as exc:
         _collect_validation_errors(path, exc, issues)
         return None
+
+
+def _load_optional_one(
+    path: Path,
+    model: type[BaseModel],
+    issues: list[StateValidationIssue],
+) -> Any:
+    if not path.exists():
+        return model()
+    return _load_one(path, model, issues)
 
 
 def _load_list(

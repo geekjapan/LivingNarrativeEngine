@@ -41,3 +41,18 @@ speech:
   forbidden_terms:
     - 僕
     - 俺
+visual_profile:
+  summary: 黒髪のボブと琥珀色の瞳、濃紺のコートを着た若い女性
+  apparent_age: 20代前半
+  build: 小柄でしなやか
+  hair: 艶のある黒髪のボブ
+  eyes: 琥珀色
+  clothing:
+    - 濃紺の膝丈コート
+    - 赤いマフラー
+  distinguishing_features:
+    - 左目の下の小さなほくろ
+  color_palette:
+    - 濃紺
+    - 深紅
+    - 琥珀色
