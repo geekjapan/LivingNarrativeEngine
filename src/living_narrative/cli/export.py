@@ -10,16 +10,20 @@ from living_narrative.export_replay import (
     DEFAULT_IMAGE_PROMPT_PROFILE,
     DEFAULT_PROFILE,
     DEFAULT_REVISION_PROFILE,
+    DEFAULT_VN_PROFILE,
     ArcsError,
     ImagePromptError,
     NoReplayableTurnsError,
     NovelDraftParseError,
     ReconstructionError,
     RevisionNotesError,
+    VNScriptError,
     assemble_replay,
     build_arcs_report,
     build_outline,
     generate_image_prompts,
+    generate_vn_script,
+    load_reader_narrations,
     narration_by_turn_from_records,
     parse_novel_draft,
     reconstruct_session,
@@ -30,7 +34,9 @@ from living_narrative.export_replay import (
     render_scenes_markdown,
     render_trpg_replay,
     revise_novel,
+    visual_reference_allowlists,
     write_image_prompt_exports,
+    write_vn_script_exports,
 )
 from living_narrative.export_replay.loader import load_turn_records
 from living_narrative.pipeline.llm_gateway import LLMGateway
@@ -39,6 +45,34 @@ from living_narrative.state.store import StateLoadError, StateStore
 app = typer.Typer(name="export", help="Export commands")
 
 _NO_TURNS_MESSAGE = "no applied (non-reject_all) turn exists yet — run `turn`/`auto` first"
+
+
+@app.command("vn-script")
+def vn_script(
+    project: Path = typer.Option(..., "--project", help="Path to project.yaml"),
+    profile: str = typer.Option(
+        DEFAULT_VN_PROFILE, "--profile", help="LLM binding key used for VN script formatting"
+    ),
+) -> None:
+    """reader可視のnarrationをLLMで構造化しscript.yamlとscript.mdを生成する。"""
+    read = load_project_or_exit(project)
+    try:
+        records = load_reader_narrations(read.paths.runs)
+        state = StateStore.load(read.paths.state)
+        character_ids, background_ids = visual_reference_allowlists(state)
+        gateway = LLMGateway(project=read.config, random_seed=read.config.random_seed)
+        script = generate_vn_script(
+            records,
+            gateway,
+            allowed_character_ids=character_ids,
+            allowed_background_ids=background_ids,
+            profile=profile,
+        )
+        yaml_path, markdown_path = write_vn_script_exports(read.paths.exports, script)
+    except (VNScriptError, StateLoadError) as exc:
+        runtime_error(str(exc))
+    typer.echo(f"Wrote {yaml_path}")
+    typer.echo(f"Wrote {markdown_path}")
 
 
 @app.command("replay")

@@ -49,6 +49,54 @@ def test_log_renderer_produces_bulleted_log():
     assert "- event[action]: 彼は歩き出した" in result.text
 
 
+def test_vn_renderer_is_registered_without_changing_existing_defaults():
+    context = NarratorContext(
+        turn=3,
+        scene_summary="夜の駅",
+        reader_visible_events=[
+            Event(
+                id="event_0001",
+                turn=3,
+                type="character_dialogue",
+                text="「行こう」",
+                visibility=Visibility.READER,
+                effects={"character_id": "char_001", "sfx": "足音"},
+            )
+        ],
+    )
+
+    result = narrate(context, style="vn", mood="緊張")
+
+    assert result.style == "vn"
+    assert "# BACKGROUND: 夜の駅" in result.text
+    assert "# BGM: 緊張" in result.text
+    assert "# SPRITE: char_001" in result.text
+    assert "# SFX: 足音" in result.text
+    assert "char_001: 「行こう」" in result.text
+    assert narrate(_context(), style="novel").style == "novel"
+
+
+def test_vn_renderer_does_not_emit_invalid_sprite_reference():
+    context = NarratorContext(
+        turn=1,
+        reader_visible_events=[
+            Event(
+                id="event_0001",
+                turn=1,
+                type="character_dialogue",
+                text="声だけが響く",
+                visibility=Visibility.READER,
+                effects={"character_id": "intruder"},
+            )
+        ],
+    )
+
+    result = narrate(context, style="vn")
+
+    assert "# SPRITE:" not in result.text
+    assert "UNKNOWN: 声だけが響く" in result.text
+
+
 def test_narrator_falls_back_to_default_message_without_events_or_facts():
     empty_context = NarratorContext(turn=1)
 
