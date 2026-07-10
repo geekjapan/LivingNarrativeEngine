@@ -1,7 +1,7 @@
 ---
 id: 044
 title: schema_version と migration 骨格
-status: in_progress
+status: done
 created: 2026-07-11
 ---
 
@@ -20,11 +20,11 @@ created: 2026-07-11
 
 ## 完了条件
 
-- [ ] `ProjectConfig.schema_version` がPydantic v2スキーマの正フィールドとして定義され、新規project/templateに出力される
-- [ ] loaderが対応中・既存互換・未対応の将来バージョンを期待どおり検査する
-- [ ] `N → N+1` migration registryと、登録・連鎖・欠落・重複のテストがある
-- [ ] 既存テストを含む全テスト、ruff check、ruff format checkがpassする
-- [ ] 無関係なファイル変更がなく、GitNexus `detect_changes` で影響範囲を確認している
+- [x] `ProjectConfig.schema_version` がPydantic v2スキーマの正フィールドとして定義され、新規project/templateに出力される
+- [x] loaderが対応中・既存互換・未対応の将来バージョンを期待どおり検査する
+- [x] `N → N+1` migration registryと、登録・連鎖・欠落・重複のテストがある
+- [x] 既存テストを含む全テスト、ruff check、ruff format checkがpassする
+- [x] 無関係なファイル変更がなく、GitNexus `detect_changes` で影響範囲を確認している
 
 ## 関連ファイル
 
