@@ -1,7 +1,11 @@
+import importlib
+
 import yaml
 from typer.testing import CliRunner
 
 from living_narrative.cli import app
+from living_narrative.export_replay import VNLineOutput, VNTurnOutput
+from living_narrative.llm.errors import StructuredOutputError
 from living_narrative.pipeline import TurnPipeline
 
 runner = CliRunner()
@@ -89,6 +93,95 @@ def test_export_scenes_accepts_gm_flag(tmp_path, build_project):
     result = runner.invoke(app, ["export", "scenes", "--project", str(project_path), "--gm"])
 
     assert result.exit_code == 0, result.output
+
+
+def test_export_vn_script_formats_normal_novel_narration_with_profile(
+    tmp_path, build_project, monkeypatch
+):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    character_path = state_dir / "characters" / "char_001.yaml"
+    character = yaml.safe_load(character_path.read_text(encoding="utf-8"))
+    character["visual_profile"] = {"summary": "黒髪"}
+    character_path.write_text(yaml.safe_dump(character, allow_unicode=True), encoding="utf-8")
+    (state_dir / "visual_profiles.yaml").write_text(
+        yaml.safe_dump(
+            {"backgrounds": [{"id": "background_001", "name": "駅", "summary": "夜の駅"}]},
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    TurnPipeline().run(project_path)
+    calls = []
+
+    class Gateway:
+        def __init__(self, **kwargs):
+            pass
+
+        def complete(self, binding_key, messages, response_schema, prompt_template_name):
+            calls.append(binding_key)
+            return VNTurnOutput(
+                lines=[
+                    VNLineOutput(
+                        type="dialogue",
+                        speaker="char_001",
+                        text="行こう",
+                        sprite="char_001",
+                        background="background_001",
+                    ),
+                    VNLineOutput(type="narration", text="霧が晴れる"),
+                    VNLineOutput(type="direction", text="暗転"),
+                ]
+            )
+
+    export_cli = importlib.import_module("living_narrative.cli.export")
+    monkeypatch.setattr(export_cli, "LLMGateway", Gateway)
+
+    result = runner.invoke(
+        app,
+        [
+            "export",
+            "vn-script",
+            "--project",
+            str(project_path),
+            "--profile",
+            "vn-editor",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == ["vn-editor"]
+    exports_dir = project_path.parent / "workspace" / "exports"
+    script = yaml.safe_load((exports_dir / "script.yaml").read_text(encoding="utf-8"))
+    kinds = [command["kind"] for command in script["turns"][0]["commands"]]
+    assert kinds == ["background", "sprite", "dialogue", "narration", "direction"]
+    assert "**char_001**: 行こう" in (exports_dir / "script.md").read_text(encoding="utf-8")
+
+
+def test_export_vn_script_reports_exhausted_structured_output(tmp_path, build_project, monkeypatch):
+    project_path = build_project(tmp_path)
+    TurnPipeline().run(project_path)
+
+    class FailingGateway:
+        def __init__(self, **kwargs):
+            pass
+
+        def complete(self, *args, **kwargs):
+            raise StructuredOutputError(
+                provider_name="mock",
+                model="m",
+                schema_name="VNTurnOutput",
+                last_error="retry exhausted",
+            )
+
+    export_cli = importlib.import_module("living_narrative.cli.export")
+    monkeypatch.setattr(export_cli, "LLMGateway", FailingGateway)
+
+    result = runner.invoke(app, ["export", "vn-script", "--project", str(project_path)])
+
+    assert result.exit_code == 1
+    assert "VN script LLM formatting failed for turn 1" in result.output
+    assert not (project_path.parent / "workspace" / "exports" / "script.yaml").exists()
 
 
 def test_export_image_prompts_writes_yaml_and_markdown_with_profile(tmp_path, build_project):

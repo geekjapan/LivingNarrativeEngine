@@ -56,6 +56,23 @@ from living_narrative.export_replay.revision import (
     revise_novel,
 )
 from living_narrative.export_replay.trpg import render_trpg_replay
+from living_narrative.export_replay.vn_script import (
+    DEFAULT_VN_PROFILE,
+    PROMPT_TEMPLATE_NAME,
+    VNCommand,
+    VNLineOutput,
+    VNScript,
+    VNScriptError,
+    VNTurn,
+    VNTurnOutput,
+    build_vn_script,
+    export_vn_script,
+    generate_vn_script,
+    load_reader_narrations,
+    render_vn_script_markdown,
+    visual_reference_allowlists,
+    write_vn_script_exports,
+)
 
 __all__ = [
     "NoReplayableTurnsError",
@@ -104,4 +121,19 @@ __all__ = [
     "parse_novel_draft",
     "render_revised_novel",
     "revise_novel",
+    "VNCommand",
+    "VNLineOutput",
+    "VNScript",
+    "VNScriptError",
+    "VNTurn",
+    "VNTurnOutput",
+    "DEFAULT_VN_PROFILE",
+    "PROMPT_TEMPLATE_NAME",
+    "build_vn_script",
+    "export_vn_script",
+    "generate_vn_script",
+    "load_reader_narrations",
+    "render_vn_script_markdown",
+    "visual_reference_allowlists",
+    "write_vn_script_exports",
 ]
