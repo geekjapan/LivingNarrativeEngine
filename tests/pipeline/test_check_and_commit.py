@@ -1,7 +1,7 @@
 import yaml
 
 from living_narrative.pipeline import TurnPipeline, TurnStatus, default_registry
-from living_narrative.pipeline.models import CheckResult
+from living_narrative.pipeline.models import ActionCandidate, CheckResult
 from living_narrative.state.models import Event, Visibility
 
 
@@ -124,3 +124,108 @@ def test_character_consistency_warn_does_not_block_auto_apply(tmp_path, build_pr
     assert consistency_findings
     assert consistency_findings[0]["severity"] == "warn"
     assert consistency_findings[0]["related_ids"] == ["event_0001"]
+
+
+def test_life_or_death_combat_failure_stops_for_review_without_auto_death(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    attacker_path = state_dir / "characters" / "char_001.yaml"
+    attacker = yaml.safe_load(attacker_path.read_text(encoding="utf-8"))
+    attacker["stats"] = {"strength": -100, "hp": 10}
+    attacker_path.write_text(yaml.safe_dump(attacker, allow_unicode=True), encoding="utf-8")
+    (state_dir / "characters" / "char_002.yaml").write_text(
+        yaml.safe_dump(
+            {"id": "char_002", "name": "敵", "role": "guard", "stats": {"hp": 10}},
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    registry = default_registry()
+
+    def combat_act(context, world_events, gateway, interventions, **kwargs):
+        return [
+            ActionCandidate(
+                character_id="char_001",
+                action_text="決死の一撃を放つ",
+                target_id="char_002",
+                effects={
+                    "combat": {
+                        "attacker": "char_001",
+                        "defender": "char_002",
+                        "stakes": "仲間を逃がす",
+                        "stat": "strength",
+                        "target": 0,
+                        "damage": 4,
+                        "life_or_death": True,
+                    }
+                },
+            )
+        ], []
+
+    registry.register("act", combat_act)
+
+    result = TurnPipeline(registry=registry).run(project_path, commit_mode="auto")
+
+    assert result.status == TurnStatus.STOPPED_FOR_REVIEW
+    rolls = yaml.safe_load((result.turn_dir / "rolls.yaml").read_text(encoding="utf-8"))
+    events = yaml.safe_load((result.turn_dir / "events.yaml").read_text(encoding="utf-8"))
+    diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
+    combat_roll = next(roll for roll in rolls if roll["label"] == "combat:char_001:char_002")
+    combat_event = next(event for event in events if event["type"] == "combat")
+    assert combat_roll["outcome"] == "failure"
+    assert combat_roll["severity"] == "critical"
+    assert combat_event["roll_ids"] == [combat_roll["id"]]
+    assert all(change.get("path") != "status" for change in diff["diff"]["changes"])
+
+
+def test_invalid_combat_is_audited_without_blocking_valid_combat_pipeline(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    attacker_path = state_dir / "characters" / "char_001.yaml"
+    attacker = yaml.safe_load(attacker_path.read_text(encoding="utf-8"))
+    attacker["stats"] = {"strength": 10, "hp": 10}
+    attacker_path.write_text(yaml.safe_dump(attacker, allow_unicode=True), encoding="utf-8")
+    (state_dir / "characters" / "char_002.yaml").write_text(
+        yaml.safe_dump(
+            {"id": "char_002", "name": "敵", "role": "guard", "stats": {"hp": 10}},
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    registry = default_registry()
+
+    def mixed_combat_act(context, world_events, gateway, interventions, **kwargs):
+        def candidate(defender, stakes):
+            return ActionCandidate(
+                character_id="char_001",
+                action_text=stakes,
+                target_id=defender,
+                effects={
+                    "combat": {
+                        "attacker": "char_001",
+                        "defender": defender,
+                        "stakes": stakes,
+                        "stat": "strength",
+                        "target": 100,
+                        "damage": 4,
+                    }
+                },
+            )
+
+        return [candidate("char_999", "不正な攻撃"), candidate("char_002", "有効な攻撃")], []
+
+    registry.register("act", mixed_combat_act)
+
+    result = TurnPipeline(registry=registry).run(project_path, commit_mode="auto")
+
+    assert result.status != TurnStatus.FAILED
+    rolls = yaml.safe_load((result.turn_dir / "rolls.yaml").read_text(encoding="utf-8"))
+    events = yaml.safe_load((result.turn_dir / "events.yaml").read_text(encoding="utf-8"))
+    diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
+    combat_events = [event for event in events if event["type"].startswith("combat")]
+    assert [event["type"] for event in combat_events] == ["combat_rejected", "combat"]
+    assert combat_events[0]["visibility"] == "gm_only"
+    assert len([roll for roll in rolls if roll["label"].startswith("combat:")]) == 1
+    hp_change = next(change for change in diff["diff"]["changes"] if change["path"] == "stats.hp")
+    assert hp_change["id"] == "char_002"
+    assert hp_change["value"] == -4

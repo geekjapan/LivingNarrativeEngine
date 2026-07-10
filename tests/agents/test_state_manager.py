@@ -115,6 +115,39 @@ def test_character_quest_advance_resolve_apply_only_to_existing_quest_through_di
     assert applied.quests[0].status == "resolved"
 
 
+def test_successful_combat_damage_is_an_hp_delta_with_existing_clamp():
+    context = _context(
+        characters=[CharacterState(id="char_002", name="B", role="r", stats={"hp": 3})]
+    )
+    event = Event(
+        id="event_0001",
+        turn=1,
+        type="combat",
+        text="攻撃が命中した",
+        visibility="reader",
+        effects={
+            "combat": {
+                "attacker": "char_001",
+                "defender": "char_002",
+                "stakes": "脱出する",
+                "result": "success",
+                "damage": 5,
+            }
+        },
+    )
+
+    result = build_state_diff(context, [event], [])
+
+    hp_change = next(change for change in result.diff.changes if change.path == "stats.hp")
+    assert hp_change.target == "character"
+    assert hp_change.id == "char_002"
+    assert hp_change.op == "delta"
+    assert hp_change.value == -5
+    assert context.bundle.characters[0].stats["hp"] == 3
+    applied = apply_state_diff(context.bundle, result.diff).bundle
+    assert applied.characters[0].stats["hp"] == 0
+
+
 def test_narrator_can_open_reader_visible_quest():
     update = NarratorQuestUpdateCandidate(
         action="open",

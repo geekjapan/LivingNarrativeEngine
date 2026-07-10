@@ -683,6 +683,21 @@ def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChan
     changes = []
     character_id = event.effects.get("character_id") or event.effects.get("target_id")
     scene_id = event.effects.get("scene_id") or event.effects.get("target_id")
+    combat = event.effects.get("combat")
+    if event.type == "combat" and isinstance(combat, dict):
+        damage = combat.get("damage")
+        if combat.get("result") == "success" and isinstance(damage, int) and damage > 0:
+            changes.append(
+                StateDiffChange(
+                    target="character",
+                    id=combat.get("defender"),
+                    op="delta",
+                    path="stats.hp",
+                    value=-damage,
+                    visibility=event.visibility,
+                    source_event=event.id,
+                )
+            )
     if event.type == "threat_pressure":
         threat_id = event.effects.get("threat_id")
         changes.append(

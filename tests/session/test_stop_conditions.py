@@ -81,6 +81,29 @@ def test_heavy_roll_failure_requires_critical_failure():
     assert not_matched == []
 
 
+def test_life_or_death_combat_failure_uses_existing_heavy_roll_stop():
+    combat_failure = Roll(
+        id="roll_0001",
+        turn=1,
+        type="chance",
+        outcome="failure",
+        severity="critical",
+        label="combat:char_001:char_002",
+    )
+
+    result = evaluate_stop_conditions(
+        project=_project(),
+        autonomy_level="assist",
+        diff=StateDiff(id="diff_0001", turn=1),
+        checks=[],
+        rolls=[combat_failure],
+    )
+
+    assert len(result) == 1
+    assert result[0].name == StopConditionName.HEAVY_ROLL_FAILURE
+    assert result[0].should_stop is True
+
+
 def test_scene_end_uses_status_transition():
     result = evaluate_stop_conditions(
         project=_project(),
