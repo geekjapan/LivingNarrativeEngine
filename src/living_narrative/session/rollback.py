@@ -9,7 +9,6 @@ then run the same rollback against the copy, leaving the original untouched.
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +24,7 @@ from living_narrative.pipeline.turn_numbering import (
 from living_narrative.state.diff import InverseStateDiff, load_inverse_diff
 from living_narrative.state.diff import rollback as apply_inverse_diffs
 from living_narrative.state.store import StateStore
+from living_narrative.workspace.copy import WorkspaceCopyError, copy_directory_atomic
 from living_narrative.workspace.loader import WorkspacePaths
 
 
@@ -130,7 +130,12 @@ def copy_project_for_branch(source_root: Path, output_dir: Path) -> Path:
     """
     if output_dir.exists():
         raise RollbackError(f"branch output already exists: {output_dir}")
-    shutil.copytree(source_root, output_dir)
+    try:
+        copy_directory_atomic(source_root, output_dir)
+    except WorkspaceCopyError as exc:
+        if output_dir.exists():
+            raise RollbackError(f"branch output already exists: {output_dir}") from exc
+        raise RollbackError(str(exc)) from exc
     return output_dir / "project.yaml"
 
 
