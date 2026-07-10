@@ -1,7 +1,7 @@
 ---
 id: 035
 title: player_character参加モード配線
-status: in_progress
+status: done
 created: 2026-07-11
 ---
 
@@ -22,16 +22,22 @@ created: 2026-07-11
 
 ## 完了条件
 
-- [ ] `turn --pc-action`がbound PCの既存interventionとして保存される
-- [ ] PC入力がPCのActionCandidate相当として他candidateと同じResolveへ入る
-- [ ] PC本人のcharacter checkが`dice_roll_request`からIssue 032経路へ入る
-- [ ] PC本人のinventory useがIssue 033の既存StateDiff/reject経路へ入る
-- [ ] permission matrixが本人targetだけを許し、GM系介入を拒否する
-- [ ] status/webがPC視点へ絞られ、gm_vault・他者秘密・未知hidden factsを漏らさない
-- [ ] dead/missing PCがGM review用stop conditionへ送られる
-- [ ] pipeline phase追加と直接state mutationがない
-- [ ] CLI/pipeline/session/webの回帰を含む全テストとruffがpassする
-- [ ] 無関係変更がなく、GitNexus `detect_changes`で影響範囲を確認している
+- [x] `turn --pc-action`がbound PCの既存interventionとして保存される
+- [x] PC入力がPCのActionCandidate相当として他candidateと同じResolveへ入る
+- [x] PC本人のcharacter checkが`dice_roll_request`からIssue 032経路へ入る
+- [x] PC本人のinventory useがIssue 033の既存StateDiff/reject経路へ入る
+- [x] permission matrixが本人targetだけを許し、GM系介入を拒否する
+- [x] status/webがPC視点へ絞られ、gm_vault・他者秘密・未知hidden factsを漏らさない
+- [x] dead/missing PCがGM review用stop conditionへ送られる
+- [x] pipeline phase追加と直接state mutationがない
+- [x] CLI/pipeline/session/webの回帰を含む全テストとruffがpassする
+- [x] 無関係変更がなく、GitNexus `detect_changes`で影響範囲を確認している
+
+## 検証結果
+
+- 実装コミット: `097e56470b9164e4f66ef90d370fcea66999e456`
+- Issue 037上へ競合なしでrebaseし、Wave 7統合後に`NO_COLOR=1 uv run pytest` 922件pass
+- `uv run ruff check .`、`uv run ruff format --check .` pass
 
 ## 関連ファイル
 
