@@ -47,6 +47,11 @@ def test_mist_station_state_is_schema_valid(tmp_path):
     assert bundle.visual_profiles.backgrounds[0].id == "background_001"
     assert bundle.visual_profiles.style_lock is not None
     assert bundle.visual_profiles.style_lock.art_style == "静謐な現代日本ミステリーのアニメ背景美術"
+    assert {profile.character_id for profile in bundle.voice_profiles.characters} == {
+        character.id for character in bundle.characters
+    }
+    assert bundle.voice_profiles.narrator is not None
+    assert bundle.voice_profiles.narrator.quality == "静謐で距離感のある語り"
 
 
 def test_every_gm_vault_entry_is_linked_to_a_character(tmp_path):

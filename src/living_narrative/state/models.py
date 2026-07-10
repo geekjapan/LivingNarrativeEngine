@@ -344,6 +344,41 @@ class VisualProfilesState(StateBaseModel):
     style_lock: StyleLockProfile | None = None
 
 
+class VoiceProfile(StateBaseModel):
+    """Provider-neutral voice direction; it never names or clones a real person's voice."""
+
+    quality: str = Field(min_length=1)
+    pace: Annotated[float, Field(gt=0)] = 1.0
+    pitch: str | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
+class CharacterVoiceProfile(VoiceProfile):
+    """Voice direction bound to one canonical character ID."""
+
+    character_id: CharacterId
+
+
+class VoiceProfilesState(StateBaseModel):
+    """Optional project voice directions stored in ``voice_profiles.yaml``."""
+
+    characters: list[CharacterVoiceProfile] = Field(default_factory=list)
+    narrator: VoiceProfile | None = None
+    default: VoiceProfile | None = None
+
+    @model_validator(mode="after")
+    def _validate_character_ids_unique(self) -> "VoiceProfilesState":
+        seen: set[str] = set()
+        duplicates: set[str] = set()
+        for profile in self.characters:
+            if profile.character_id in seen:
+                duplicates.add(profile.character_id)
+            seen.add(profile.character_id)
+        if duplicates:
+            raise ValueError(f"character voice profile ids must be unique: {sorted(duplicates)}")
+        return self
+
+
 class CharacterState(StateBaseModel):
     """Character state. ``private_mind`` is visible only to this character."""
 
@@ -530,3 +565,4 @@ class WorldStateBundle(StateBaseModel):
     memory_summaries: list[MemorySummary] = Field(default_factory=list)
     visual_profiles: VisualProfilesState = Field(default_factory=VisualProfilesState)
     encounters: list[EncounterEntry] = Field(default_factory=list)
+    voice_profiles: VoiceProfilesState = Field(default_factory=VoiceProfilesState)

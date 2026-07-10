@@ -56,6 +56,15 @@ from living_narrative.export_replay.revision import (
     revise_novel,
 )
 from living_narrative.export_replay.trpg import render_trpg_replay
+from living_narrative.export_replay.tts_script import (
+    TTSScript,
+    TTSScriptError,
+    TTSSegment,
+    build_tts_script,
+    load_vn_script,
+    render_tts_script_markdown,
+    write_tts_script_exports,
+)
 from living_narrative.export_replay.vn_script import (
     DEFAULT_VN_PROFILE,
     PROMPT_TEMPLATE_NAME,
@@ -136,4 +145,11 @@ __all__ = [
     "render_vn_script_markdown",
     "visual_reference_allowlists",
     "write_vn_script_exports",
+    "TTSScript",
+    "TTSScriptError",
+    "TTSSegment",
+    "build_tts_script",
+    "load_vn_script",
+    "render_tts_script_markdown",
+    "write_tts_script_exports",
 ]

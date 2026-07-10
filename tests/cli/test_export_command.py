@@ -184,6 +184,57 @@ def test_export_vn_script_reports_exhausted_structured_output(tmp_path, build_pr
     assert not (project_path.parent / "workspace" / "exports" / "script.yaml").exists()
 
 
+def test_export_tts_script_reads_canonical_vn_script(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    workspace = project_path.parent / "workspace"
+    (workspace / "state" / "voice_profiles.yaml").write_text(
+        "characters:\n"
+        "  - character_id: char_001\n    quality: 明るい声\n"
+        "narrator:\n  quality: 静かな語り\n",
+        encoding="utf-8",
+    )
+    (workspace / "exports").mkdir(parents=True, exist_ok=True)
+    (workspace / "exports" / "script.yaml").write_text(
+        "format: living-narrative-vn-script-v1\n"
+        "warnings: []\n"
+        "turns:\n"
+        "  - turn: 1\n"
+        "    commands:\n"
+        "      - kind: background\n        text: 秘密の背景\n"
+        "      - kind: dialogue\n        character_id: char_001\n        text: 行こう\n"
+        "      - kind: narration\n        text: 霧が晴れる\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["export", "tts-script", "--project", str(project_path)])
+
+    assert result.exit_code == 0, result.output
+    data = yaml.safe_load((workspace / "exports" / "tts_script.yaml").read_text(encoding="utf-8"))
+    assert [segment["text"] for segment in data["segments"]] == ["行こう", "霧が晴れる"]
+    assert "秘密の背景" not in (workspace / "exports" / "tts_script.md").read_text(encoding="utf-8")
+
+
+def test_export_tts_script_rejects_malformed_canonical_input(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    exports = project_path.parent / "workspace" / "exports"
+    exports.mkdir(parents=True, exist_ok=True)
+    (exports / "script.yaml").write_text("turns: not-a-list\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["export", "tts-script", "--project", str(project_path)])
+
+    assert result.exit_code == 1
+    assert "invalid canonical VN script schema" in result.output
+    assert not (exports / "tts_script.yaml").exists()
+
+
+def test_export_help_lists_image_and_tts_provider_subcommands():
+    result = runner.invoke(app, ["export", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "images" in result.output
+    assert "tts-script" in result.output
+
+
 def test_export_image_prompts_writes_yaml_and_markdown_with_profile(tmp_path, build_project):
     project_path = build_project(tmp_path)
     state_dir = project_path.parent / "workspace" / "state"

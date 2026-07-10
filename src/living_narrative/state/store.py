@@ -25,6 +25,7 @@ from living_narrative.state.models import (
     TimelineEntry,
     UnresolvedThread,
     VisualProfilesState,
+    VoiceProfilesState,
     WorldState,
     WorldStateBundle,
 )
@@ -92,6 +93,11 @@ class StateStore:
         encounters = _load_list(
             state_dir / "encounters.yaml", EncounterEntry, issues, optional=True
         )
+        voice_profiles = _load_optional_one(
+            state_dir / "voice_profiles.yaml",
+            VoiceProfilesState,
+            issues,
+        )
 
         if issues:
             raise StateLoadError(issues)
@@ -111,6 +117,7 @@ class StateStore:
             memory_summaries=memory_summaries,
             visual_profiles=visual_profiles,
             encounters=encounters,
+            voice_profiles=voice_profiles,
         )
         _warn_unknowns(bundle, state_dir)
         return bundle
@@ -145,6 +152,7 @@ class StateStore:
         _atomic_yaml(
             state_dir / "encounters.yaml", [_dump_model(item) for item in bundle.encounters]
         )
+        _atomic_yaml(state_dir / "voice_profiles.yaml", _dump_model(bundle.voice_profiles))
         _save_dir(state_dir / "characters", bundle.characters)
         _save_dir(state_dir / "scenes", bundle.scenes)
 

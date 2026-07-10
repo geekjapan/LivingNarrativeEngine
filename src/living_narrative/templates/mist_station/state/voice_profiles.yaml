@@ -1,0 +1,30 @@
+characters:
+  - character_id: char_001
+    quality: 明るく芯のある若い声
+    pace: 1.05
+    pitch: やや高め
+    notes: [好奇心と慎重さを両立する]
+  - character_id: char_002
+    quality: 低く落ち着いた声
+    pace: 0.9
+    pitch: 低め
+    notes: [短く抑制した話し方]
+  - character_id: char_003
+    quality: 静かで透明感のある声
+    pace: 0.85
+    pitch: 中音
+    notes: [感情を表に出しすぎない]
+  - character_id: char_004
+    quality: 乾いた威圧感のある声
+    pace: 0.95
+    pitch: 低め
+    notes: [冷静さを崩さない]
+narrator:
+  quality: 静謐で距離感のある語り
+  pace: 0.9
+  pitch: 中低音
+  notes: [恐怖を煽りすぎず余白を残す]
+default:
+  quality: 明瞭で中立的な声
+  pace: 1.0
+  notes: [固有profileが必要な台詞へ暗黙適用しない]

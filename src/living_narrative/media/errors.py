@@ -9,6 +9,10 @@ class ImageProviderRegistryError(MediaError, ValueError):
     """未知の画像providerが指定された。"""
 
 
+class VoiceProviderRegistryError(MediaError, ValueError):
+    """未知の音声providerが指定された。"""
+
+
 class AssetManifestError(MediaError, ValueError):
     """Asset manifestまたはその参照が不正。"""
 

@@ -19,13 +19,16 @@ from living_narrative.export_replay import (
     NovelDraftParseError,
     ReconstructionError,
     RevisionNotesError,
+    TTSScriptError,
     VNScriptError,
     assemble_replay,
     build_arcs_report,
     build_outline,
+    build_tts_script,
     generate_image_prompts,
     generate_vn_script,
     load_reader_narrations,
+    load_vn_script,
     narration_by_turn_from_records,
     parse_novel_draft,
     reconstruct_session,
@@ -38,6 +41,7 @@ from living_narrative.export_replay import (
     revise_novel,
     visual_reference_allowlists,
     write_image_prompt_exports,
+    write_tts_script_exports,
     write_vn_script_exports,
 )
 from living_narrative.export_replay.loader import load_turn_records
@@ -54,6 +58,23 @@ from living_narrative.state.store import StateLoadError, StateStore
 app = typer.Typer(name="export", help="Export commands")
 
 _NO_TURNS_MESSAGE = "no applied (non-reject_all) turn exists yet — run `turn`/`auto` first"
+
+
+@app.command("tts-script")
+def tts_script(
+    project: Path = typer.Option(..., "--project", help="Path to project.yaml"),
+) -> None:
+    """canonical script.yamlからreader可視の発話だけをTTS台本へ変換する。"""
+    read = load_project_or_exit(project)
+    try:
+        script = load_vn_script(read.paths.exports / "script.yaml")
+        state = StateStore.load(read.paths.state)
+        result = build_tts_script(script, state)
+        yaml_path, markdown_path = write_tts_script_exports(read.paths.exports, result)
+    except (TTSScriptError, StateLoadError) as exc:
+        runtime_error(str(exc))
+    typer.echo(f"Wrote {yaml_path}")
+    typer.echo(f"Wrote {markdown_path}")
 
 
 @app.command("vn-script")

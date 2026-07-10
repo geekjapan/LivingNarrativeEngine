@@ -18,6 +18,7 @@ from living_narrative.state.models import (
     CharacterState,
     CharacterStatus,
     CharacterVisualProfile,
+    CharacterVoiceProfile,
     EncounterEntry,
     EncounterThreatCondition,
     Event,
@@ -36,6 +37,8 @@ from living_narrative.state.models import (
     ThreatTrack,
     Visibility,
     VisualProfilesState,
+    VoiceProfile,
+    VoiceProfilesState,
     WorldState,
     WorldStateBundle,
 )
@@ -245,6 +248,57 @@ def test_schema_export_includes_encounter_models(tmp_path):
     )
     assert entry_schema["required"] == ["id", "text", "weight", "visibility"]
     assert condition_schema["required"] == ["threat_id"]
+
+
+def test_voice_profiles_roundtrip_and_missing_file_is_backward_compatible(tmp_path):
+    state_dir = tmp_path / "state"
+    value = bundle().model_copy(
+        update={
+            "voice_profiles": VoiceProfilesState(
+                characters=[
+                    CharacterVoiceProfile(character_id="char_001", quality="明るい", pace=1.1)
+                ],
+                narrator=VoiceProfile(quality="静かな語り", pace=0.9),
+            )
+        }
+    )
+    StateStore.save(value, state_dir)
+
+    assert StateStore.load(state_dir).voice_profiles == value.voice_profiles
+    (state_dir / "voice_profiles.yaml").unlink()
+    assert StateStore.load(state_dir).voice_profiles == VoiceProfilesState()
+
+
+def test_voice_profiles_reject_malformed_profile(tmp_path):
+    state_dir = tmp_path / "state"
+    StateStore.save(bundle(), state_dir)
+    (state_dir / "voice_profiles.yaml").write_text(
+        "characters:\n  - character_id: char_001\n    quality: ''\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(StateLoadError) as invalid:
+        StateStore.load(state_dir)
+
+    assert invalid.value.issues[0].file_path.name == "voice_profiles.yaml"
+
+
+def test_voice_profiles_reject_duplicate_character_profiles():
+    with pytest.raises(ValidationError, match="character voice profile ids must be unique"):
+        VoiceProfilesState(
+            characters=[
+                CharacterVoiceProfile(character_id="char_001", quality="first"),
+                CharacterVoiceProfile(character_id="char_001", quality="duplicate"),
+            ]
+        )
+
+
+def test_voice_profile_schemas_are_exported(tmp_path):
+    export_state_schemas(tmp_path)
+
+    assert (tmp_path / "VoiceProfile.schema.yaml").exists()
+    assert (tmp_path / "CharacterVoiceProfile.schema.yaml").exists()
+    assert (tmp_path / "VoiceProfilesState.schema.yaml").exists()
 
 
 def test_state_store_missing_variable_directory_loads_empty_collection(tmp_path):
