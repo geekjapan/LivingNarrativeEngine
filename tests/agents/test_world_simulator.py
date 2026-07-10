@@ -9,6 +9,7 @@ from living_narrative.pipeline.context import TurnContext
 from living_narrative.random.engine import RandomEngine
 from living_narrative.state.models import (
     BackgroundEventTableEntry,
+    CharacterState,
     FactionState,
     LLMConfig,
     PacingConfig,
@@ -161,6 +162,139 @@ def test_dice_roll_request_performs_a_roll_and_carries_it_for_recording():
     roll_event = next(e for e in events if e.type == "dice_roll_request")
     assert roll_event.cause == "intervention:int_0003"
     assert roll_event.effects["_roll"]["dice"]["notation"] == "2d6"
+
+
+def test_character_check_derives_named_stat_and_skill_modifiers():
+    context = _context()
+    context.bundle = context.bundle.model_copy(
+        update={
+            "characters": [
+                CharacterState(
+                    id="char_001",
+                    name="葵",
+                    role="investigator",
+                    stats={"知力": 12},
+                    skills={"観察": 8},
+                )
+            ]
+        }
+    )
+    intervention = {
+        "id": "int_0004",
+        "type": "dice_roll_request",
+        "target": {"kind": "character", "id": "char_001"},
+        "content": "手掛かりに気づくか",
+        "constraints": {"target": 45, "stat": "知力", "skill": "観察"},
+        "visibility": "gm_only",
+    }
+
+    events = simulate_world(context, [intervention])
+
+    event = next(candidate for candidate in events if candidate.type == "dice_roll_request")
+    roll = event.effects["_roll"]
+    assert roll["type"] == "chance"
+    assert roll["chance"]["base_chance"] == 45
+    assert roll["chance"]["modifiers"] == {"stat:知力": 12, "skill:観察": 8}
+    assert roll["chance"]["final_chance"] == 65
+    assert event.effects["roll_id"] == roll["id"]
+    assert event.target_id == "char_001"
+
+
+@pytest.mark.parametrize("target", [0, 100])
+def test_character_check_accepts_target_boundaries(target):
+    context = _context()
+    context.bundle = context.bundle.model_copy(
+        update={
+            "characters": [
+                CharacterState(id="char_001", name="葵", role="investigator", stats={"知力": 5})
+            ]
+        }
+    )
+    intervention = {
+        "id": "int_0005",
+        "type": "dice_roll_request",
+        "target": {"kind": "character", "id": "char_001"},
+        "content": "境界値判定",
+        "constraints": {"target": target, "stat": "知力"},
+        "visibility": "gm_only",
+    }
+
+    event = next(
+        candidate
+        for candidate in simulate_world(context, [intervention])
+        if candidate.type == "dice_roll_request"
+    )
+
+    assert event.effects["_roll"]["chance"]["base_chance"] == target
+
+
+@pytest.mark.parametrize(
+    ("target_id", "constraints", "message"),
+    [
+        ("char_999", {"target": 50, "stat": "知力"}, "character not found"),
+        ("char_001", {"target": 50, "stat": "体力"}, "stat not found"),
+        ("char_001", {"target": 50, "skill": "隠密"}, "skill not found"),
+        ("char_001", {"target": -1, "stat": "知力"}, "target must be from 0 to 100"),
+        ("char_001", {"target": 101, "stat": "知力"}, "target must be from 0 to 100"),
+        ("char_001", {"target": "50", "stat": "知力"}, "target must be an integer"),
+    ],
+)
+def test_character_check_rejects_missing_or_invalid_values(target_id, constraints, message):
+    context = _context()
+    context.bundle = context.bundle.model_copy(
+        update={
+            "characters": [
+                CharacterState(
+                    id="char_001",
+                    name="葵",
+                    role="investigator",
+                    stats={"知力": 5},
+                    skills={"観察": 4},
+                )
+            ]
+        }
+    )
+    intervention = {
+        "id": "int_0006",
+        "type": "dice_roll_request",
+        "target": {"kind": "character", "id": target_id},
+        "content": "不正な判定",
+        "constraints": constraints,
+        "visibility": "gm_only",
+    }
+
+    with pytest.raises(ValueError, match=message):
+        simulate_world(context, [intervention])
+
+
+def test_character_check_is_reproducible_with_fixed_seed():
+    intervention = {
+        "id": "int_0007",
+        "type": "dice_roll_request",
+        "target": {"kind": "character", "id": "char_001"},
+        "content": "再現可能な判定",
+        "constraints": {"target": 55, "skill": "観察"},
+        "visibility": "gm_only",
+    }
+
+    def run_check():
+        context = _context("fixed-seed")
+        context.bundle = context.bundle.model_copy(
+            update={
+                "characters": [
+                    CharacterState(
+                        id="char_001", name="葵", role="investigator", skills={"観察": 7}
+                    )
+                ]
+            }
+        )
+        return next(
+            candidate.effects["_roll"]
+            for candidate in simulate_world(context, [intervention])
+            if candidate.type == "dice_roll_request"
+        )
+
+    assert run_check() == run_check()
 
 
 def test_unrelated_intervention_types_do_not_produce_world_events():

@@ -166,6 +166,64 @@ def test_dice_roll_request_is_recorded_in_rolls_yaml(tmp_path, build_project):
     assert any(roll["dice"]["notation"] == "2d6" for roll in rolls)
 
 
+def test_legacy_dice_roll_request_links_roll_to_event(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _set_user_mode(project_path, "full_gm")
+
+    result = TurnPipeline().run(
+        project_path,
+        intervention_drafts=_drafts(
+            {
+                "type": "dice_roll_request",
+                "target": {"kind": "roll"},
+                "content": "旧形式の判定",
+                "constraints": {"notation": "1d20", "target": 10},
+                "visibility": "gm_only",
+            }
+        ),
+    )
+
+    rolls = yaml.safe_load((result.turn_dir / "rolls.yaml").read_text(encoding="utf-8"))
+    events = yaml.safe_load((result.turn_dir / "events.yaml").read_text(encoding="utf-8"))
+    roll = next(item for item in rolls if item["dice"] and item["dice"]["notation"] == "1d20")
+    event = next(item for item in events if item["type"] == "dice_roll_request")
+    assert event["roll_ids"] == [roll["id"]]
+
+
+def test_character_check_persists_chance_roll_and_links_event(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _set_user_mode(project_path, "full_gm")
+    character_path = project_path.parent / "workspace" / "state" / "characters" / "char_001.yaml"
+    character = yaml.safe_load(character_path.read_text(encoding="utf-8"))
+    character.update({"stats": {"知力": 9}, "skills": {"観察": 6}})
+    character_path.write_text(
+        yaml.safe_dump(character, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+    result = TurnPipeline().run(
+        project_path,
+        intervention_drafts=_drafts(
+            {
+                "type": "dice_roll_request",
+                "target": {"kind": "character", "id": "char_001"},
+                "content": "痕跡を見つけられるか",
+                "constraints": {"target": 50, "stat": "知力", "skill": "観察"},
+                "visibility": "gm_only",
+            }
+        ),
+    )
+
+    rolls = yaml.safe_load((result.turn_dir / "rolls.yaml").read_text(encoding="utf-8"))
+    events = yaml.safe_load((result.turn_dir / "events.yaml").read_text(encoding="utf-8"))
+    roll = next(item for item in rolls if item["type"] == "chance")
+    event = next(item for item in events if item["type"] == "dice_roll_request")
+    assert roll["chance"]["base_chance"] == 50
+    assert roll["chance"]["modifiers"] == {"stat:知力": 9, "skill:観察": 6}
+    assert roll["chance"]["final_chance"] == 65
+    assert event["roll_ids"] == [roll["id"]]
+    assert event["effects"]["character_id"] == "char_001"
+
+
 def test_canon_edit_and_hidden_truth_edit_produce_state_diff_changes(tmp_path, build_project):
     project_path = build_project(tmp_path)
     _set_user_mode(project_path, "full_gm")

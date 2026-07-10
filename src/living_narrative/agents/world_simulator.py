@@ -185,6 +185,9 @@ def _world_event_from_intervention(item: dict[str, Any]) -> WorldEventCandidate:
 
 def _dice_roll_event(context: TurnContext, item: dict[str, Any]) -> WorldEventCandidate:
     constraints = item.get("constraints") or {}
+    if _is_character_check(item, constraints):
+        return _character_check_event(context, item, constraints)
+
     notation = constraints.get("notation", "1d100")
     roll = context.random_engine.roll_dice(
         notation,
@@ -197,7 +200,72 @@ def _dice_roll_event(context: TurnContext, item: dict[str, Any]) -> WorldEventCa
         cause=f"intervention:{item['id']}",
         text=item.get("content", notation),
         visibility=item["visibility"],
-        effects={"_roll": roll.model_dump(mode="json")},
+        effects={"roll_id": roll.id, "_roll": roll.model_dump(mode="json")},
+    )
+
+
+def _is_character_check(item: dict[str, Any], constraints: dict[str, Any]) -> bool:
+    target = item.get("target") or {}
+    return target.get("kind") == "character" or any(
+        key in constraints for key in ("character_id", "stat", "skill")
+    )
+
+
+def _character_check_event(
+    context: TurnContext,
+    item: dict[str, Any],
+    constraints: dict[str, Any],
+) -> WorldEventCandidate:
+    target = item.get("target") or {}
+    character_id = constraints.get("character_id") or target.get("id")
+    if not isinstance(character_id, str) or not character_id:
+        raise ValueError("character check requires character_id or character target id")
+    character = next(
+        (candidate for candidate in context.bundle.characters if candidate.id == character_id),
+        None,
+    )
+    if character is None:
+        raise ValueError(f"character not found: {character_id}")
+
+    check_target = constraints.get("target")
+    if isinstance(check_target, bool) or not isinstance(check_target, int):
+        raise ValueError("character check target must be an integer from 0 to 100")
+    if not 0 <= check_target <= 100:
+        raise ValueError("character check target must be from 0 to 100")
+
+    modifiers: dict[str, int] = {}
+    for field_name in ("stat", "skill"):
+        name = constraints.get(field_name)
+        if name is None:
+            continue
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"character check {field_name} must be a non-empty string")
+        values = getattr(character, f"{field_name}s")
+        if name not in values:
+            raise ValueError(f"{field_name} not found for {character_id}: {name}")
+        modifiers[f"{field_name}:{name}"] = values[name]
+    if not modifiers:
+        raise ValueError("character check requires stat or skill")
+
+    roll = context.random_engine.roll_chance(
+        check_target,
+        modifiers,
+        turn=context.turn,
+        label=f"intervention:{item['id']}",
+    )
+    return WorldEventCandidate(
+        type="dice_roll_request",
+        cause=f"intervention:{item['id']}",
+        text=item.get("content", "character check"),
+        visibility=item["visibility"],
+        effects={
+            "character_id": character_id,
+            "stat": constraints.get("stat"),
+            "skill": constraints.get("skill"),
+            "roll_id": roll.id,
+            "_roll": roll.model_dump(mode="json"),
+        },
+        target_id=character_id,
     )
 
 
