@@ -136,6 +136,7 @@ def create_app(project_root: Path) -> FastAPI:
     @app.get("/api/project/{name}/settings/{filename:path}")
     def api_get_settings(name: str, filename: str) -> dict[str, str]:
         project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
         try:
             return {"filename": filename, "yaml": get_settings_yaml(project_yaml, filename)}
         except SettingsValidationError as exc:
@@ -144,6 +145,7 @@ def create_app(project_root: Path) -> FastAPI:
     @app.put("/api/project/{name}/settings/{filename:path}")
     def api_update_settings(name: str, filename: str, body: SettingsRequest) -> dict[str, str]:
         project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
         try:
             saved = update_settings_yaml(project_yaml, filename, body.yaml)
         except (OSError, SettingsValidationError) as exc:

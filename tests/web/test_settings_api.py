@@ -143,3 +143,23 @@ def test_settings_write_uses_temporary_sibling_then_replace(tmp_path, build_proj
     assert replaced == [
         (project_path.parent / "pricing.yaml.tmp", project_path.parent / "pricing.yaml")
     ]
+
+
+def test_player_character_mode_rejects_settings_read_and_write(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    project = yaml.safe_load(project_path.read_text(encoding="utf-8"))
+    project["user_mode"] = "player_character"
+    project["player_char_id"] = "char_001"
+    project_path.write_text(
+        yaml.safe_dump(project, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+    client = _client(tmp_path)
+    assert client.get("/api/project/project/settings/project.yaml").status_code == 403
+    assert (
+        client.put(
+            "/api/project/project/settings/pricing.yaml",
+            json={"yaml": "model-x:\n  input_usd_per_1m: 1\n  output_usd_per_1m: 2\n"},
+        ).status_code
+        == 403
+    )
