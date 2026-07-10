@@ -68,6 +68,13 @@ INDEX_HTML = """\
     padding: 0.75rem 1rem; margin: 0.75rem 0; }
   #review-panel.open { display: block; }
   #review-panel h3 { margin-top: 0; }
+  #settings-panel { display: none; border: 1px solid #1565c0; border-radius: 6px;
+    padding: 0.75rem 1rem; margin: 0.75rem 0; }
+  #settings-panel.open { display: block; }
+  #settings-panel textarea { width: 100%; box-sizing: border-box; font-family: monospace;
+    margin-bottom: 0.5rem; }
+  .settings-error { color: #c62828; }
+  .settings-success { color: #2e7d32; }
   #review-panel table { width: 100%; border-collapse: collapse; margin: 0.5rem 0;
     font-size: 0.85rem; }
   #review-panel th, #review-panel td { border-bottom: 1px solid #eee; padding: 0.3rem 0.4rem;
@@ -93,7 +100,18 @@ INDEX_HTML = """\
   </div>
   <div class="group">
     <button id="gm-toggle-button" disabled>GMビュー</button>
+    <button id="settings-toggle-button" disabled>設定</button>
   </div>
+</div>
+<div id="settings-panel">
+  <h2>設定</h2>
+  <h3>LLM profiles / bindings (project.yaml)</h3>
+  <textarea id="project-settings-yaml" rows="14"></textarea>
+  <button id="project-settings-save">保存</button>
+  <h3>モデル価格 (pricing.yaml)</h3>
+  <textarea id="pricing-settings-yaml" rows="10"></textarea>
+  <button id="pricing-settings-save">保存</button>
+  <p id="settings-message"></p>
 </div>
 <div class="intervention-panel">
   <h3>介入</h3>
@@ -205,9 +223,17 @@ const gmTimelineEl = document.getElementById("gm-timeline");
 const gmTurnInput = document.getElementById("gm-turn-input");
 const gmTurnButton = document.getElementById("gm-turn-button");
 const gmTurnDetailEl = document.getElementById("gm-turn-detail");
+const settingsToggleButton = document.getElementById("settings-toggle-button");
+const settingsPanelEl = document.getElementById("settings-panel");
+const projectSettingsYaml = document.getElementById("project-settings-yaml");
+const pricingSettingsYaml = document.getElementById("pricing-settings-yaml");
+const projectSettingsSave = document.getElementById("project-settings-save");
+const pricingSettingsSave = document.getElementById("pricing-settings-save");
+const settingsMessage = document.getElementById("settings-message");
 
 let pollHandle = null;
 let gmOpen = false;
+let settingsOpen = false;
 
 function currentProject() {
   return select.value;
@@ -440,6 +466,42 @@ async function loadGm() {
   renderGmTimeline(await timelineRes.json());
 }
 
+async function loadSettings() {
+  const name = currentProject();
+  if (!name || !settingsOpen) return;
+  const [projectRes, pricingRes] = await Promise.all([
+    fetch(`/api/project/${encodeURIComponent(name)}/settings/project.yaml`),
+    fetch(`/api/project/${encodeURIComponent(name)}/settings/pricing.yaml`),
+  ]);
+  if (!projectRes.ok || !pricingRes.ok) {
+    const failed = !projectRes.ok ? projectRes : pricingRes;
+    const detail = await failed.json();
+    settingsMessage.className = "settings-error";
+    settingsMessage.textContent = detail.detail || "設定の読込みに失敗しました";
+    return;
+  }
+  projectSettingsYaml.value = (await projectRes.json()).yaml;
+  pricingSettingsYaml.value = (await pricingRes.json()).yaml;
+  settingsMessage.textContent = "";
+}
+
+async function saveSettings(filename, textarea) {
+  const name = currentProject();
+  if (!name) return;
+  const res = await fetch(
+    `/api/project/${encodeURIComponent(name)}/settings/${encodeURIComponent(filename)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ yaml: textarea.value }),
+    }
+  );
+  const data = await res.json();
+  settingsMessage.className = res.ok ? "settings-success" : "settings-error";
+  settingsMessage.textContent = res.ok ? `${filename}を保存しました` : data.detail;
+  if (res.ok) textarea.value = data.yaml;
+}
+
 async function loadProjects() {
   const res = await fetch("/api/projects");
   const projects = await res.json();
@@ -454,6 +516,7 @@ async function loadProjects() {
   turnButton.disabled = !hasProjects;
   autoButton.disabled = !hasProjects;
   gmToggleButton.disabled = !hasProjects;
+  settingsToggleButton.disabled = !hasProjects;
   if (hasProjects) await refresh();
 }
 
@@ -529,6 +592,19 @@ async function poll() {
 }
 
 select.addEventListener("change", refresh);
+
+settingsToggleButton.addEventListener("click", async () => {
+  settingsOpen = !settingsOpen;
+  settingsPanelEl.classList.toggle("open", settingsOpen);
+  if (settingsOpen) await loadSettings();
+});
+
+projectSettingsSave.addEventListener("click", () =>
+  saveSettings("project.yaml", projectSettingsYaml)
+);
+pricingSettingsSave.addEventListener("click", () =>
+  saveSettings("pricing.yaml", pricingSettingsYaml)
+);
 
 turnButton.addEventListener("click", async () => {
   const name = currentProject();

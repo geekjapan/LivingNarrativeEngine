@@ -6,6 +6,7 @@ Keeping it import-light means it can be unit tested even in environments without
 ``web`` extra installed — only ``web.app``/``web.server`` need FastAPI/uvicorn.
 """
 
+import os
 import re
 import threading
 from dataclasses import dataclass, field
@@ -13,16 +14,17 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import TypeAdapter, ValidationError
 
 from living_narrative.cli._common import read_narration_body
 from living_narrative.intervention.history import load_history
-from living_narrative.llm.costs import ProjectCostSummary, collect_project_costs
+from living_narrative.llm.costs import ModelPricing, ProjectCostSummary, collect_project_costs
 from living_narrative.pipeline import TurnPipeline, TurnRunResult, TurnStatus
 from living_narrative.pipeline.turn_numbering import read_turn_status, turn_dir_path
 from living_narrative.session.mode import MODE_PERMISSIONS
 from living_narrative.session.resume import restore_resume_state
 from living_narrative.session.review import ReviewDecision, ReviewResult, resolve_review
-from living_narrative.state.models import Event, SceneStatus, ThreatTrack, UserMode
+from living_narrative.state.models import Event, ProjectConfig, SceneStatus, ThreatTrack, UserMode
 from living_narrative.state.store import StateStore
 from living_narrative.workspace.loader import load_project
 
@@ -34,6 +36,7 @@ __all__ = [
     "NoPendingReviewError",
     "PermissionsInfo",
     "ProjectNotFoundError",
+    "SettingsValidationError",
     "ReviewInfo",
     "RunStatus",
     "TurnNarration",
@@ -48,6 +51,7 @@ __all__ = [
     "get_permissions",
     "get_review_status",
     "get_run_status",
+    "get_settings_yaml",
     "get_status",
     "list_projects",
     "request_stop",
@@ -55,9 +59,13 @@ __all__ = [
     "run_turn",
     "start_auto_run",
     "submit_review",
+    "update_settings_yaml",
 ]
 
 _LIVE_TURN_DIR_RE = re.compile(r"^turn_(\d+)$")
+_SETTINGS_FILES = {"project.yaml", "pricing.yaml"}
+_PROJECT_SETTINGS_KEYS = {"llm_profiles", "llm_bindings"}
+_PRICING_ADAPTER = TypeAdapter(dict[str, ModelPricing])
 
 
 class ProjectNotFoundError(Exception):
@@ -70,6 +78,96 @@ class AutoRunAlreadyRunningError(Exception):
 
 class NoPendingReviewError(Exception):
     """A review decision was submitted but no turn is pending review for this project."""
+
+
+class SettingsValidationError(ValueError):
+    """Settings YAML was unsafe, malformed, or failed its canonical schema validation."""
+
+
+def _settings_path(project_yaml: Path, filename: str) -> Path:
+    if filename not in _SETTINGS_FILES:
+        raise SettingsValidationError(
+            f"unsupported settings file {filename!r}; expected project.yaml or pricing.yaml"
+        )
+    candidate = project_yaml.parent / filename
+    if candidate.parent.resolve() != project_yaml.parent.resolve():
+        raise SettingsValidationError("settings file must stay inside the project root")
+    return candidate
+
+
+def _parse_settings_yaml(text: str) -> dict[str, Any]:
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise SettingsValidationError(f"invalid YAML: {exc}") from exc
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise SettingsValidationError("settings YAML root must be a mapping")
+    return raw
+
+
+def _atomic_settings_write(path: Path, data: dict[str, Any]) -> None:
+    tmp = path.with_suffix(f"{path.suffix}.tmp")
+    try:
+        tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def get_settings_yaml(project_yaml: Path, filename: str) -> str:
+    """Return editable YAML for one of the two fixed settings files."""
+    path = _settings_path(project_yaml, filename)
+    if filename == "pricing.yaml":
+        raw = _parse_settings_yaml(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        try:
+            validated = _PRICING_ADAPTER.validate_python(raw)
+        except ValidationError as exc:
+            raise SettingsValidationError(f"invalid pricing.yaml: {exc}") from exc
+        data = {name: price.model_dump(mode="python") for name, price in validated.items()}
+    else:
+        raw = _parse_settings_yaml(path.read_text(encoding="utf-8"))
+        try:
+            config = ProjectConfig.model_validate(raw)
+        except ValidationError as exc:
+            raise SettingsValidationError(f"invalid project.yaml: {exc}") from exc
+        data = {
+            "llm_profiles": {
+                name: profile.model_dump(mode="python", exclude_none=True)
+                for name, profile in config.llm_profiles.items()
+            },
+            "llm_bindings": config.llm_bindings,
+        }
+    return yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
+
+
+def update_settings_yaml(project_yaml: Path, filename: str, text: str) -> str:
+    """Validate then atomically replace one fixed settings file, leaving failures untouched."""
+    path = _settings_path(project_yaml, filename)
+    submitted = _parse_settings_yaml(text)
+    if filename == "pricing.yaml":
+        try:
+            validated = _PRICING_ADAPTER.validate_python(submitted)
+        except ValidationError as exc:
+            raise SettingsValidationError(f"invalid pricing.yaml: {exc}") from exc
+        data = {name: price.model_dump(mode="python") for name, price in validated.items()}
+    else:
+        unexpected = set(submitted) - _PROJECT_SETTINGS_KEYS
+        if unexpected:
+            raise SettingsValidationError(
+                "project settings may only contain llm_profiles and llm_bindings; "
+                f"unexpected keys: {sorted(unexpected)}"
+            )
+        current = _parse_settings_yaml(path.read_text(encoding="utf-8"))
+        merged = {**current, **submitted}
+        try:
+            ProjectConfig.model_validate(merged)
+        except ValidationError as exc:
+            raise SettingsValidationError(f"invalid project settings: {exc}") from exc
+        data = merged
+    _atomic_settings_write(path, data)
+    return get_settings_yaml(project_yaml, filename)
 
 
 def resolve_project_dir(root: Path, name: str) -> Path:
