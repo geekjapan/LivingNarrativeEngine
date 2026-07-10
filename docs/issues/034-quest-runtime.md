@@ -16,6 +16,7 @@ created: 2026-07-11
 1. `quest_NNN`形式のid、title、`open | advanced | resolved | failed`のstatus、objectives、related_event_idsを持つPydantic v2 `Quest`モデルを追加する。
 2. `quests.yaml`を任意状態ファイルとして読み書きし、ファイルがない既存projectは空コレクションとして扱う。schema exportとmist_stationにも実値1件を追加する。
 3. character/narrator出力にdefault空の`quest_updates`を追加し、open/advance/resolveを`StateDiff`へ変換する。未知quest、不正遷移、不正idは理由付きrejectとし、状態を直接mutationしない。
+   reader可視questのopenはnarratorのみとし、characterの私的目標は`CharacterState.goals`で扱う。GM介入によるopenはE7/038で検討する。
 4. 未完了questを、既存open threadと同様にcharacter/narratorのreader-safe文脈へ供給する。GM専用情報は混入させない。
 5. Questの遷移、永続化、文脈供給、拒否経路を回帰テストで固定する。
 

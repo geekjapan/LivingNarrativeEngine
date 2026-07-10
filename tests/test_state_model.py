@@ -24,6 +24,7 @@ from living_narrative.state.models import (
     HiddenFact,
     InventoryItem,
     MemorySummary,
+    Quest,
     RelationshipState,
     SceneState,
     SceneStatus,
@@ -832,6 +833,41 @@ def test_schema_export_includes_inventory_item(tmp_path):
         (tmp_path / "schemas" / "InventoryItem.schema.yaml").read_text(encoding="utf-8")
     )
     assert schema["required"] == ["id", "name", "qty"]
+
+
+def test_quest_model_accepts_documented_statuses_and_rejects_bad_id():
+    for status in ("open", "advanced", "resolved", "failed"):
+        assert Quest(id="quest_001", title="出口を探す", status=status).status == status
+    with pytest.raises(ValidationError, match="expected quest"):
+        Quest(id="bad", title="出口を探す", status="open")
+
+
+def test_quest_optional_load_and_save_round_trip(tmp_path):
+    state_dir = tmp_path / "state"
+    StateStore.save(bundle(), state_dir)
+    (state_dir / "quests.yaml").unlink()
+    assert StateStore.load(state_dir).quests == []
+
+    loaded = StateStore.load(state_dir)
+    loaded.quests = [
+        Quest(
+            id="quest_001",
+            title="出口を探す",
+            status="advanced",
+            objectives=["案内図を確認する"],
+        )
+    ]
+    StateStore.save(loaded, state_dir)
+    assert StateStore.load(state_dir).quests == loaded.quests
+
+
+def test_schema_export_includes_quest(tmp_path):
+    export_state_schemas(tmp_path / "schemas")
+
+    schema = yaml.safe_load(
+        (tmp_path / "schemas" / "Quest.schema.yaml").read_text(encoding="utf-8")
+    )
+    assert schema["required"] == ["id", "title", "status"]
 
 
 def test_visual_profiles_are_explicit_and_character_profile_is_optional():

@@ -34,6 +34,7 @@ def test_mist_station_state_is_schema_valid(tmp_path):
     assert len(bundle.factions) == 1
     assert len(bundle.gm_vault) == 3
     assert len(bundle.scenes) == 2
+    assert [quest.id for quest in bundle.quests] == ["quest_001"]
     rina = next(character for character in bundle.characters if character.id == "char_001")
     assert rina.visual_profile is not None
     assert rina.visual_profile.hair == "艶のある黒髪のボブ"

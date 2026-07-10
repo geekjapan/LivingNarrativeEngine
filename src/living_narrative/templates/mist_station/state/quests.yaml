@@ -1,0 +1,7 @@
+- id: quest_001
+  title: 霧の駅から脱出する
+  status: open
+  objectives:
+    - 駅を覆う霧の正体を突き止める
+    - 安全な出口を確保する
+  related_event_ids: []

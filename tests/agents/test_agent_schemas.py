@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from living_narrative.agents.models import (
     ActionCandidate,
     CharacterAgentOutput,
+    CharacterQuestUpdateCandidate,
     ConflictResolverOutput,
     InventoryUpdateCandidate,
     RelationshipUpdateCandidate,
@@ -38,12 +39,30 @@ def test_character_agent_output_defaults_relationship_updates_to_empty_list():
 
     assert output.relationship_updates == []
     assert output.inventory_updates == []
+    assert output.quest_updates == []
 
 
 def test_inventory_update_candidate_round_trips():
     candidate = InventoryUpdateCandidate(action="gain", name="古い鍵", qty=2)
 
     assert InventoryUpdateCandidate.model_validate_json(candidate.model_dump_json()) == candidate
+
+
+def test_character_quest_update_type_allows_only_advance_and_resolve():
+    assert CharacterQuestUpdateCandidate(action="advance", quest_id="quest_001").action == "advance"
+    with pytest.raises(ValidationError):
+        CharacterQuestUpdateCandidate.model_validate(
+            {
+                "action": "open",
+                "quest_id": "quest_001",
+                "title": "私的目標",
+                "objectives": ["秘密を守る"],
+            }
+        )
+    with pytest.raises(ValidationError):
+        CharacterQuestUpdateCandidate.model_validate(
+            {"action": "advance", "quest_id": "quest_001", "title": "漏洩候補"}
+        )
 
 
 @pytest.mark.parametrize(

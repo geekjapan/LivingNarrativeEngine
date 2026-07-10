@@ -9,6 +9,7 @@ from living_narrative.llm.errors import ProviderConnectionError, StructuredOutpu
 from living_narrative.narration.models import (
     NarrationResult,
     NarratorContext,
+    NarratorQuestUpdateCandidate,
     ThreadUpdateCandidate,
 )
 from living_narrative.narration.narrator import narrate
@@ -48,6 +49,10 @@ note に進展の要約を日本語で書く。
 優先して検討する。
 - 進展も決着もない糸は thread_updates に含めない。無理に埋めない。
 
+## クエスト(明示的目標)
+- open_quests は明示的な目標と達成条件であり、伏線を扱う open_threads とは区別する。
+- 実際に開始・進展・達成した場合だけ quest_updates に open/advance/resolve を出す。
+
 ## 通史要約(長期記憶)
 - summary_request が渡されたターンだけ、memory_summary_update に3〜5文の日本語で通史要約を書く。\
 summary_request.previous_summary(あれば)を引き継ぎ、summary_request.window_events \
@@ -60,6 +65,7 @@ summary_request.previous_summary(あれば)を引き継ぎ、summary_request.win
 - scene_summary_update フィールドに、このターン終了時点での場面の現在状況を日本語1〜2文で書く\
 (このターンで何が変わったかを含める)。reader可視情報だけを根拠にする。
 - thread_updates フィールドに、上記の糸の更新をリストで入れる(0件でもよい)。
+- quest_updates フィールドに、上記のクエスト更新をリストで入れる(0件でもよい)。
 - memory_summary_update フィールドは、summary_request が渡されたときだけ書く。それ以外は null。
 """
 
@@ -68,6 +74,7 @@ class LLMNarratorOutput(BaseModel):
     prose: str = Field(min_length=1)
     scene_summary_update: str | None = None
     thread_updates: list[ThreadUpdateCandidate] = Field(default_factory=list)
+    quest_updates: list[NarratorQuestUpdateCandidate] = Field(default_factory=list)
     memory_summary_update: str | None = None
 
 
@@ -95,6 +102,7 @@ def _narrator_payload(
             }
             for thread in context.open_threads
         ],
+        "open_quests": [quest.model_dump(mode="json") for quest in context.open_quests],
         "memory_summary": context.memory_summary,
     }
     # 015: summary_request is only present on turns where a memory summary is due — its
@@ -158,6 +166,7 @@ def run_narrate_phase(
         style="novel",
         scene_summary_update=summary_update or None,
         thread_updates=output.thread_updates,
+        quest_updates=output.quest_updates,
         memory_summary_update=memory_summary_update or None,
     )
     return result, {

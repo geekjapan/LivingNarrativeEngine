@@ -1,11 +1,12 @@
 """State Manager BuildDiff slot implementation."""
 
+import re
 from collections.abc import Callable
 from typing import Any
 
-from living_narrative.agents.models import CharacterAgentOutput
+from living_narrative.agents.models import CharacterAgentOutput, CharacterQuestUpdateCandidate
 from living_narrative.intervention.reveal import must_not_reveal_texts, reveal_now_sources
-from living_narrative.narration.models import ThreadUpdateCandidate
+from living_narrative.narration.models import NarratorQuestUpdateCandidate, ThreadUpdateCandidate
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import BuildDiffOutput, RejectedChange
 from living_narrative.state.diff import StateDiff, StateDiffChange
@@ -43,6 +44,7 @@ def build_state_diff(
     character_outputs: list[tuple[CharacterId, CharacterAgentOutput]] | None = None,
     scene_summary_update: str | None = None,
     thread_updates: list[ThreadUpdateCandidate] | None = None,
+    narrator_quest_updates: list[NarratorQuestUpdateCandidate] | None = None,
     memory_summary_update: str | None = None,
 ) -> BuildDiffOutput:
     allocate_event_id = allocate_event_id or _default_event_id_allocator()
@@ -95,6 +97,18 @@ def build_state_diff(
         output_changes, output_rejected = _character_output_changes(context, character_id, output)
         changes.extend(output_changes)
         rejected.extend(output_rejected)
+
+    character_quest_updates = [
+        update for _, output in character_outputs or [] for update in output.quest_updates
+    ]
+    quest_changes, quest_rejected = _quest_update_changes(
+        context,
+        character_quest_updates,
+        narrator_quest_updates or [],
+        resolved_events,
+    )
+    changes.extend(quest_changes)
+    rejected.extend(quest_rejected)
 
     # 010: ベースライン減衰(エンジン側・決定論)。rate 0 またはbaseline未定義ならno-op。
     changes.extend(_emotion_decay_changes(context))
@@ -383,6 +397,107 @@ def _inventory_update_changes(
                     visibility=Visibility.CHARACTER,
                 )
             )
+    return changes, rejected
+
+
+def _quest_update_changes(
+    context: TurnContext,
+    character_updates: list[CharacterQuestUpdateCandidate],
+    narrator_updates: list[NarratorQuestUpdateCandidate],
+    resolved_events: list[Event],
+) -> tuple[list[StateDiffChange], list[RejectedChange]]:
+    """Convert explicit quest proposals to validated, reader-visible diffs."""
+    projected_status = {quest.id: quest.status for quest in context.bundle.quests}
+    projected_related = {quest.id: set(quest.related_event_ids) for quest in context.bundle.quests}
+    related_event_ids = [
+        event.id for event in resolved_events if event.visibility == Visibility.READER
+    ]
+    changes: list[StateDiffChange] = []
+    rejected: list[RejectedChange] = []
+
+    sourced_updates = [
+        *(("character", update) for update in character_updates),
+        *(("narrator", update) for update in narrator_updates),
+    ]
+    for source, update in sourced_updates:
+        stub = StateDiffChange(
+            target="quests",
+            id=update.quest_id,
+            op="add" if update.action == "open" else "set",
+            path="" if update.action == "open" else "status",
+            value=update.model_dump(mode="json"),
+            visibility=Visibility.READER,
+        )
+        if not re.fullmatch(r"quest_\d{3,}", update.quest_id):
+            rejected.append(_reject(stub, f"invalid quest_id: {update.quest_id!r}"))
+            continue
+
+        if source == "character" and update.action == "open":
+            rejected.append(_reject(stub, "character cannot open reader-visible quest"))
+            continue
+
+        if update.action == "open":
+            if update.quest_id in projected_status:
+                rejected.append(_reject(stub, f"duplicate quest_id: {update.quest_id}"))
+                continue
+            if not update.title or not update.title.strip():
+                rejected.append(_reject(stub, "open quest update missing title"))
+                continue
+            changes.append(
+                StateDiffChange(
+                    target="quests",
+                    op="add",
+                    path="",
+                    value={
+                        "id": update.quest_id,
+                        "title": update.title,
+                        "status": "open",
+                        "objectives": update.objectives,
+                        "related_event_ids": related_event_ids,
+                    },
+                    visibility=Visibility.READER,
+                )
+            )
+            projected_status[update.quest_id] = "open"
+            projected_related[update.quest_id] = set(related_event_ids)
+            continue
+
+        status = projected_status.get(update.quest_id)
+        if status is None:
+            rejected.append(_reject(stub, f"unknown quest_id: {update.quest_id!r}"))
+            continue
+        if status in {"resolved", "failed"}:
+            rejected.append(
+                _reject(stub, f"quest cannot transition from {status}: {update.quest_id}")
+            )
+            continue
+
+        next_status = "advanced" if update.action == "advance" else "resolved"
+        changes.append(
+            StateDiffChange(
+                target="quests",
+                id=update.quest_id,
+                op="set",
+                path="status",
+                value=next_status,
+                visibility=Visibility.READER,
+            )
+        )
+        for event_id in related_event_ids:
+            if event_id not in projected_related[update.quest_id]:
+                changes.append(
+                    StateDiffChange(
+                        target="quests",
+                        id=update.quest_id,
+                        op="add",
+                        path="related_event_ids",
+                        value=event_id,
+                        visibility=Visibility.READER,
+                    )
+                )
+                projected_related[update.quest_id].add(event_id)
+        projected_status[update.quest_id] = next_status
+
     return changes, rejected
 
 

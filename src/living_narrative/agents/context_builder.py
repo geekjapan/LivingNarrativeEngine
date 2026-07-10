@@ -8,6 +8,7 @@ from living_narrative.agents.models import CharacterAgentInput
 from living_narrative.state.models import (
     CharacterId,
     Event,
+    OpenQuestInfo,
     SceneStatus,
     Visibility,
     WorldStateBundle,
@@ -74,6 +75,16 @@ def build_character_context(
         ],
         relationships=relationships,
         directives=character_directives,
+        open_quests=[
+            OpenQuestInfo(
+                id=quest.id,
+                title=quest.title,
+                status=quest.status,
+                objectives=list(quest.objectives),
+            )
+            for quest in bundle.quests
+            if quest.status in {"open", "advanced"}
+        ],
     )
 
 

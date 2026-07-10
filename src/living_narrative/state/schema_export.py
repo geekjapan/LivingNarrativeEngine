@@ -24,6 +24,7 @@ SCHEMA_MODELS = [
     models.GmVaultEntry,
     models.TimelineEntry,
     models.UnresolvedThread,
+    models.Quest,
     models.Event,
     models.WorldStateBundle,
 ]

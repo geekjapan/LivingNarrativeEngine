@@ -2,13 +2,14 @@ import pytest
 
 from living_narrative.agents.models import (
     CharacterAgentOutput,
+    CharacterQuestUpdateCandidate,
     EmotionDeltaCandidate,
     GoalUpdateCandidate,
     InventoryUpdateCandidate,
     RelationshipUpdateCandidate,
 )
 from living_narrative.agents.state_manager import build_state_diff
-from living_narrative.narration.models import ThreadUpdateCandidate
+from living_narrative.narration.models import NarratorQuestUpdateCandidate, ThreadUpdateCandidate
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.random.engine import RandomEngine
 from living_narrative.state.diff import apply_state_diff
@@ -19,6 +20,7 @@ from living_narrative.state.models import (
     GmVaultEntry,
     LLMConfig,
     ProjectConfig,
+    Quest,
     ReaderStateEntry,
     RelationshipState,
     SceneState,
@@ -52,6 +54,7 @@ def _context(
     relationships=None,
     unresolved_threads=None,
     factions=None,
+    quests=None,
 ) -> TurnContext:
     project = ProjectConfig(
         id="p",
@@ -82,8 +85,114 @@ def _context(
         factions=factions or [],
         relationships=relationships or [],
         unresolved_threads=unresolved_threads or [],
+        quests=quests or [],
     )
     return TurnContext(1, project, None, bundle, RandomEngine("seed"))
+
+
+def _empty_character_output(*, quest_updates=None):
+    return CharacterAgentOutput(
+        action_candidates=[],
+        emotion_deltas=[],
+        goal_updates=[],
+        quest_updates=quest_updates or [],
+    )
+
+
+def test_character_quest_advance_resolve_apply_only_to_existing_quest_through_diff():
+    context = _context(quests=[Quest(id="quest_001", title="出口を探す", status="open")])
+    output = _empty_character_output(
+        quest_updates=[
+            CharacterQuestUpdateCandidate(action="advance", quest_id="quest_001"),
+            CharacterQuestUpdateCandidate(action="resolve", quest_id="quest_001"),
+        ]
+    )
+
+    result = build_state_diff(context, [], [], character_outputs=[("char_001", output)])
+
+    assert context.bundle.quests[0].status == "open"
+    applied = apply_state_diff(context.bundle, result.diff).bundle
+    assert applied.quests[0].status == "resolved"
+
+
+def test_narrator_can_open_reader_visible_quest():
+    update = NarratorQuestUpdateCandidate(
+        action="open",
+        quest_id="quest_001",
+        title="出口を探す",
+        objectives=["案内図を確認する"],
+    )
+
+    result = build_state_diff(_context(), [], [], narrator_quest_updates=[update])
+    applied = apply_state_diff(_context().bundle, result.diff).bundle
+
+    assert applied.quests[0].title == "出口を探す"
+    assert applied.quests[0].objectives == ["案内図を確認する"]
+
+
+def test_character_open_is_defensively_rejected_with_reason():
+    update = CharacterQuestUpdateCandidate.model_construct(
+        action="open",
+        quest_id="quest_001",
+        title="私だけが知る目標",
+        objectives=["秘密を守る"],
+    )
+    output = _empty_character_output(quest_updates=[update])
+
+    result = build_state_diff(_context(), [], [], character_outputs=[("char_001", output)])
+
+    assert not result.diff.changes
+    assert result.rejected_changes[0].reason == "character cannot open reader-visible quest"
+
+
+def test_quest_related_event_ids_include_only_reader_events():
+    events = [
+        Event(id="event_0001", turn=1, type="x", text="reader", visibility="reader"),
+        Event(id="event_0002", turn=1, type="x", text="canon", visibility="canon"),
+        Event(id="event_0003", turn=1, type="x", text="scene", visibility="scene"),
+        Event(id="event_0004", turn=1, type="x", text="character", visibility="character"),
+        Event(id="event_0005", turn=1, type="x", text="gm", visibility="gm_only"),
+    ]
+    update = NarratorQuestUpdateCandidate(action="open", quest_id="quest_001", title="公開目標")
+
+    result = build_state_diff(_context(), events, [], narrator_quest_updates=[update])
+    applied = apply_state_diff(_context().bundle, result.diff).bundle
+
+    assert applied.quests[0].related_event_ids == ["event_0001"]
+
+
+@pytest.mark.parametrize("status", ["resolved", "failed"])
+def test_quest_terminal_status_rejects_transition_with_reason(status):
+    context = _context(quests=[Quest(id="quest_001", title="出口を探す", status=status)])
+    update = NarratorQuestUpdateCandidate(action="advance", quest_id="quest_001")
+
+    result = build_state_diff(context, [], [], narrator_quest_updates=[update])
+
+    assert not result.diff.changes
+    assert status in result.rejected_changes[0].reason
+
+
+@pytest.mark.parametrize(
+    ("update", "reason"),
+    [
+        (NarratorQuestUpdateCandidate(action="resolve", quest_id="quest_999"), "unknown"),
+        (
+            NarratorQuestUpdateCandidate(action="open", quest_id="quest_001", title="重複"),
+            "duplicate",
+        ),
+        (
+            NarratorQuestUpdateCandidate(action="open", quest_id="bad", title="不正"),
+            "invalid",
+        ),
+    ],
+)
+def test_invalid_quest_updates_are_rejected_with_reason(update, reason):
+    context = _context(quests=[Quest(id="quest_001", title="出口を探す", status="open")])
+
+    result = build_state_diff(context, [], [], narrator_quest_updates=[update])
+
+    assert not result.diff.changes
+    assert reason in result.rejected_changes[0].reason
 
 
 def test_resolved_death_event_generates_status_dead_diff():

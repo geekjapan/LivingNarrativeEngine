@@ -10,6 +10,7 @@ from living_narrative.state.models import (
     CharacterId,
     CharacterState,
     Event,
+    OpenQuestInfo,
     RelationshipState,
     Visibility,
 )
@@ -22,6 +23,7 @@ class CharacterAgentInput(BaseModel):
     visible_facts: list[str] = Field(default_factory=list)
     relationships: list[RelationshipState] = Field(default_factory=list)
     directives: list[dict[str, Any]] = Field(default_factory=list)
+    open_quests: list[OpenQuestInfo] = Field(default_factory=list)
 
 
 class ActionCandidate(BaseModel):
@@ -77,6 +79,15 @@ class InventoryUpdateCandidate(BaseModel):
         return self
 
 
+class CharacterQuestUpdateCandidate(BaseModel):
+    """A character may only progress an already reader-visible quest."""
+
+    model_config = {"extra": "forbid"}
+
+    action: Literal["advance", "resolve"]
+    quest_id: str
+
+
 class CharacterAgentOutput(BaseModel):
     action_candidates: list[ActionCandidate]
     emotion_deltas: list[EmotionDeltaCandidate]
@@ -86,6 +97,7 @@ class CharacterAgentOutput(BaseModel):
     # CharacterAgentOutput constructions back-compat.
     relationship_updates: list[RelationshipUpdateCandidate] = Field(default_factory=list)
     inventory_updates: list[InventoryUpdateCandidate] = Field(default_factory=list)
+    quest_updates: list[CharacterQuestUpdateCandidate] = Field(default_factory=list)
 
 
 class ParameterDriftCandidate(BaseModel):

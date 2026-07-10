@@ -15,6 +15,7 @@ from living_narrative.state.models import (
     CanonEntry,
     GmVaultEntry,
     MemorySummary,
+    Quest,
     ReaderStateEntry,
     TimelineEntry,
     UnresolvedThread,
@@ -36,9 +37,18 @@ Target = Literal[
     "timeline",
     "threads",
     "memory",
+    "quests",
 ]
 Op = Literal["add", "remove", "set", "delta"]
-COLLECTION_TARGETS = {"canon", "reader_state", "gm_vault", "timeline", "threads", "memory"}
+COLLECTION_TARGETS = {
+    "canon",
+    "reader_state",
+    "gm_vault",
+    "timeline",
+    "threads",
+    "memory",
+    "quests",
+}
 # 014/015: "threads"/"memory" are the diff-target names for the bundle's `unresolved_threads`/
 # `memory_summaries` collections (kept short/stable in diff artifacts; the attribute names are
 # the longer bundle field names).
@@ -46,6 +56,7 @@ _TARGET_ATTR = {
     "faction": "factions",
     "threads": "unresolved_threads",
     "memory": "memory_summaries",
+    "quests": "quests",
 }
 
 
@@ -327,6 +338,7 @@ def _model_for_target(target: str) -> type[BaseModel]:
         "timeline": TimelineEntry,
         "threads": UnresolvedThread,
         "memory": MemorySummary,
+        "quests": Quest,
     }[target]
 
 

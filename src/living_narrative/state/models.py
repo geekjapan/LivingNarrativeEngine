@@ -39,6 +39,7 @@ GmVaultId = id_type("gm_vault")
 EventId = id_type("event")
 RollId = id_type("roll")
 ThreadId = id_type("thread")
+QuestId = id_type("quest")
 FactId = id_type("fact")
 ThreatId = id_type("threat")
 MemoryId = id_type("memory")
@@ -424,6 +425,25 @@ class UnresolvedThread(StateBaseModel):
     opened_turn: int | None = None
 
 
+class Quest(StateBaseModel):
+    """A reader-safe explicit goal and its completion conditions."""
+
+    id: QuestId
+    title: str = Field(min_length=1)
+    status: Literal["open", "advanced", "resolved", "failed"]
+    objectives: list[str] = Field(default_factory=list)
+    related_event_ids: list[EventId] = Field(default_factory=list)
+
+
+class OpenQuestInfo(BaseModel):
+    """Reader-safe view of an unfinished quest supplied to agents."""
+
+    id: QuestId
+    title: str
+    status: Literal["open", "advanced"]
+    objectives: list[str] = Field(default_factory=list)
+
+
 class MemorySummary(StateBaseModel):
     """Issue 015: a narrator-written 通史要約 covering reader-visible history up to a turn."""
 
@@ -477,5 +497,6 @@ class WorldStateBundle(StateBaseModel):
     gm_vault: list[GmVaultEntry] = Field(default_factory=list)
     timeline: list[TimelineEntry] = Field(default_factory=list)
     unresolved_threads: list[UnresolvedThread] = Field(default_factory=list)
+    quests: list[Quest] = Field(default_factory=list)
     memory_summaries: list[MemorySummary] = Field(default_factory=list)
     visual_profiles: VisualProfilesState = Field(default_factory=VisualProfilesState)

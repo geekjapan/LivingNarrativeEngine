@@ -5,6 +5,7 @@ from living_narrative.state.models import (
     GmVaultEntry,
     HiddenFact,
     MemorySummary,
+    Quest,
     RelationshipState,
     SceneState,
     SceneStatus,
@@ -59,6 +60,15 @@ def _bundle() -> WorldStateBundle:
                 ],
             )
         ],
+        quests=[
+            Quest(
+                id="quest_001",
+                title="出口を探す",
+                status="advanced",
+                objectives=["案内図を確認する"],
+            ),
+            Quest(id="quest_002", title="完了済み", status="resolved"),
+        ],
         relationships=[
             RelationshipState(
                 **{
@@ -73,6 +83,19 @@ def _bundle() -> WorldStateBundle:
         ],
         gm_vault=[GmVaultEntry(id="gm_vault_001", text="GM hidden truth")],
     )
+
+
+def test_character_context_contains_only_unfinished_reader_safe_quests():
+    context = build_character_context(_bundle(), "char_001")
+
+    assert [quest.model_dump(mode="json") for quest in context.open_quests] == [
+        {
+            "id": "quest_001",
+            "title": "出口を探す",
+            "status": "advanced",
+            "objectives": ["案内図を確認する"],
+        }
+    ]
 
 
 def test_character_context_excludes_other_private_mind():

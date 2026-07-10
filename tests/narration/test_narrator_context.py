@@ -14,6 +14,39 @@ def _write_unresolved_threads(project_path, threads: list[dict]) -> None:
     )
 
 
+def _write_quests(project_path, quests: list[dict]) -> None:
+    state_dir = project_path.parent / "workspace" / "state"
+    (state_dir / "quests.yaml").write_text(
+        yaml.safe_dump(quests, allow_unicode=True), encoding="utf-8"
+    )
+
+
+def test_narrator_context_contains_only_unfinished_reader_safe_quests(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _write_quests(
+        project_path,
+        [
+            {
+                "id": "quest_001",
+                "title": "出口を探す",
+                "status": "open",
+                "objectives": ["案内図を確認する"],
+            },
+            {"id": "quest_002", "title": "完了済み", "status": "resolved"},
+        ],
+    )
+    result = build_narrator_context(_context(project_path, []), [])
+
+    assert [quest.model_dump(mode="json") for quest in result.open_quests] == [
+        {
+            "id": "quest_001",
+            "title": "出口を探す",
+            "status": "open",
+            "objectives": ["案内図を確認する"],
+        }
+    ]
+
+
 def _write_memory_summaries(project_path, summaries: list[dict]) -> None:
     state_dir = project_path.parent / "workspace" / "state"
     (state_dir / "memory_summaries.yaml").write_text(

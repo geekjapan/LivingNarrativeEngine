@@ -5,7 +5,13 @@ from typing import Any
 from living_narrative.intervention.reveal import must_not_reveal_texts
 from living_narrative.narration.models import NarratorContext, OpenThreadInfo
 from living_narrative.pipeline.context import TurnContext
-from living_narrative.state.models import Event, SceneStatus, Visibility, latest_memory_summary
+from living_narrative.state.models import (
+    Event,
+    OpenQuestInfo,
+    SceneStatus,
+    Visibility,
+    latest_memory_summary,
+)
 
 _READER_VISIBLE = (Visibility.READER, Visibility.CANON)
 
@@ -42,6 +48,16 @@ def build_narrator_context(
         for thread in context.bundle.unresolved_threads
         if thread.status != "resolved"
     ]
+    open_quests = [
+        OpenQuestInfo(
+            id=quest.id,
+            title=quest.title,
+            status=quest.status,
+            objectives=list(quest.objectives),
+        )
+        for quest in context.bundle.quests
+        if quest.status in {"open", "advanced"}
+    ]
     # 015: memory-summary due-ness and its input window are both derivable from context alone
     # (turn/world.memory_summary_interval/timeline), so nothing extra needs threading through
     # driver.py's build_narrator_context call.
@@ -69,6 +85,7 @@ def build_narrator_context(
         reader_visible_events=reader_visible_events,
         scene_summary=scene_summary,
         open_threads=open_threads,
+        open_quests=open_quests,
         memory_summary=memory_summary,
         memory_summary_due=memory_summary_due,
         summary_window_events=summary_window_events,
