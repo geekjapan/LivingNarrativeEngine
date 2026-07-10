@@ -4,6 +4,7 @@ from pathlib import Path
 
 import typer
 import yaml
+from pydantic import ValidationError
 
 from living_narrative.cli._common import load_project_or_exit, runtime_error, usage_error
 from living_narrative.export_replay import (
@@ -13,6 +14,7 @@ from living_narrative.export_replay import (
     DEFAULT_VN_PROFILE,
     ArcsError,
     ImagePromptError,
+    ImagePromptExport,
     NoReplayableTurnsError,
     NovelDraftParseError,
     ReconstructionError,
@@ -39,6 +41,13 @@ from living_narrative.export_replay import (
     write_vn_script_exports,
 )
 from living_narrative.export_replay.loader import load_turn_records
+from living_narrative.media import (
+    MediaError,
+    create_image_provider,
+    generate_cached_asset,
+    resolve_assets_directory,
+    update_asset_status,
+)
 from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.state.store import StateLoadError, StateStore
 
@@ -154,6 +163,52 @@ def image_prompts(
     yaml_path, markdown_path = write_image_prompt_exports(read.paths.exports, result)
     typer.echo(f"Wrote {yaml_path}")
     typer.echo(f"Wrote {markdown_path}")
+
+
+@app.command("images")
+def images(
+    project: Path = typer.Option(..., "--project", help="Path to project.yaml"),
+    provider: str = typer.Option("mock", "--provider", help="Image provider name"),
+    profile: str = typer.Option("default", "--profile", help="Image provider profile"),
+    accept: str | None = typer.Option(None, "--accept", help="Mark an existing asset accepted"),
+    discard: str | None = typer.Option(None, "--discard", help="Mark an existing asset discarded"),
+) -> None:
+    """image_prompts.yamlからassetを生成、または既存assetの採否を更新する。"""
+    if accept is not None and discard is not None:
+        usage_error("--accept and --discard cannot be used together")
+    read = load_project_or_exit(project)
+    try:
+        assets_dir = resolve_assets_directory(read.paths.exports)
+        if accept is not None or discard is not None:
+            asset_id = accept if accept is not None else discard
+            assert asset_id is not None
+            status = "accepted" if accept is not None else "discarded"
+            entry = update_asset_status(assets_dir, asset_id, status)
+            typer.echo(f"Updated {entry.id}: {entry.status}")
+            return
+
+        prompt_path = read.paths.exports / "image_prompts.yaml"
+        if not prompt_path.is_file() or prompt_path.is_symlink():
+            runtime_error(f"image prompt export not found: {prompt_path}")
+        try:
+            prompt_export = ImagePromptExport.model_validate(
+                yaml.safe_load(prompt_path.read_text(encoding="utf-8"))
+            )
+        except (OSError, yaml.YAMLError, ValidationError) as exc:
+            runtime_error(f"invalid image prompt export {prompt_path}: {exc}")
+        image_provider = create_image_provider(provider)
+        for prompt in prompt_export.prompts:
+            entry = generate_cached_asset(
+                assets_dir,
+                prompt=prompt.english_prompt,
+                provider_name=provider,
+                profile=profile,
+                provider=image_provider,
+            )
+            typer.echo(f"Asset {entry.id}: {entry.path} ({entry.status})")
+        typer.echo(f"Wrote {assets_dir / 'assets.yaml'}")
+    except MediaError as exc:
+        runtime_error(str(exc))
 
 
 @app.command("outline")

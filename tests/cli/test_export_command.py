@@ -225,6 +225,162 @@ def test_export_image_prompts_errors_without_visual_profiles(tmp_path, build_pro
     assert not (exports_dir / "image_prompts.yaml").exists()
 
 
+def test_export_images_generates_cached_manifest_and_updates_status(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    exports_dir = project_path.parent / "workspace" / "exports"
+    exports_dir.mkdir(parents=True, exist_ok=True)
+    (exports_dir / "image_prompts.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "notice": "生成画像の権利・利用条件はproviderに依存します。",
+                "prompts": [
+                    {
+                        "scene_id": "scene_001",
+                        "japanese_description": "夜の駅",
+                        "english_prompt": "A quiet station at night",
+                        "character_appearance_lock": [],
+                        "background_lock": {},
+                        "style_lock": {},
+                    }
+                ],
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    first = runner.invoke(
+        app,
+        [
+            "export",
+            "images",
+            "--project",
+            str(project_path),
+            "--provider",
+            "mock",
+            "--profile",
+            "draft",
+        ],
+    )
+    second = runner.invoke(
+        app,
+        ["export", "images", "--project", str(project_path), "--profile", "draft"],
+    )
+
+    assert first.exit_code == second.exit_code == 0
+    manifest_path = exports_dir / "assets" / "assets.yaml"
+    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    assert len(manifest["assets"]) == 1
+    asset = manifest["assets"][0]
+    assert asset["rights_notice"]
+    assert (exports_dir / "assets" / asset["path"]).exists()
+
+    accepted = runner.invoke(
+        app,
+        ["export", "images", "--project", str(project_path), "--accept", asset["id"]],
+    )
+    assert accepted.exit_code == 0, accepted.output
+    updated = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    assert updated["assets"][0]["status"] == "accepted"
+
+
+def test_export_images_rejects_unknown_asset_conflicting_actions_and_provider(
+    tmp_path, build_project
+):
+    project_path = build_project(tmp_path)
+
+    conflict = runner.invoke(
+        app,
+        [
+            "export",
+            "images",
+            "--project",
+            str(project_path),
+            "--accept",
+            "asset_0123456789abcdef0123456789abcdef",
+            "--discard",
+            "asset_0123456789abcdef0123456789abcdef",
+        ],
+    )
+    unknown = runner.invoke(
+        app,
+        [
+            "export",
+            "images",
+            "--project",
+            str(project_path),
+            "--accept",
+            "asset_0123456789abcdef0123456789abcdef",
+        ],
+    )
+
+    assert conflict.exit_code == 2
+    assert unknown.exit_code == 1
+    assert "unknown asset" in unknown.output
+
+
+def test_export_images_rejects_symlink_assets_directory_without_external_write(
+    tmp_path, build_project
+):
+    project_path = build_project(tmp_path)
+    exports_dir = project_path.parent / "workspace" / "exports"
+    (exports_dir / "image_prompts.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "notice": "生成画像の権利・利用条件はproviderに依存します。",
+                "prompts": [
+                    {
+                        "scene_id": "scene_001",
+                        "japanese_description": "夜の駅",
+                        "english_prompt": "A quiet station at night",
+                        "character_appearance_lock": [],
+                        "background_lock": {},
+                        "style_lock": {},
+                    }
+                ],
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    outside = tmp_path / "outside-assets"
+    outside.mkdir()
+    (exports_dir / "assets").symlink_to(outside, target_is_directory=True)
+
+    result = runner.invoke(app, ["export", "images", "--project", str(project_path)])
+
+    assert result.exit_code == 1
+    assert "must not be a symlink" in result.output
+    assert list(outside.iterdir()) == []
+
+
+def test_export_images_rejects_symlink_manifest_without_external_write(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    assets_dir = project_path.parent / "workspace" / "exports" / "assets"
+    assets_dir.mkdir()
+    outside_manifest = tmp_path / "outside-assets.yaml"
+    original = b"rights_notice: outside\nassets: []\n"
+    outside_manifest.write_bytes(original)
+    (assets_dir / "assets.yaml").symlink_to(outside_manifest)
+
+    result = runner.invoke(
+        app,
+        [
+            "export",
+            "images",
+            "--project",
+            str(project_path),
+            "--accept",
+            "asset_0123456789abcdef0123456789abcdef",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "manifest must not be a symlink" in result.output
+    assert outside_manifest.read_bytes() == original
+    assert not (assets_dir / "files").exists()
+
+
 def test_export_scenes_errors_when_project_not_found(tmp_path):
     output = tmp_path / "does_not_exist" / "project.yaml"
 
