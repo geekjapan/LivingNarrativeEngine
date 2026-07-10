@@ -1,0 +1,31 @@
+id: char_002
+name: 久世レン
+role: 通信解析官
+stats: {体力: 4, 知力: 9, 意志: 6}
+skills: {通信解析: 9, 暗号解読: 8, 医療: 3}
+traits: [皮肉屋, 音に敏感]
+goals:
+  short_term: [謎の音声の送信源を特定する]
+  long_term: [エコー計画の記録を公開する]
+emotions: {好奇心: 75, 恐怖: 35}
+emotions_baseline: {好奇心: 75, 恐怖: 35}
+knowledge:
+  knows: [謎の音声には自分の声紋が含まれている]
+  believes: [閉鎖区画のAIが乗員を模倣している]
+  does_not_know: [船医が地球管制から受けた命令]
+secrets: [受信音声は装置がレンの声紋と予測会話から合成した偽の未来音声であり、未来のレン本人が送信したものではない。]
+private_mind: [装置がなぜ自分の声で三人を誘導するのか、ユイにはまだ言えない]
+inventory:
+  - {id: item_001, name: 携帯スペクトラム解析器, qty: 1}
+constraints: {}
+status: alive
+speech: {first_person: 僕, forbidden_terms: [俺]}
+visual_profile:
+  summary: 銀縁眼鏡と長めの黒髪、青緑色の作業着を着た細身の日本人男性
+  apparent_age: 20代後半
+  build: 細身
+  hair: 額にかかる長めの黒髪
+  eyes: 黒色
+  clothing: [青緑色の通信作業着, 銀縁眼鏡]
+  distinguishing_features: [左耳の骨伝導端末]
+  color_palette: [青緑色, 銀, 黒]

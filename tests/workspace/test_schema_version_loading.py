@@ -4,6 +4,7 @@ import pytest
 import yaml
 
 from living_narrative.state.validation import load_project_config
+from living_narrative.templates.registry import TEMPLATE_NAMES
 from living_narrative.workspace.init import create_project
 from living_narrative.workspace.migrations import CURRENT_SCHEMA_VERSION
 
@@ -79,7 +80,7 @@ def test_loader_applies_injected_migration_chain_before_validation(tmp_path):
     assert "tone" not in yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("template", ["minimal", "mist_station"])
+@pytest.mark.parametrize("template", TEMPLATE_NAMES)
 def test_new_project_writes_current_schema_version_for_every_template(tmp_path, template):
     project_path = create_project(tmp_path / template, title="新規プロジェクト", template=template)
 

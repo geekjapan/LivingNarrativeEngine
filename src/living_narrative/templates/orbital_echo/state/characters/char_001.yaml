@@ -1,0 +1,31 @@
+id: char_001
+name: 天城ユイ
+role: 船外活動主任
+stats: {体力: 7, 知力: 6, 意志: 8}
+skills: {船外活動: 8, 修理: 7, 観察: 6}
+traits: [責任感が強い, 即断を避ける]
+goals:
+  short_term: [酸素循環器を復旧する]
+  long_term: [乗員全員を地球へ帰還させる]
+emotions: {不安: 45, 決意: 70}
+emotions_baseline: {不安: 45, 決意: 70}
+knowledge:
+  knows: [閉鎖区画には独立した予備循環系がある]
+  believes: [通信断は木星の磁気嵐が原因である]
+  does_not_know: [エコー計画の目的]
+secrets: []
+private_mind: [三年前の事故で弟を見捨てた判断を、まだ許せていない]
+inventory:
+  - {id: item_001, name: 船外活動キー, qty: 1}
+constraints: {}
+status: alive
+speech: {first_person: 私, forbidden_terms: [俺, 僕]}
+visual_profile:
+  summary: 短い黒髪と褐色の肌、橙色の船外活動服を着た日本人女性
+  apparent_age: 30代前半
+  build: 引き締まった体格
+  hair: 耳の上で切り揃えた黒髪
+  eyes: 焦茶色
+  clothing: [橙色の船外活動服, 白い通信ヘッドセット]
+  distinguishing_features: [右眉を横切る細い傷]
+  color_palette: [橙色, 白, 黒]

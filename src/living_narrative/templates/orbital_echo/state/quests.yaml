@@ -1,0 +1,8 @@
+- id: quest_001
+  title: 十八時間後の救難音声
+  status: open
+  objectives:
+    - 酸素循環器を復旧する
+    - 救難音声の送信源を特定する
+    - 閉鎖区画を開放するか決断する
+  related_event_ids: []

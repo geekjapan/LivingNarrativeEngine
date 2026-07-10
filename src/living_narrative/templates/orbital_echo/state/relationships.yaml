@@ -1,0 +1,6 @@
+- {from: char_001, to: char_002, trust: 70, affection: 45, tension: 20, suspicion: 15, notes: [技術判断を信頼している]}
+- {from: char_002, to: char_001, trust: 65, affection: 35, tension: 30, suspicion: 10, notes: [未来音声のことを話せずにいる]}
+- {from: char_001, to: char_003, trust: 60, affection: 30, tension: 25, suspicion: 25, notes: [責任者として敬意を持つ]}
+- {from: char_003, to: char_001, trust: 75, affection: 40, tension: 35, suspicion: 5, notes: [生還させたいと考えている]}
+- {from: char_002, to: char_003, trust: 35, affection: 20, tension: 55, suspicion: 65, notes: [情報を隠していると疑う]}
+- {from: char_003, to: char_002, trust: 40, affection: 25, tension: 45, suspicion: 50, notes: [受信音声への執着を警戒している]}

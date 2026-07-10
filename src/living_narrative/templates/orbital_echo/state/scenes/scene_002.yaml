@@ -1,0 +1,14 @@
+id: scene_002
+location: 軌道站エコー・閉鎖区画
+time: 木星標準時 04:00
+active_characters: []
+mood: 無機質な畏怖
+stakes: 量子模倣装置を止めるか、予測記録を持ち帰るかを選ばなければならない
+summary: 予備酸素を求めて閉鎖区画へ入り、三人は自分たちの選択を先回りして表示する装置と対面する。
+reader_visible_facts: [壁一面の端末に三人の生体反応が表示されている。]
+hidden_facts:
+  - id: fact_003
+    text: 装置は未来を観測せず、乗員の行動を誘導して予測を実現している。
+    visibility: gm_only
+    known_by: []
+status: pending

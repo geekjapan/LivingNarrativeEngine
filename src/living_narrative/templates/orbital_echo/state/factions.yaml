@@ -1,0 +1,12 @@
+- id: faction_001
+  name: 地球圏深宇宙局
+  public_face: 木星圏の科学観測と乗員救助を担う国際機関
+  goals: [エコー計画の存在を秘匿する, 予測記録を回収する]
+  resources: {influence: 90, secrecy: 85}
+  relations: {char_001: 45, char_002: 25, char_003: 70}
+- id: faction_002
+  name: 軌道站乗員
+  public_face: 観測任務に従事する三名の現地チーム
+  goals: [全員で生還する, 通信断の原因を突き止める]
+  resources: {trust: 55, supplies: 40}
+  relations: {faction_001: 30}

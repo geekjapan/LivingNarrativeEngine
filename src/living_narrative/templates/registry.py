@@ -10,7 +10,7 @@ from pathlib import Path
 
 _TEMPLATES_ROOT = Path(__file__).parent
 
-TEMPLATE_NAMES = ("minimal", "mist_station")
+TEMPLATE_NAMES = ("minimal", "mist_station", "orbital_echo")
 
 
 class UnknownTemplateError(Exception):

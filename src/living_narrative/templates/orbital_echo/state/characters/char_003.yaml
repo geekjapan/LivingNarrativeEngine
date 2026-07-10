@@ -1,0 +1,32 @@
+id: char_003
+name: 志摩サエ
+role: 船医兼ミッション責任者
+stats: {体力: 5, 知力: 8, 意志: 9}
+skills: {医療: 9, 心理観察: 8, 管制: 7}
+traits: [沈着, 秘密主義]
+goals:
+  short_term: [乗員の混乱を抑える]
+  long_term: [エコー計画の成果を地球へ持ち帰る]
+emotions: {警戒: 70, 罪悪感: 55}
+emotions_baseline: {警戒: 70, 罪悪感: 55}
+knowledge:
+  knows: [閉鎖区画には乗員の意思決定を予測する量子模倣装置がある]
+  believes: [装置を停止すれば通信断も解消する]
+  does_not_know: [レンが未来音声を受信済みであること]
+secrets: [地球管制からエコー計画の証拠を廃棄するよう命令されている]
+private_mind: [証拠を守れば三人は帰還できないかもしれない]
+inventory:
+  - {id: item_001, name: 医療キット, qty: 1}
+  - {id: item_002, name: 管制長認証カード, qty: 1}
+constraints: {}
+status: alive
+speech: {first_person: 私, forbidden_terms: [俺, 僕]}
+visual_profile:
+  summary: 白髪交じりの黒髪を束ね、白と深紅の医療服を着た日本人女性
+  apparent_age: 40代前半
+  build: 長身
+  hair: 白髪交じりの黒髪を低い位置で束ねている
+  eyes: 灰色
+  clothing: [白い医療作業服, 深紅の腕章]
+  distinguishing_features: [首元の古い火傷痕]
+  color_palette: [白, 深紅, 灰色]

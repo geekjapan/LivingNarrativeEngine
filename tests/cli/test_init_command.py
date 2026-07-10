@@ -2,6 +2,7 @@ import yaml
 from typer.testing import CliRunner
 
 from living_narrative.cli import app
+from living_narrative.state.store import StateStore
 
 runner = CliRunner()
 
@@ -46,6 +47,29 @@ def test_init_mist_station_template_generates_four_characters(tmp_path):
     )
     assert len(gm_vault) == 3
     assert (output / "workspace" / "state" / "scenes" / "scene_001.yaml").exists()
+
+
+def test_init_orbital_echo_template_is_selectable(tmp_path):
+    output = tmp_path / "orbital_echo"
+
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            "--title",
+            "軌道站エコー",
+            "--template",
+            "orbital_echo",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(list((output / "workspace" / "state" / "characters").glob("*.yaml"))) == 3
+    assert (output / "workspace" / "state" / "quests.yaml").is_file()
+    bundle = StateStore.load(output / "workspace" / "state")
+    assert [quest.id for quest in bundle.quests] == ["quest_001"]
 
 
 def test_init_unknown_template_exits_2_without_fallback(tmp_path):
