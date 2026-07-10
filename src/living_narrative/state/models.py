@@ -95,6 +95,7 @@ class StopConditionConfig(BaseModel):
 class ProjectConfig(BaseModel):
     model_config = {"extra": "allow"}
 
+    schema_version: Annotated[int, Field(strict=True, ge=1)] = 1
     id: str
     title: str
     genre: str

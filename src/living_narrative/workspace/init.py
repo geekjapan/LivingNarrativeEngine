@@ -15,6 +15,7 @@ import yaml
 from living_narrative.state.models import ProjectConfig
 from living_narrative.templates.registry import UnknownTemplateError, template_state_dir
 from living_narrative.workspace.layout import STATE_SUBDIRS
+from living_narrative.workspace.migrations import CURRENT_SCHEMA_VERSION
 
 __all__ = ["InitDestinationExistsError", "UnknownTemplateError", "create_project"]
 
@@ -47,6 +48,7 @@ def create_project(
         raise InitDestinationExistsError(f"{output_dir} already exists and is not empty")
 
     project_data = {
+        "schema_version": CURRENT_SCHEMA_VERSION,
         "id": _slugify(title),
         "title": title,
         "genre": genre,

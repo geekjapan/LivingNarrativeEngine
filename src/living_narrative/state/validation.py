@@ -7,6 +7,13 @@ import yaml
 from pydantic import ValidationError
 
 from living_narrative.state.models import ProjectConfig
+from living_narrative.workspace.migrations import (
+    CURRENT_SCHEMA_VERSION,
+    MIGRATIONS,
+    MigrationRegistry,
+    SchemaMigrationError,
+    migrate_project_data,
+)
 
 
 @dataclass(frozen=True)
@@ -27,12 +34,25 @@ class ProjectLoadReport:
         return self.config is not None and not self.errors
 
 
-def load_project_config(path: Path) -> ProjectLoadReport:
+def load_project_config(
+    path: Path,
+    *,
+    migrations: MigrationRegistry = MIGRATIONS,
+    current_schema_version: int = CURRENT_SCHEMA_VERSION,
+) -> ProjectLoadReport:
     """Read and validate a ``project.yaml`` file, collecting every error at once."""
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
     try:
-        config = ProjectConfig.model_validate(raw)
+        migrated = migrate_project_data(
+            raw, registry=migrations, current_version=current_schema_version
+        )
+        config = ProjectConfig.model_validate(migrated)
+    except SchemaMigrationError as exc:
+        return ProjectLoadReport(
+            config=None,
+            errors=[ProjectValidationIssue(path=path, field="schema_version", message=str(exc))],
+        )
     except ValidationError as exc:
         errors = [
             ProjectValidationIssue(
