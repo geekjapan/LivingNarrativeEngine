@@ -2,6 +2,7 @@
 (fastapi/uvicorn) is not installed — the core suite must not depend on it."""
 
 import pytest
+import yaml
 
 fastapi = pytest.importorskip("fastapi")
 
@@ -67,6 +68,79 @@ def test_status_unknown_project_is_404(tmp_path):
     response = _client(tmp_path).get("/api/project/does-not-exist/status")
 
     assert response.status_code == 404
+
+
+def test_status_api_and_gm_pane_include_shared_llm_usage(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    turn_dir.mkdir(parents=True)
+    (turn_dir / "meta.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "llm_tokens_total": 12,
+                "llm_calls": [
+                    {
+                        "provider_name": "test",
+                        "model": "model-exact",
+                        "duration_seconds": 0.1,
+                        "prompt_template_name": "test",
+                        "prompt_hash": "hash",
+                        "prompt_tokens": 5,
+                        "completion_tokens": 7,
+                        "total_tokens": 12,
+                        "profile_name": "main",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    client = _client(tmp_path)
+    usage = client.get("/api/project/project/status").json()["llm_usage"]
+
+    assert usage["calls"] == 1
+    assert usage["total_tokens"] == 12
+    assert usage["cost_usd"] is None
+    assert usage["by_model"][0]["model"] == "model-exact"
+    page = client.get("/").text
+    assert "LLM利用量・概算費用" in page
+    assert "価格未設定" in page
+
+
+def test_gm_cost_pane_escapes_hostile_model_and_profile_names(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    hostile = '<img src=x onerror="alert(1)">'
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    turn_dir.mkdir(parents=True)
+    (turn_dir / "meta.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "llm_calls": [
+                    {
+                        "provider_name": "test",
+                        "model": hostile,
+                        "duration_seconds": 0.1,
+                        "prompt_template_name": "test",
+                        "prompt_hash": "hash",
+                        "profile_name": hostile,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    client = _client(tmp_path)
+    usage = client.get("/api/project/project/status").json()["llm_usage"]
+    page = client.get("/").text
+
+    assert usage["by_model"][0]["model"] == hostile
+    assert usage["by_profile"][0]["profile_name"] == hostile
+    assert "${escapeHtml(m.model)}" in page
+    assert '${escapeHtml(p.profile_name || "未設定")}' in page
+    assert "${m.model}" not in page
+    assert '${p.profile_name || "未設定"}' not in page
 
 
 @pytest.mark.parametrize("name", ["..", "../etc", "a/b", "a\\b", ""])
