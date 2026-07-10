@@ -23,9 +23,9 @@ repository's root:
 uv sync --extra web
 
 uv run living-narrative init \
-  --title "霧の駅" \
-  --template mist_station \
-  --output projects/mist_station
+  --title "軌道站エコー" \
+  --template orbital_echo \
+  --output projects/orbital_echo
 
 uv run living-narrative serve \
   --project-root projects \
@@ -95,10 +95,11 @@ uv run living-narrative export replay \
   --output projects/mist_station/workspace/exports/replay.md
 ```
 
-`init --template` accepts `mist_station` (the "霧の駅" sample world: 4 characters, 3
-`gm_vault` hidden truths, `scene_001`) or `minimal` (an empty, schema-valid workspace;
-the default when `--template` is omitted). `--genre`/`--tone` are optional free-text
-fields written straight through to `project.yaml`.
+`init --template` accepts `orbital_echo` (the Japanese hard-SF "軌道站エコー" sample:
+3 characters, factions, threats, visual profiles, and a quest fixture), `mist_station`
+(the "霧の駅" sample world), or `minimal` (an empty, schema-valid workspace; the default
+when `--template` is omitted). `--genre`/`--tone` are optional free-text fields written
+straight through to `project.yaml`.
 
 `turn` runs a single turn and prints its narration + status line. `--intervention "<free
 text>"` routes through the Intervention Interpreter (LLM); `--type <type> --target <id>
@@ -197,6 +198,11 @@ status, `novel` skips them with no annotation at all. `gm_vault`, `hidden_facts`
 `secrets`, and `private_mind` are never read by this command.
 
 ## Security
+
+Before connecting a generation provider or sharing a project, read the Japanese-first
+[rights and security guidance](docs/rights-and-security.md). It covers image-generation
+rights, provider-dependent terms, the local-only operating assumption, API credentials,
+and GM-only narrative information.
 
 - API keys come only from environment variables (e.g. `OPENAI_API_KEY`); never commit
   them to `project.yaml` or any tracked file. Use a local `.env` (already `.gitignore`d)

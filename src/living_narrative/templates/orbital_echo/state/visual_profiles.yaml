@@ -1,0 +1,25 @@
+backgrounds:
+  - id: background_001
+    name: 軌道站エコー通信管制室
+    summary: 木星の縞模様を望む、狭く使い込まれた円筒形の通信管制室
+    architecture: [円筒形の与圧区画, 壁面に埋め込まれた旧式端末]
+    lighting: 琥珀色の非常灯と木星からの反射光
+    atmosphere: 乾いた空調音、窓外を満たす巨大な木星
+    color_palette: [琥珀色, 暗い青, 木星の黄褐色]
+    recurring_elements: [赤い警告表示, 浮遊する筆記具, 円形観測窓]
+  - id: background_002
+    name: 閉鎖区画
+    summary: 黒い鏡面端末と霜に覆われた量子模倣装置の部屋
+    architecture: [放射状に並ぶ演算筐体, 中央の透明な冷却槽]
+    lighting: 端末から漏れる冷たい紫光
+    atmosphere: 無音に近い低温環境
+    color_palette: [黒, 紫, 霜の白]
+    recurring_elements: [遅れて動く乗員の映像, 結露した認証盤]
+style_lock:
+  art_style: ハードSFアニメの映画的コンセプトアート
+  medium: 精密なデジタルペインティング
+  line_work: 機械構造を明瞭に示す細い輪郭線
+  lighting: 非常灯と木星の反射光による強い明暗差
+  color_palette: [暗い青, 琥珀色, 警告灯の赤]
+  composition_rules: [無重力を示す浮遊物を入れる, 人物の服装と身体的特徴を維持する]
+  avoid: [魔法的な意匠, 清潔すぎる新品の船内, 実在企業のロゴ]

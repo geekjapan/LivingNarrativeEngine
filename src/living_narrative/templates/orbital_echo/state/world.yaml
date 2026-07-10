@@ -1,0 +1,42 @@
+id: world_001
+name: 軌道站エコー
+summary: 木星圏の観測軌道を巡る小型研究站。地球との通信が途絶え、閉鎖区画から存在しない乗員の音声が届き始めた。
+laws:
+  - 船外活動は管制担当と作業員の二名承認を必要とする
+  - 閉鎖区画の記録は地球管制の許可なく復号してはならない
+parameters:
+  life_support: 68
+  communication: 12
+  isolation: 85
+emotion_decay_per_turn: 4
+pacing:
+  stall_window: 3
+  pressure_boost: 5
+memory_summary_interval: 8
+background_events:
+  - text: 木星の雲が観測窓いっぱいに流れ、遠雷のような電磁雑音が船体を震わせる
+    weight: 5
+  - text: 無重力区画で固定具が一度だけ鳴り、誰かが通ったような振動が残る
+    weight: 4
+  - text: 通信卓に意味を結ばない短い搬送波が現れ、すぐに消える
+    weight: 3
+threats:
+  - id: threat_001
+    name: 酸素循環系の停止
+    pressure: 15
+    pressure_per_turn: 1d6
+    stages:
+      - at: 35
+        text: 二酸化炭素濃度の上昇が始まっている。
+        visibility: scene
+      - at: 70
+        text: 居住区の予備酸素が自動開放され、残り時間が表示される。
+        visibility: reader
+      - at: 100
+        text: 主循環器が停止し、乗員は閉鎖区画の予備系へ退避しなければならない。
+        visibility: reader
+        effects:
+          encounter: threat_001
+          scene_transition:
+            end: scene_001
+            start: scene_002
