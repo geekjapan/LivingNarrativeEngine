@@ -148,6 +148,8 @@ INDEX_HTML = """\
 <h2>Story</h2>
 <div id="story"></div>
 <div id="gm-panel">
+  <h3>LLM利用量・概算費用</h3>
+  <div id="gm-llm-usage"></div>
   <h3>キャラクター(GM視点)</h3>
   <div id="gm-characters"></div>
   <h3>世界・脅威</h3>
@@ -194,6 +196,7 @@ const interventionDraftButton = document.getElementById("intervention-draft-butt
 const interventionHistoryEl = document.getElementById("intervention-history");
 const gmToggleButton = document.getElementById("gm-toggle-button");
 const gmPanelEl = document.getElementById("gm-panel");
+const gmLlmUsageEl = document.getElementById("gm-llm-usage");
 const gmCharactersEl = document.getElementById("gm-characters");
 const gmWorldEl = document.getElementById("gm-world");
 const gmScenesEl = document.getElementById("gm-scenes");
@@ -247,6 +250,15 @@ function visibilityBadge(visibility) {
 function severityBadge(severity) {
   const cls = severity ? `badge-${severity}` : "badge-unknown";
   return `<span class="badge ${cls}">${severity || "unknown"}</span>`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function renderReview(review) {
@@ -317,6 +329,28 @@ function renderGmCharacters(characters) {
       </div>`;
     })
     .join("");
+}
+
+function renderGmLlmUsage(usage) {
+  const cost = usage.cost_usd === null
+    ? "価格未設定"
+    : `$${usage.cost_usd.toFixed(6)} USD`;
+  const models = (usage.by_model || [])
+    .map((m) => {
+      const modelCost = m.cost_usd === null ? "価格未設定" : `$${m.cost_usd.toFixed(6)}`;
+      return `<div class="gm-thread">${escapeHtml(m.model)}: ${m.calls} calls / ` +
+        `${m.total_tokens} tokens / ${modelCost}</div>`;
+    })
+    .join("");
+  const profiles = (usage.by_profile || [])
+    .map((p) => {
+      const profileCost = p.cost_usd === null ? "価格未設定" : `$${p.cost_usd.toFixed(6)}`;
+      return `<div class="gm-thread">profile ${escapeHtml(p.profile_name || "未設定")}: ` +
+        `${p.calls} calls / ${p.total_tokens} tokens / ${profileCost}</div>`;
+    })
+    .join("");
+  gmLlmUsageEl.innerHTML = `<p>${usage.calls} calls / ${usage.total_tokens} tokens / ${cost}</p>` +
+    models + profiles;
 }
 
 function renderGmWorld(world) {
@@ -434,6 +468,7 @@ async function refresh() {
   const permissions = await permissionsRes.json();
   const interventionsData = await interventionsRes.json();
   renderReview(await reviewRes.json());
+  renderGmLlmUsage(status.llm_usage);
 
   turnCountEl.textContent = `(turn ${status.current_turn})`;
   statusEl.textContent =

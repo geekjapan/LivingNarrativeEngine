@@ -111,6 +111,7 @@ def create_app(project_root: Path) -> FastAPI:
             "pending_review_turn": status.pending_review_turn,
             "scene": status.scene,
             "characters": status.characters,
+            "llm_usage": status.llm_usage.model_dump(mode="json"),
         }
 
     @app.get("/api/project/{name}/narration", response_class=PlainTextResponse)

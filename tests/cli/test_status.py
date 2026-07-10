@@ -1,5 +1,6 @@
 import json
 
+import yaml
 from typer.testing import CliRunner
 
 from living_narrative.cli import app
@@ -54,3 +55,43 @@ def test_status_exits_2_for_missing_project(tmp_path):
     )
 
     assert result.exit_code == 2
+
+
+def test_status_displays_llm_usage_and_unknown_price(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    turn_dir.mkdir(parents=True)
+    (turn_dir / "meta.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "llm_tokens_total": 12,
+                "llm_calls": [
+                    {
+                        "provider_name": "test",
+                        "model": "auto/best-coding",
+                        "duration_seconds": 0.1,
+                        "prompt_template_name": "test",
+                        "prompt_hash": "hash",
+                        "prompt_tokens": 5,
+                        "completion_tokens": 7,
+                        "total_tokens": 12,
+                        "profile_name": "main",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["status", "--project", str(project_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "LLM利用: 1 calls / 12 tokens" in result.output
+    assert "概算費用: 価格未設定" in result.output
+    assert "model auto/best-coding: 1 calls / 12 tokens / 価格未設定" in result.output
+    assert "profile main: 1 calls / 12 tokens / 価格未設定" in result.output
+
+    json_result = runner.invoke(app, ["status", "--project", str(project_path), "--json"])
+    usage = json.loads(json_result.output)["llm_usage"]
+    assert usage["by_model"][0]["model"] == "auto/best-coding"
+    assert usage["by_profile"][0]["profile_name"] == "main"

@@ -16,6 +16,7 @@ import yaml
 
 from living_narrative.cli._common import read_narration_body
 from living_narrative.intervention.history import load_history
+from living_narrative.llm.costs import ProjectCostSummary, collect_project_costs
 from living_narrative.pipeline import TurnPipeline, TurnRunResult, TurnStatus
 from living_narrative.pipeline.turn_numbering import read_turn_status, turn_dir_path
 from living_narrative.session.mode import MODE_PERMISSIONS
@@ -111,6 +112,7 @@ class ProjectStatus:
     pending_review_turn: int | None
     scene: dict | None
     characters: list[dict]
+    llm_usage: ProjectCostSummary
 
 
 def get_status(project_yaml: Path) -> ProjectStatus:
@@ -140,6 +142,7 @@ def get_status(project_yaml: Path) -> ProjectStatus:
         characters=[
             {"id": c.id, "name": c.name, "status": c.status.value} for c in bundle.characters
         ],
+        llm_usage=collect_project_costs(project_yaml, read.paths.runs),
     )
 
 

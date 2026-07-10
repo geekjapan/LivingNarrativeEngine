@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from living_narrative.cli._common import load_project_or_exit
+from living_narrative.llm.costs import collect_project_costs
 from living_narrative.pipeline import turn_dir_path
 from living_narrative.pipeline.turn_numbering import read_turn_status
 from living_narrative.session.resume import restore_resume_state
@@ -29,6 +30,7 @@ def status(
         else None
     )
     active_scene = next((s for s in bundle.scenes if s.status == SceneStatus.ACTIVE), None)
+    llm_usage = collect_project_costs(project, read.paths.runs)
 
     summary = {
         "current_turn": resume_state.last_applied_turn or 0,
@@ -43,6 +45,7 @@ def status(
             else None
         ),
         "world_parameters": dict(bundle.world.parameters),
+        "llm_usage": llm_usage.model_dump(mode="json"),
     }
 
     if json_output:
@@ -65,5 +68,25 @@ def status(
             else "現在のシーン: なし"
         ),
         f"world parameters: {summary['world_parameters']}",
+        (
+            f"LLM利用: {llm_usage.calls} calls / {llm_usage.total_tokens} tokens "
+            f"(prompt {llm_usage.prompt_tokens}, completion {llm_usage.completion_tokens})"
+        ),
+        (
+            f"概算費用: ${llm_usage.cost_usd:.6f} USD"
+            if llm_usage.cost_usd is not None
+            else "概算費用: 価格未設定"
+        ),
     ]
+    lines.extend(
+        f"  model {entry.model}: {entry.calls} calls / {entry.total_tokens} tokens / "
+        + (f"${entry.cost_usd:.6f} USD" if entry.cost_usd is not None else "価格未設定")
+        for entry in llm_usage.by_model
+    )
+    lines.extend(
+        f"  profile {entry.profile_name or '未設定'}: "
+        f"{entry.calls} calls / {entry.total_tokens} tokens / "
+        + (f"${entry.cost_usd:.6f} USD" if entry.cost_usd is not None else "価格未設定")
+        for entry in llm_usage.by_profile
+    )
     typer.echo("\n".join(lines))
