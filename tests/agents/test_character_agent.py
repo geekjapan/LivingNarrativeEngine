@@ -78,6 +78,14 @@ def test_character_agent_prompt_only_requests_inventory_updates_for_real_changes
     assert "実際に増減したときだけ" in PROMPT_TEXT
 
 
+def test_character_agent_prompt_defines_minimal_combat_producer_contract():
+    assert "effects.combat" in PROMPT_TEXT
+    for field in ("attacker", "defender", "stakes", "target", "damage"):
+        assert field in PROMPT_TEXT
+    assert "scoped_state.id" in PROMPT_TEXT
+    assert "eligible_combat_targets が空" in PROMPT_TEXT
+
+
 def test_character_agent_is_deterministic_with_same_seed():
     first_context = _context()
     second_context = _context()

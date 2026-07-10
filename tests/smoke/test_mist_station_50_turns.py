@@ -20,8 +20,11 @@ import time
 
 import yaml
 
-from living_narrative.pipeline import TurnPipeline, TurnStatus
+from living_narrative.agents.character import run_character_agent
+from living_narrative.narration.models import NarratorQuestUpdateCandidate
+from living_narrative.pipeline import TurnPipeline, TurnStatus, default_registry
 from living_narrative.pipeline import driver as driver_module
+from living_narrative.pipeline.models import ActionCandidate
 from living_narrative.session.metrics import collect_metrics
 from living_narrative.session.review import ReviewDecision, resolve_review
 from living_narrative.workspace.init import create_project
@@ -65,6 +68,17 @@ def _make_memory_summary_backfill(real_run_narrate_phase):
                     "memory_summary_update": f"turn {context.turn}までの通史要約(smoke synthetic)。"
                 }
             )
+        updates = {
+            1: [NarratorQuestUpdateCandidate(action="advance", quest_id="quest_001")],
+            2: [NarratorQuestUpdateCandidate(action="resolve", quest_id="quest_001")],
+            3: [
+                NarratorQuestUpdateCandidate(
+                    action="open", quest_id="quest_002", title="子どもの切符を調べる"
+                )
+            ],
+        }.get(context.turn)
+        if updates:
+            result = result.model_copy(update={"quest_updates": updates})
         return result, meta
 
     return _backfill_memory_summary
@@ -74,7 +88,26 @@ def _run_turns(pipeline, project_path, turn_range, results):
     workspace_root = project_path.parent / "workspace"
     state_dir = workspace_root / "state"
     for turn in turn_range:
-        result = pipeline.run(project_path)
+        drafts = [
+            {
+                "type": "character_directive",
+                "target": {"kind": "character", "id": "char_001"},
+                "content": f"ターン{turn}の出口探索を進める",
+                "constraints": {},
+                "visibility": "character",
+            }
+        ]
+        if turn == 1:
+            drafts.append(
+                {
+                    "type": "dice_roll_request",
+                    "target": {"kind": "character", "id": "char_001"},
+                    "content": "霧の切れ目を見抜く",
+                    "constraints": {"target": 100, "stat": "知力", "skill": "観察"},
+                    "visibility": "character",
+                }
+            )
+        result = pipeline.run(project_path, intervention_drafts=drafts)
         assert result.turn == turn
         if result.status in (TurnStatus.STOPPED_FOR_REVIEW, TurnStatus.PENDING_REVIEW):
             # Same review-gate path as the 20-turn smoke test (tests/smoke/
@@ -106,10 +139,52 @@ def test_50_turn_mist_station_regression(tmp_path, monkeypatch):
         tmp_path / "mist_station", title="霧の駅", template="mist_station"
     )
     _pin_seed(project_path)
+    project = _load_yaml(project_path)
+    project.update({"user_mode": "player_character", "player_char_id": "char_001"})
+    project_path.write_text(
+        yaml.safe_dump(project, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    state_dir = project_path.parent / "workspace" / "state"
+    for character_id in ("char_001", "char_002"):
+        character_path = state_dir / "characters" / f"{character_id}.yaml"
+        character = _load_yaml(character_path)
+        character.setdefault("stats", {})["hp"] = 10
+        character_path.write_text(
+            yaml.safe_dump(character, allow_unicode=True, sort_keys=False), encoding="utf-8"
+        )
+
+    registry = default_registry()
+
+    def game_act(context, world_events, gateway, interventions, **kwargs):
+        actions, records = run_character_agent(
+            context, world_events, gateway, interventions, **kwargs
+        )
+        if context.turn == 1:
+            actions.append(
+                ActionCandidate(
+                    character_id="char_001",
+                    action_text="追跡者を退ける",
+                    target_id="char_002",
+                    effects={
+                        "combat": {
+                            "attacker": "char_001",
+                            "defender": "char_002",
+                            "stakes": "出口への退路を守る",
+                            "stat": "体力",
+                            "skill": "探索",
+                            "target": 100,
+                            "damage": 2,
+                        }
+                    },
+                )
+            )
+        return actions, records
+
+    registry.register("act", game_act)
 
     results: list = []
     start = time.monotonic()
-    _run_turns(TurnPipeline(), project_path, range(1, TURN_COUNT + 1), results)
+    _run_turns(TurnPipeline(registry=registry), project_path, range(1, TURN_COUNT + 1), results)
     elapsed = time.monotonic() - start
 
     assert [r.turn for r in results] == list(range(1, TURN_COUNT + 1))
@@ -151,3 +226,19 @@ def test_50_turn_mist_station_regression(tmp_path, monkeypatch):
 
     # Issue 015: a memory summary every `memory_summary_interval` (10) turns, no more no less.
     assert metrics.memory.summary_count == TURN_COUNT // MEMORY_SUMMARY_INTERVAL
+
+    # Issue 038: deterministic game-system activity must remain meaningful over 50 turns.
+    assert metrics.game.combat_count == 1
+    assert (
+        metrics.game.quest_opened,
+        metrics.game.quest_advanced,
+        metrics.game.quest_resolved,
+    ) == (
+        1,
+        1,
+        1,
+    )
+    assert metrics.game.applied_pc_action_count == TURN_COUNT
+    assert metrics.game.encounter_count == TURN_COUNT
+    assert (metrics.game.skill_check_successes, metrics.game.skill_check_total) == (1, 1)
+    assert metrics.game.skill_check_success_rate == 1.0

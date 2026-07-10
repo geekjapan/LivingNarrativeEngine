@@ -24,6 +24,13 @@ class CharacterAgentInput(BaseModel):
     relationships: list[RelationshipState] = Field(default_factory=list)
     directives: list[dict[str, Any]] = Field(default_factory=list)
     open_quests: list[OpenQuestInfo] = Field(default_factory=list)
+    eligible_combat_targets: list["EligibleCombatTarget"] = Field(default_factory=list)
+
+
+class EligibleCombatTarget(BaseModel):
+    """Reader-safe ID-only projection; membership means the active target has HP."""
+
+    id: CharacterId
 
 
 class ActionCandidate(BaseModel):

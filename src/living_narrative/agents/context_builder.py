@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from living_narrative.agents.models import CharacterAgentInput
+from living_narrative.agents.models import CharacterAgentInput, EligibleCombatTarget
 from living_narrative.state.models import (
     CharacterId,
     Event,
@@ -33,11 +33,18 @@ def build_character_context(
 ) -> CharacterAgentInput:
     character = _find_character(bundle, character_id)
     scene_facts = []
+    eligible_combat_targets: list[EligibleCombatTarget] = []
     for scene in bundle.scenes:
         if scene.status != SceneStatus.ACTIVE:
             continue
         if character_id not in scene.active_characters:
             continue
+        active_ids = set(scene.active_characters)
+        eligible_combat_targets = [
+            EligibleCombatTarget(id=item.id)
+            for item in bundle.characters
+            if item.id != character_id and item.id in active_ids and "hp" in item.stats
+        ]
         scene_facts.extend(scene.reader_visible_facts)
         if scene.summary:
             scene_facts.append(scene.summary)
@@ -85,6 +92,7 @@ def build_character_context(
             for quest in bundle.quests
             if quest.status in {"open", "advanced"}
         ],
+        eligible_combat_targets=eligible_combat_targets,
     )
 
 

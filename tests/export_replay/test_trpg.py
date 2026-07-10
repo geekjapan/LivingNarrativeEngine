@@ -82,6 +82,73 @@ def test_trpg_replay_shows_gm_only_rolls_unlike_reader_log_style(tmp_path, write
     assert "ロール欄" in content
 
 
+def test_trpg_replay_annotates_game_progress_for_gm(tmp_path, write_turn_dir):
+    runs_dir = tmp_path / "runs"
+    write_turn_dir(
+        runs_dir,
+        1,
+        narration="body",
+        interventions=[
+            {
+                "type": "character_directive",
+                "user_role": "player_character",
+                "content": "薬を使って斬りかかる",
+            },
+            {
+                "type": "dice_roll_request",
+                "user_role": "player_character",
+                "content": "攻撃が当たるか判定する",
+            },
+        ],
+        events=[
+            {
+                "type": "combat",
+                "effects": {
+                    "combat": {
+                        "attacker": "char_001",
+                        "defender": "char_002",
+                        "stakes": "退路を守る",
+                        "result": "success",
+                    }
+                },
+            },
+            {
+                "type": "encounter",
+                "text": "影が現れる",
+                "effects": {"encounter_id": "encounter_001"},
+            },
+        ],
+        diff_changes=[
+            {
+                "target": "quests",
+                "op": "add",
+                "path": "",
+                "value": {"id": "quest_002", "title": "影を追う", "status": "open"},
+            },
+            {
+                "target": "quests",
+                "id": "quest_001",
+                "op": "set",
+                "path": "status",
+                "value": "resolved",
+            },
+        ],
+    )
+    content = render_trpg_replay(
+        load_turn_records(runs_dir),
+        _reconstruction(
+            SceneRecord(id="scene_001", location="駅", mood="", summary="", start_turn=1)
+        ),
+    )
+
+    assert "PC入力 (character_directive) — 薬を使って斬りかかる" in content
+    assert "PC入力 (dice_roll_request) — 攻撃が当たるか判定する" in content
+    assert "attacker=char_001, defender=char_002, stakes=退路を守る, result=success" in content
+    assert "encounter発火 — encounter_001 (影が現れる)" in content
+    assert "quest open — quest_002: 影を追う" in content
+    assert "quest resolved — quest_001" in content
+
+
 def test_trpg_replay_inserts_scene_heading_on_transition(tmp_path, write_turn_dir):
     runs_dir = tmp_path / "runs"
     write_turn_dir(runs_dir, 1, narration="turn one")

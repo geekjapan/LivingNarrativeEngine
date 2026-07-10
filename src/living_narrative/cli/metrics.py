@@ -74,6 +74,16 @@ def _format_summary(result: ProjectMetrics) -> str:
         f"checks: by_source={result.checks.by_source}, by_severity={result.checks.by_severity}"
     )
     lines.append(f"memory: summary件数={result.memory.summary_count}")
+    lines.append(
+        "game: "
+        f"combat={result.game.combat_count}, "
+        f"quest(open/advance/resolve)={result.game.quest_opened}/"
+        f"{result.game.quest_advanced}/{result.game.quest_resolved}, "
+        f"PC行動={result.game.applied_pc_action_count}, "
+        f"encounter={result.game.encounter_count}, "
+        f"skill成功={result.game.skill_check_successes}/{result.game.skill_check_total} "
+        f"(成功率={result.game.skill_check_success_rate})"
+    )
     return "\n".join(lines)
 
 

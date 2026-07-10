@@ -143,6 +143,16 @@ def _prepare_combat(
         raise ValueError("combat attacker must match action candidate character_id")
     if candidate.target_id is not None and candidate.target_id != combat.defender:
         raise ValueError("combat defender must match candidate target_id")
+    attacker_scene = next(
+        (
+            scene
+            for scene in context.bundle.scenes
+            if scene.status == "active" and combat.attacker in scene.active_characters
+        ),
+        None,
+    )
+    if attacker_scene is None or combat.defender not in attacker_scene.active_characters:
+        raise ValueError(f"combat defender is outside active scene: {combat.defender}")
     if "hp" not in defender.stats:
         raise ValueError(f"stat not found for {combat.defender}: hp")
 

@@ -262,6 +262,7 @@ def test_two_combat_candidates_contest_before_one_engagement_resolves():
     context.bundle.characters.append(
         CharacterState(id="char_003", name="C", role="r", stats={"hp": 18})
     )
+    context.bundle.scenes[0].active_characters.append("char_003")
 
     def combat(attacker):
         return ActionCandidate(
@@ -468,3 +469,71 @@ def test_invalid_combat_does_not_block_a_valid_candidate_or_consume_rng():
     assert [event.type for event in events] == ["combat_rejected", "combat"]
     assert len(rolls) == 1
     assert rolls[0].label == "combat:char_001:char_002"
+
+
+def test_combat_rejects_defender_outside_active_scene_without_consuming_rng():
+    context = _context()
+    context.bundle.characters[0].stats = {"strength": 12, "hp": 20}
+    context.bundle.characters[1].stats = {"hp": 15}
+    context.bundle.scenes[0].active_characters = ["char_001"]
+    action = ActionCandidate(
+        character_id="char_001",
+        action_text="場面外の相手を攻撃する",
+        target_id="char_002",
+        effects={
+            "combat": {
+                "attacker": "char_001",
+                "defender": "char_002",
+                "stakes": "不正な遠隔攻撃",
+                "stat": "strength",
+                "target": 50,
+                "damage": 4,
+            }
+        },
+    )
+    rolls = []
+
+    events = resolve_conflicts(context, [], [action], _ids(), rolls.append)
+
+    assert rolls == []
+    assert events[0].type == "combat_rejected"
+    assert events[0].effects["reason"] == (
+        "invalid combat: combat defender is outside active scene: char_002"
+    )
+
+
+def test_combat_uses_attackers_scene_when_multiple_scenes_are_active():
+    context = _context()
+    context.bundle.characters[0].stats = {"strength": 12, "hp": 20}
+    context.bundle.characters[1].stats = {"hp": 15}
+    context.bundle.scenes[0].active_characters = []
+    context.bundle.scenes.append(
+        SceneState(
+            id="scene_002",
+            location="別室",
+            time="夜",
+            status="active",
+            active_characters=["char_001", "char_002"],
+        )
+    )
+    action = ActionCandidate(
+        character_id="char_001",
+        action_text="同じ場面の相手を攻撃する",
+        target_id="char_002",
+        effects={
+            "combat": {
+                "attacker": "char_001",
+                "defender": "char_002",
+                "stakes": "別室を守る",
+                "stat": "strength",
+                "target": 100,
+                "damage": 4,
+            }
+        },
+    )
+    rolls = []
+
+    events = resolve_conflicts(context, [], [action], _ids(), rolls.append)
+
+    assert events[0].type == "combat"
+    assert len(rolls) == 1

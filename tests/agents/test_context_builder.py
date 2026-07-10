@@ -27,6 +27,7 @@ def _bundle() -> WorldStateBundle:
                 knowledge={"knows": ["駅にいる"], "believes": [], "does_not_know": []},
                 private_mind=["Aoi private"],
                 speech=SpeechProfile(first_person="私", forbidden_terms=["僕", "俺"]),
+                stats={"hp": 10},
             ),
             CharacterState(
                 id="char_002",
@@ -35,6 +36,7 @@ def _bundle() -> WorldStateBundle:
                 private_mind=["Ren plans betrayal"],
                 secrets=["Ren secret debt"],
                 speech=SpeechProfile(first_person="俺", forbidden_terms=["僕"]),
+                stats={"hp": 7},
             ),
         ],
         scenes=[
@@ -102,6 +104,15 @@ def test_character_context_excludes_other_private_mind():
     context = build_character_context(_bundle(), "char_001")
 
     assert "Ren plans betrayal" not in context.model_dump_json()
+
+
+def test_character_context_exposes_only_reader_safe_combat_target_eligibility():
+    context = build_character_context(_bundle(), "char_001")
+
+    assert [item.model_dump() for item in context.eligible_combat_targets] == [{"id": "char_002"}]
+    serialized = context.model_dump_json()
+    assert "Ren plans betrayal" not in serialized
+    assert "Ren secret debt" not in serialized
 
 
 def test_character_context_includes_own_speech_profile():

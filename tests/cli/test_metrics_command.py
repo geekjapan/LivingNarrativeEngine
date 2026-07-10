@@ -17,6 +17,7 @@ def test_metrics_human_readable_before_any_turn(tmp_path, build_project):
     assert "turns: 0" in result.output
     assert "emotions:" in result.output
     assert "memory: summary件数=0" in result.output
+    assert "game: combat=0" in result.output
 
 
 def test_metrics_json_round_trips_after_a_turn(tmp_path, build_project):
@@ -29,7 +30,17 @@ def test_metrics_json_round_trips_after_a_turn(tmp_path, build_project):
     data = json.loads(result.output)
     assert data["turns"]["total"] == 1
     assert data["turns"]["by_status"] == {"applied": 1}
-    for key in ("turns", "emotions", "pacing", "threads", "threats", "scenes", "checks", "memory"):
+    for key in (
+        "turns",
+        "emotions",
+        "pacing",
+        "threads",
+        "threats",
+        "scenes",
+        "checks",
+        "memory",
+        "game",
+    ):
         assert key in data
 
 

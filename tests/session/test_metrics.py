@@ -114,6 +114,13 @@ def _build_hand_fixture(tmp_path: Path) -> Path:
                         "id": "char_001",
                         "visibility": "character",
                     },
+                    {
+                        "target": "quests",
+                        "op": "add",
+                        "path": "",
+                        "value": {"id": "quest_001", "title": "出口", "status": "open"},
+                        "visibility": "reader",
+                    },
                 ],
             },
             "applied": True,
@@ -139,10 +146,56 @@ def _build_hand_fixture(tmp_path: Path) -> Path:
                 "visibility": "gm_only",
                 "effects": {"threat_id": "threat_001", "pressure": 30, "roll_id": "roll_0001"},
             },
+            {
+                "id": "event_0101",
+                "turn": 1,
+                "type": "combat",
+                "cause": "character:char_001:0",
+                "effects": {"combat": {}},
+            },
+            {
+                "id": "event_0102",
+                "turn": 1,
+                "type": "encounter",
+                "effects": {"encounter_id": "encounter_001"},
+            },
+            {
+                "id": "event_0103",
+                "turn": 1,
+                "type": "dice_roll_request",
+                "effects": {"roll_id": "roll_0101"},
+            },
         ],
     )
     _write_yaml(
-        turn1 / "rolls.yaml", [{"id": "roll_0001", "turn": 1, "type": "dice", "result": 30}]
+        turn1 / "rolls.yaml",
+        [
+            {"id": "roll_0001", "turn": 1, "type": "dice", "result": 30},
+            {"id": "roll_0101", "turn": 1, "type": "chance", "outcome": "success"},
+        ],
+    )
+    _write_yaml(
+        turn1 / "intervention.yaml",
+        {
+            "interventions": [
+                {
+                    "type": "character_directive",
+                    "user_role": "player_character",
+                    "target": {"kind": "character", "id": "char_001"},
+                    "content": "出口へ進む",
+                }
+            ]
+        },
+    )
+    _write_yaml(
+        turn1 / "agent_io" / "act_candidates.yaml",
+        [
+            {
+                "character_id": "char_001",
+                "action_text": "出口へ進む",
+                "source_index": 0,
+            }
+        ],
     )
     _write_yaml(turn1 / "checks.yaml", {"findings": [{"severity": "warn", "source": "leak"}]})
 
@@ -172,6 +225,14 @@ def _build_hand_fixture(tmp_path: Path) -> Path:
                         "value": "ended",
                         "id": "scene_001",
                         "visibility": "scene",
+                    },
+                    {
+                        "target": "quests",
+                        "id": "quest_001",
+                        "op": "set",
+                        "path": "status",
+                        "value": "advanced",
+                        "visibility": "reader",
                     },
                     {
                         "target": "scene",
@@ -255,6 +316,14 @@ def _build_hand_fixture(tmp_path: Path) -> Path:
                         "value": 10,
                         "id": "char_001",
                         "visibility": "character",
+                    },
+                    {
+                        "target": "quests",
+                        "id": "quest_001",
+                        "op": "set",
+                        "path": "status",
+                        "value": "resolved",
+                        "visibility": "reader",
                     },
                 ],
             },
@@ -341,6 +410,15 @@ def test_collect_metrics_hand_computed(tmp_path):
     assert result.checks.by_severity == {"warn": 2, "error": 1}
 
     assert result.memory.summary_count == 2
+    assert result.game.combat_count == 1
+    assert result.game.quest_opened == 1
+    assert result.game.quest_advanced == 1
+    assert result.game.quest_resolved == 1
+    assert result.game.applied_pc_action_count == 1
+    assert result.game.encounter_count == 1
+    assert result.game.skill_check_successes == 1
+    assert result.game.skill_check_total == 1
+    assert result.game.skill_check_success_rate == 1.0
 
 
 def test_collect_metrics_on_a_project_with_zero_turns(tmp_path):
@@ -365,6 +443,68 @@ def test_collect_metrics_on_a_project_with_zero_turns(tmp_path):
     assert result.checks.by_source == {}
     assert result.checks.by_severity == {}
     assert result.memory.summary_count == 0
+    assert result.game.skill_check_success_rate is None
+
+
+def test_game_metrics_exclude_reject_all_turn(tmp_path):
+    project_path = _build_hand_fixture(tmp_path)
+    turn1 = project_path.parent / "workspace" / "runs" / "turn_0001"
+    _write_yaml(turn1 / "review.yaml", {"decision": "reject_all"})
+
+    game = collect_metrics(project_path).game
+
+    assert game.combat_count == 0
+    assert game.quest_opened == 0
+    assert game.applied_pc_action_count == 0
+    assert game.encounter_count == 0
+    assert game.skill_check_total == 0
+
+
+def test_pc_action_metric_excludes_candidate_that_loses_exclusive_resolution(tmp_path):
+    project_path = _build_hand_fixture(tmp_path)
+    turn1 = project_path.parent / "workspace" / "runs" / "turn_0001"
+    events = yaml.safe_load((turn1 / "events.yaml").read_text(encoding="utf-8"))
+    for event in events:
+        if event.get("cause") == "character:char_001:0":
+            event["cause"] = "character:char_002:0"
+    _write_yaml(turn1 / "events.yaml", events)
+
+    assert collect_metrics(project_path).game.applied_pc_action_count == 0
+
+
+def test_pc_action_metric_does_not_double_count_duplicate_directives(tmp_path):
+    project_path = _build_hand_fixture(tmp_path)
+    turn1 = project_path.parent / "workspace" / "runs" / "turn_0001"
+    intervention_path = turn1 / "intervention.yaml"
+    intervention = yaml.safe_load(intervention_path.read_text(encoding="utf-8"))
+    intervention["interventions"].append(dict(intervention["interventions"][0]))
+    _write_yaml(intervention_path, intervention)
+
+    assert collect_metrics(project_path).game.applied_pc_action_count == 1
+
+
+def test_pc_action_metric_excludes_rejected_resolve_event(tmp_path):
+    project_path = _build_hand_fixture(tmp_path)
+    turn1 = project_path.parent / "workspace" / "runs" / "turn_0001"
+    events = yaml.safe_load((turn1 / "events.yaml").read_text(encoding="utf-8"))
+    for event in events:
+        if event.get("cause") == "character:char_001:0":
+            event["type"] = "combat_rejected"
+    _write_yaml(turn1 / "events.yaml", events)
+
+    assert collect_metrics(project_path).game.applied_pc_action_count == 0
+
+
+def test_game_metrics_require_applied_meta_status(tmp_path):
+    project_path = _build_hand_fixture(tmp_path)
+    turn1 = project_path.parent / "workspace" / "runs" / "turn_0001"
+    _write_yaml(turn1 / "meta.yaml", {"turn": 1, "status": "stopped_for_review"})
+
+    game = collect_metrics(project_path).game
+
+    assert game.combat_count == 0
+    assert game.quest_opened == 0
+    assert game.applied_pc_action_count == 0
 
 
 def test_collect_metrics_raises_for_invalid_project(tmp_path):

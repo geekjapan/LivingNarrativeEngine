@@ -140,6 +140,10 @@ def test_life_or_death_combat_failure_stops_for_review_without_auto_death(tmp_pa
         ),
         encoding="utf-8",
     )
+    scene_path = state_dir / "scenes" / "scene_001.yaml"
+    scene = yaml.safe_load(scene_path.read_text(encoding="utf-8"))
+    scene["active_characters"].append("char_002")
+    scene_path.write_text(yaml.safe_dump(scene, allow_unicode=True), encoding="utf-8")
     registry = default_registry()
 
     def combat_act(context, world_events, gateway, interventions, **kwargs):
@@ -192,6 +196,10 @@ def test_invalid_combat_is_audited_without_blocking_valid_combat_pipeline(tmp_pa
         ),
         encoding="utf-8",
     )
+    scene_path = state_dir / "scenes" / "scene_001.yaml"
+    scene = yaml.safe_load(scene_path.read_text(encoding="utf-8"))
+    scene["active_characters"].append("char_002")
+    scene_path.write_text(yaml.safe_dump(scene, allow_unicode=True), encoding="utf-8")
     registry = default_registry()
 
     def mixed_combat_act(context, world_events, gateway, interventions, **kwargs):

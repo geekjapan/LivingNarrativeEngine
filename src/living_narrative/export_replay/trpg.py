@@ -63,6 +63,10 @@ def _gap_block(record: TurnRecord) -> str:
 
 def _turn_block(record: TurnRecord) -> str:
     lines = [f"### ターン {record.turn}"]
+    annotations = _game_annotations(record)
+    if annotations:
+        lines.append("ゲーム進行欄:")
+        lines.extend(f"- GM注記: {item}" for item in annotations)
     if record.rolls:
         lines.append("ロール欄:")
         lines.extend(f"- {_roll_line(roll)}" for roll in record.rolls)
@@ -75,6 +79,37 @@ def _turn_block(record: TurnRecord) -> str:
     lines.append("")
     lines.append(record.narration_body or "")
     return "\n".join(lines)
+
+
+def _game_annotations(record: TurnRecord) -> list[str]:
+    annotations: list[str] = []
+    for intervention in record.interventions:
+        if intervention.get("user_role") == "player_character":
+            annotations.append(
+                f"PC入力 ({intervention.get('type')}) — {intervention.get('content', '')}"
+            )
+    for event in record.events:
+        effects = event.get("effects") or {}
+        if event.get("type") == "combat":
+            combat = effects.get("combat") or {}
+            annotations.append(
+                "combat — "
+                f"attacker={combat.get('attacker')}, defender={combat.get('defender')}, "
+                f"stakes={combat.get('stakes')}, result={combat.get('result')}"
+            )
+        elif event.get("type") == "encounter":
+            annotations.append(
+                f"encounter発火 — {effects.get('encounter_id')} ({event.get('text', '')})"
+            )
+    for change in ((record.diff or {}).get("diff") or {}).get("changes") or []:
+        if change.get("target") != "quests":
+            continue
+        if change.get("op") == "add" and change.get("path") == "":
+            value = change.get("value") or {}
+            annotations.append(f"quest open — {value.get('id')}: {value.get('title', '')}")
+        elif change.get("op") == "set" and change.get("path") == "status":
+            annotations.append(f"quest {change.get('value')} — {change.get('id')}")
+    return annotations
 
 
 def _roll_line(roll: dict[str, Any]) -> str:

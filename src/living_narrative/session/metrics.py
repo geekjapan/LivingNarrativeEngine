@@ -112,6 +112,18 @@ class MemoryMetrics(BaseModel):
     summary_count: int
 
 
+class GameMetrics(BaseModel):
+    combat_count: int
+    quest_opened: int
+    quest_advanced: int
+    quest_resolved: int
+    applied_pc_action_count: int
+    encounter_count: int
+    skill_check_successes: int
+    skill_check_total: int
+    skill_check_success_rate: float | None
+
+
 class ProjectMetrics(BaseModel):
     turns: TurnsMetrics
     emotions: list[CharacterEmotionMetrics]
@@ -121,6 +133,7 @@ class ProjectMetrics(BaseModel):
     scenes: SceneMetrics
     checks: ChecksMetrics
     memory: MemoryMetrics
+    game: GameMetrics
 
 
 def collect_metrics(project_path: Path) -> ProjectMetrics:
@@ -158,6 +171,7 @@ def collect_metrics(project_path: Path) -> ProjectMetrics:
         scenes=_collect_scenes(bundle, live_turns),
         checks=_collect_checks(live_turns),
         memory=MemoryMetrics(summary_count=len(bundle.memory_summaries)),
+        game=_collect_game(live_turns),
     )
 
 
@@ -465,3 +479,80 @@ def _collect_checks(live_turns: list[tuple[int, Path]]) -> ChecksMetrics:
             by_source[finding.get("source") or "unknown"] += 1
             by_severity[finding.get("severity") or "unknown"] += 1
     return ChecksMetrics(by_source=dict(by_source), by_severity=dict(by_severity))
+
+
+def _collect_game(live_turns: list[tuple[int, Path]]) -> GameMetrics:
+    combat_count = quest_opened = quest_advanced = quest_resolved = 0
+    applied_pc_action_count = encounter_count = 0
+    skill_check_successes = skill_check_total = 0
+    for _, turn_dir in live_turns:
+        applied, changes = read_state_diff(turn_dir)
+        meta = _load_yaml(turn_dir / "meta.yaml") or {}
+        review = _load_yaml(turn_dir / "review.yaml") or {}
+        if not applied or meta.get("status") != "applied" or review.get("decision") == "reject_all":
+            continue
+
+        interventions = (_load_yaml(turn_dir / "intervention.yaml") or {}).get(
+            "interventions"
+        ) or []
+        pc_directives = [
+            item
+            for item in interventions
+            if item.get("type") == "character_directive"
+            and item.get("user_role") == "player_character"
+        ]
+        candidates = _load_yaml(turn_dir / "agent_io" / "act_candidates.yaml") or []
+        resolved_causes = {
+            event.get("cause")
+            for event in read_events(turn_dir)
+            if not str(event.get("type") or "").endswith("_rejected")
+        }
+        resolved_pc_causes = {
+            f"character:{candidate.get('character_id')}:{candidate.get('source_index')}"
+            for candidate in candidates
+            if any(
+                candidate.get("character_id") == (directive.get("target") or {}).get("id")
+                and candidate.get("action_text") == directive.get("content")
+                for directive in pc_directives
+            )
+        }
+        applied_pc_action_count += len(resolved_pc_causes & resolved_causes)
+
+        rolls = {roll.get("id"): roll for roll in (_load_yaml(turn_dir / "rolls.yaml") or [])}
+        for event in read_events(turn_dir):
+            event_type = event.get("type")
+            if event_type == "combat":
+                combat_count += 1
+            elif event_type == "encounter":
+                encounter_count += 1
+            elif event_type == "dice_roll_request":
+                roll = rolls.get((event.get("effects") or {}).get("roll_id"))
+                if roll is not None and roll.get("type") == "chance":
+                    skill_check_total += 1
+                    skill_check_successes += roll.get("outcome") == "success"
+
+        for change in changes:
+            if change.get("target") != "quests":
+                continue
+            if change.get("op") == "add" and change.get("path") == "":
+                value = change.get("value") or {}
+                if value.get("status") == "open":
+                    quest_opened += 1
+            elif change.get("op") == "set" and change.get("path") == "status":
+                if change.get("value") == "advanced":
+                    quest_advanced += 1
+                elif change.get("value") == "resolved":
+                    quest_resolved += 1
+
+    success_rate = skill_check_successes / skill_check_total if skill_check_total else None
+    return GameMetrics(
+        combat_count=combat_count,
+        quest_opened=quest_opened,
+        quest_advanced=quest_advanced,
+        quest_resolved=quest_resolved,
+        applied_pc_action_count=applied_pc_action_count,
+        encounter_count=encounter_count,
+        skill_check_successes=skill_check_successes,
+        skill_check_total=skill_check_total,
+        skill_check_success_rate=success_rate,
+    )
