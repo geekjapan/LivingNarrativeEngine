@@ -7,9 +7,11 @@ import yaml
 
 from living_narrative.cli._common import load_project_or_exit, runtime_error, usage_error
 from living_narrative.export_replay import (
+    DEFAULT_IMAGE_PROMPT_PROFILE,
     DEFAULT_PROFILE,
     DEFAULT_REVISION_PROFILE,
     ArcsError,
+    ImagePromptError,
     NoReplayableTurnsError,
     NovelDraftParseError,
     ReconstructionError,
@@ -17,6 +19,7 @@ from living_narrative.export_replay import (
     assemble_replay,
     build_arcs_report,
     build_outline,
+    generate_image_prompts,
     narration_by_turn_from_records,
     parse_novel_draft,
     reconstruct_session,
@@ -27,9 +30,11 @@ from living_narrative.export_replay import (
     render_scenes_markdown,
     render_trpg_replay,
     revise_novel,
+    write_image_prompt_exports,
 )
 from living_narrative.export_replay.loader import load_turn_records
 from living_narrative.pipeline.llm_gateway import LLMGateway
+from living_narrative.state.store import StateLoadError, StateStore
 
 app = typer.Typer(name="export", help="Export commands")
 
@@ -89,6 +94,30 @@ def scenes(
     markdown_path = output_dir / "scenes.md"
     markdown_path.write_text(render_scenes_markdown(reconstruction), encoding="utf-8")
 
+    typer.echo(f"Wrote {yaml_path}")
+    typer.echo(f"Wrote {markdown_path}")
+
+
+@app.command("image-prompts")
+def image_prompts(
+    project: Path = typer.Option(..., "--project", help="Path to project.yaml"),
+    profile: str = typer.Option(
+        DEFAULT_IMAGE_PROMPT_PROFILE,
+        "--profile",
+        help="LLM binding key used for scene prompt generation",
+    ),
+) -> None:
+    """Generate auditable scene prompts only; no image provider is called."""
+    read = load_project_or_exit(project)
+    try:
+        reconstruction = reconstruct_session(project)
+        state = StateStore.load(read.paths.state)
+        gateway = LLMGateway(project=read.config, random_seed=read.config.random_seed)
+        result = generate_image_prompts(reconstruction, state, gateway, profile=profile)
+    except (ReconstructionError, StateLoadError, ImagePromptError) as exc:
+        runtime_error(str(exc))
+
+    yaml_path, markdown_path = write_image_prompt_exports(read.paths.exports, result)
     typer.echo(f"Wrote {yaml_path}")
     typer.echo(f"Wrote {markdown_path}")
 

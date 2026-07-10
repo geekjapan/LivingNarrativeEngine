@@ -91,6 +91,47 @@ def test_export_scenes_accepts_gm_flag(tmp_path, build_project):
     assert result.exit_code == 0, result.output
 
 
+def test_export_image_prompts_writes_yaml_and_markdown_with_profile(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    character_path = state_dir / "characters" / "char_001.yaml"
+    character = yaml.safe_load(character_path.read_text(encoding="utf-8"))
+    character["visual_profile"] = {"summary": "short black hair", "hair": "black"}
+    character_path.write_text(yaml.safe_dump(character, allow_unicode=True), encoding="utf-8")
+    (state_dir / "visual_profiles.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "backgrounds": [{"id": "background_001", "name": "駅", "summary": "night station"}],
+                "style_lock": {"art_style": "anime background art"},
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    TurnPipeline().run(project_path)
+
+    result = runner.invoke(
+        app,
+        ["export", "image-prompts", "--project", str(project_path), "--profile", "narrator"],
+    )
+
+    assert result.exit_code == 0, result.output
+    exports_dir = project_path.parent / "workspace" / "exports"
+    assert (exports_dir / "image_prompts.yaml").exists()
+    assert (exports_dir / "image_prompts.md").exists()
+
+
+def test_export_image_prompts_errors_without_visual_profiles(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    TurnPipeline().run(project_path)
+
+    result = runner.invoke(app, ["export", "image-prompts", "--project", str(project_path)])
+
+    assert result.exit_code == 1
+    exports_dir = project_path.parent / "workspace" / "exports"
+    assert not (exports_dir / "image_prompts.yaml").exists()
+
+
 def test_export_scenes_errors_when_project_not_found(tmp_path):
     output = tmp_path / "does_not_exist" / "project.yaml"
 
