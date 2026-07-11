@@ -1,94 +1,64 @@
-# Repository Guidelines
+# LivingNarrativeEngine
 
-## Project Structure & Module Organization
+共通のエージェント規約とオーケストレーション規約はグローバル`AGENTS.md`に従う。このファイルにはリポジトリ固有の指示だけを記載する。
 
-This repository is currently minimal: the root contains `README.md` and no committed source, test, asset, or build directories yet. Keep new project files organized from the start:
+## プロジェクト
 
-- `src/` for application or engine source code.
-- `tests/` or `test/` for automated tests.
-- `assets/` for static data, fixtures, images, or narrative content.
-- `docs/` for design notes, architecture decisions, and contributor-facing documentation.
+LivingNarrativeEngineはPython 3.12+のstate-firstナラティブシミュレーションエンジンである。YAML状態と追記専用のevent、intervention、roll、diffログを正本とし、narrationは再生成可能な派生ビューとして扱う。
 
-Prefer shallow, descriptive module paths over broad catch-all folders. If a new subsystem is added, place its tests near the behavior they verify or mirror the source path under `tests/`.
+必要に応じて次の順に参照する。
 
-## Build, Test, and Development Commands
+1. `docs/issues/NNN-slug.md` — 現在の作業単位と完了条件。
+2. `docs/adr/` — 承認済みのアーキテクチャ判断。
+3. コードとテスト — 現行挙動の正本。
+4. `docs/spec-foundation.md` — 共有契約と基礎判断。
+5. `docs/project_plan.md` — 製品ビジョンとロードマップ。後続判断と異なる場合は参考情報とする。
+6. `openspec/specs/` — 初回実装バッチの凍結リファレンス。
 
-No package manager, build script, or test runner is committed yet. When tooling is introduced, document the exact commands here and in `README.md`.
+このリポジトリでは新規作業にOpenSpecを使わない。既存のarchiveとapplied specsは削除せず凍結参照として維持する。新規作業はIssueで管理し、永続的なアーキテクチャ判断はADRへ記録する。
 
-Expected examples:
+## ワークフロー
 
-- `npm test` or equivalent: run the full automated test suite.
-- `npm run lint`: check formatting and style.
-- `npm run build`: produce a distributable build.
-- `npm run dev`: start a local development process.
+- 依頼を扱う既存Issueがあればそれを使う。なければ`docs/issues/NNN-slug.md`を作り、`id`、`title`、`status`、`created`、背景、完了条件、関連ファイルを記載する。
+- 製品・プロジェクト文書は日本語を第一言語とし、コードと識別子は英語にする。
+- 実装状態とIssueのstatusを一致させる。
+- 永続的なアーキテクチャ判断を追加・変更するときは`docs/adr/`へADRを追加する。
+- コード変更前にGitNexusで関連flowとsymbol impactを調べ、commit前に`detect_changes`を実行する。
 
-Do not add wrapper scripts until they replace a command contributors actually need to run.
+## コマンド
 
-## Coding Style & Naming Conventions
+```bash
+uv sync --extra web
+NO_COLOR=1 uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+git diff --check
+node .gitnexus/run.cjs analyze --index-only
+```
 
-Use the style of the first committed implementation unless a formatter is added. Keep names explicit and domain-focused. Prefer:
+反復中は対象testを使い、完了前に全checkを実行する。local smoke projectと生成runtime dataはgitignore済みの`sandbox/`または`projects/`に置く。実credentialを追跡対象ファイルへ保存しない。
 
-- `camelCase` for JavaScript or TypeScript variables and functions.
-- `PascalCase` for classes, components, and exported types.
-- `kebab-case` for documentation and asset filenames.
+## アーキテクチャ
 
-Use two-space indentation for JavaScript, TypeScript, JSON, YAML, and Markdown unless project tooling later specifies otherwise.
+- `src/living_narrative/pipeline/` — Load、Intervene、Simulate、Act、Resolve、Narrate、Check、Commitの8-phase turn pipeline。
+- `src/living_narrative/agents/` — world、character、conflict、narrator、checker、state-managerのbehavior。
+- `src/living_narrative/state/` — Pydantic v2 schema、永続化、atomicな`StateDiff`適用。
+- `src/living_narrative/llm/` — provider protocol、registry、mock、OpenAI-compatible provider。
+- `src/living_narrative/session/`、`intervention/`、`random/`、`narration/`、`safety/` — runtime policyと決定論的な補助system。
+- `src/living_narrative/cli/`と`src/living_narrative/web/` — CLIとlocal webのentry point。
+- `src/living_narrative/plugins/` — project-localかつallowlist制のplugin runtime。
+- `tests/` — 上記境界を横断するbehavior test。
 
-## Testing Guidelines
+## 必須契約
 
-Add tests with the first non-trivial behavior. Name test files after the unit or workflow under test, such as `src/parser.js` with `tests/parser.test.js`. Each bug fix should include the smallest regression test that would fail without the fix.
+- 状態変更はすべてatomicな`StateDiff`を経由する。直接の状態変更は禁止する。
+- 情報scopeを維持する。character agentには本人の知識だけ、narrationにはreader-visible dataだけを渡し、生成するfactとeventにはvisibilityを付ける。
+- seed付き乱数の決定性を維持し、replayに必要なrollをすべて記録する。
+- 失敗時もpartial turn artifactを保存し、`meta.yaml`をcompletion markerとして最後に書く。
+- Pydantic v2 modelをschemaの正本とする。YAML keyは`snake_case`、PythonはPEP 8、capability名と文書filenameは`kebab-case`にする。
+- plugin loadは任意コード実行を伴うtrust boundaryである。明示的にallowlistされたinstalled pluginだけをloadし、登録はproject-localかつtransactionalに保つ。
+- disclosure-safeなCLI/web出力に`gm_vault`、`hidden_facts`、character secrets、`private_mind`を含めない。
 
-## Commit & Pull Request Guidelines
+## 検証
 
-Current history only contains `Initial commit`, so no project-specific convention exists yet. Use short imperative commit subjects, for example `Add parser smoke test`.
-
-Pull requests should include a concise summary, validation performed, linked issue if one exists, and screenshots or sample output when user-facing behavior changes.
-
-## Agent-Specific Instructions
-
-Before editing, check whether project tooling has been added since this guide was written. Keep changes narrow, avoid speculative scaffolding, and update this file only when repository conventions actually change.
-
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
-
-This project is indexed by GitNexus as **LivingNarrativeEngine** (6617 symbols, 12490 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
-
-> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
-
-## Always Do
-
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
-- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
-
-## Never Do
-
-- NEVER edit a function, class, or method without first running `impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
-- NEVER commit changes without running `detect_changes()` to check affected scope.
-
-## Resources
-
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/LivingNarrativeEngine/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/LivingNarrativeEngine/clusters` | All functional areas |
-| `gitnexus://repo/LivingNarrativeEngine/processes` | All execution flows |
-| `gitnexus://repo/LivingNarrativeEngine/process/{name}` | Step-by-step execution trace |
-
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
+behavior変更には、その変更なしでは失敗する最小のregression testを追加する。対象pathに加えて全test、lint、format、diff checkを実行する。security-sensitive、state schema、visibility、persistence、plugin、CLI/API、cross-module変更ではfocused integration coverageを追加し、GitNexus impact reportを確認する。
