@@ -93,10 +93,12 @@ graph TD
 4. **実LLMスモークの基準**: 物語ダイナミクス系は8〜12ターン、加速が要る検証はsandbox側パラメータ改変(pressure初期値等)で誘発 — テンプレートは触らない
 5. **優先順序(推奨)**: 013→014が最優先(評価で残った物語課題の直接対策)。020をworktreeで並走開始。015/019はその後。017は価値が出るまで保留
 
-## 現在地(2026-07-11更新)
+## 現在地(2026-07-12更新)
 
 - **Track A 完走**: 013〜019 全done(017 factionも2026-07-10実装、保留解除)。ゲート(019)は実LLM 20ターンbenchで通過(bench20_llm)
 - **Track B 完走**: 020/021-022/023/024/025 done
 - **Track C 完走**: 026/027/028-029/030 done(bench20実データでscenes/outline/novel/revised/TRPG/arcsの全export確認済み)
-- 次: E7/E8/E9は **`feature-dag-e7-e9.md`(2026-07-11確定)** にissue粒度(031〜050)で分解済み — 最優先は044(schema_version)。残課題(metrics transition_count計数、スレッド回収圧)は随時
-- 697 tests。全issueは docs/issues/、実測は sandbox/bench20_llm
+- **Track D/E/F完走**: `feature-dag-e7-e9.md`の031〜050は全done。051でagent guidanceも現行workflowへ統一済み
+- 次: **Issue 052「1.0リリース準備の道筋を確定する」**をmapとして、security、transaction/recovery、長期品質、UX、release engineeringを先に決定する
+- 951 tests。実測はmock 50ターン、実LLM 20ターン、E7実LLM 8ターン。β条件の100ターンと1.0の日常利用評価は未証明
+- 既知の最優先課題はWeb stored XSS、project単位transaction/排他/crash recovery、CIでのweb test実行保証

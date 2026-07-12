@@ -115,4 +115,4 @@ graph TD
 
 044 → (045並走) → 031 → 032/033 → 039(直列挿入)→ 以降D/E並列 → 038ゲート → 049 → 048/050
 
-現在地（2026-07-11）: Issue 038のmock統合・50ターンbench・実LLM 8ターンスモークがすべてgreenとなり、E7ゲートを通過した。
+現在地（2026-07-12）: Issue 031〜050は全done。E7のmock統合・50ターンbench・実LLM 8ターンスモーク、E8のprovider境界／export、E9のquickstart／backup／migration骨格／settings／plugin SDK／rights文書まで完了した。このDAGは完了済み履歴として維持し、次の判断はIssue 052「1.0リリース準備の道筋を確定する」で管理する。
