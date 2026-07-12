@@ -1,7 +1,7 @@
 ---
 id: 063
 title: mock providerによる代表ジャーニーE2E testをCI常設する
-status: open
+status: done
 created: 2026-07-12
 type: implementation
 priority: P0
