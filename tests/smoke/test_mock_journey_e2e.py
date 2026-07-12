@@ -55,7 +55,9 @@ def test_mock_provider_journey_init_serve_intervene_and_export(tmp_path, monkeyp
     monkeypatch.setattr(web_server.uvicorn, "run", capture_server)
     serve_result = runner.invoke(app, ["serve", "--project-root", str(tmp_path), "--port", "8765"])
     assert serve_result.exit_code == 0, serve_result.output
+    assert served, "uvicorn.run monkeypatch did not fire"
     assert served["host"] == "127.0.0.1"
+    assert served["port"] == 8765
 
     with TestClient(served["app"]) as client:
         assert client.get("/api/projects").json()[0]["name"] == "mist_station"
