@@ -5,12 +5,16 @@ one ``scene_directive`` intervention through the served Web API; the final asser
 novel-draft export is non-empty and does not expose GM-only state.
 """
 
+import pytest
 import yaml
-from fastapi.testclient import TestClient
-from typer.testing import CliRunner
 
-import living_narrative.web.server as web_server
-from living_narrative.cli import app
+fastapi = pytest.importorskip("fastapi")
+
+from fastapi.testclient import TestClient  # noqa: E402
+from typer.testing import CliRunner  # noqa: E402
+
+import living_narrative.web.server as web_server  # noqa: E402
+from living_narrative.cli import app  # noqa: E402
 
 runner = CliRunner()
 
@@ -98,5 +102,8 @@ def test_mock_provider_journey_init_serve_intervene_and_export(tmp_path, monkeyp
     gm_vault = yaml.safe_load(
         (project_dir / "workspace" / "state" / "gm_vault.yaml").read_text(encoding="utf-8")
     )
-    assert gm_vault is not None, "gm_vault.yaml must contain entries"
+    assert gm_vault, "gm_vault.yaml must contain entries"
+    assert all(isinstance(entry, dict) and "text" in entry for entry in gm_vault), (
+        "gm_vault entries must be mappings with text"
+    )
     assert all(entry["text"] not in export_text for entry in gm_vault)
