@@ -92,10 +92,11 @@ def test_mock_provider_journey_init_serve_intervene_and_export(tmp_path, monkeyp
     export_text = export_path.read_text(encoding="utf-8")
     assert export_text.strip()
     assert "## 第1章" in export_text
-    for forbidden_key in ("gm_vault", "hidden_facts", "private_mind"):
+    for forbidden_key in ("gm_vault", "hidden_facts", "secrets", "private_mind"):
         assert forbidden_key not in export_text
 
     gm_vault = yaml.safe_load(
         (project_dir / "workspace" / "state" / "gm_vault.yaml").read_text(encoding="utf-8")
     )
+    assert gm_vault is not None, "gm_vault.yaml must contain entries"
     assert all(entry["text"] not in export_text for entry in gm_vault)
