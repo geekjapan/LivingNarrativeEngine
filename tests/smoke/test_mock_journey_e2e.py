@@ -43,8 +43,11 @@ def test_mock_provider_journey_init_serve_intervene_and_export(tmp_path, monkeyp
     project_path.write_text(
         yaml.safe_dump(project, allow_unicode=True, sort_keys=False), encoding="utf-8"
     )
-    assert project["llm"]["provider"] == "mock"
-    assert project["random_seed"] == "issue-063-mock-journey-fixed-seed"
+    # Re-read from disk so a broken YAML round-trip (bad encoding, dropped key) fails here rather
+    # than silently running with an unpinned seed.
+    persisted = yaml.safe_load(project_path.read_text(encoding="utf-8"))
+    assert persisted["llm"]["provider"] == "mock"
+    assert persisted["random_seed"] == "issue-063-mock-journey-fixed-seed"
 
     # Invoke the public serve CLI, then drive the exact app handed to uvicorn over HTTP.
     served = {}
@@ -98,7 +101,15 @@ def test_mock_provider_journey_init_serve_intervene_and_export(tmp_path, monkeyp
     export_text = export_path.read_text(encoding="utf-8")
     assert export_text.strip()
     assert "## 第1章" in export_text
-    for forbidden_key in ("gm_vault", "hidden_facts", "secrets", "private_mind"):
+    # Reader-facing export must leak neither the container keys nor any non-reader visibility tag.
+    for forbidden_key in (
+        "gm_vault",
+        "hidden_facts",
+        "secrets",
+        "private_mind",
+        "gm_only",
+        "private",
+    ):
         assert forbidden_key not in export_text
 
     gm_vault = yaml.safe_load(
@@ -108,4 +119,9 @@ def test_mock_provider_journey_init_serve_intervene_and_export(tmp_path, monkeyp
     assert all(isinstance(entry, dict) and "text" in entry for entry in gm_vault), (
         "gm_vault entries must be mappings with text"
     )
-    assert all(entry["text"] not in export_text for entry in gm_vault)
+    # No vault entry's text OR any of its string field values (e.g. its GM-only reveal_condition)
+    # may surface in the reader-facing draft.
+    for entry in gm_vault:
+        for value in entry.values():
+            if isinstance(value, str) and value.strip():
+                assert value not in export_text, f"gm_vault content leaked: {value!r}"
