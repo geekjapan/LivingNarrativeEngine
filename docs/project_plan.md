@@ -2719,42 +2719,35 @@ MVP完成とは、次を満たす状態である。
 - リプレイが読める。
 - READMEで起動できる。
 
+α/β/1.0の定義はADR-0005のgate構造を正本とする(2026-07-12、Issue 053)。
+primary personaと代表ジャーニー、判定原則(must/should/post-1.0)もADR-0005に従う。
+
 ## 26.2 α版完成
 
-α版完成とは、次を満たす状態である。
+α gate(遡及認定)。自動検証のみ。
 
-- Web UIで遊べる。
-- 3つ以上のサンプル世界がある。
-- 50ターン程度進行できる。
-- 情報スコープが分離されている。
-- continuity/leak checkがある。
-- state diff reviewがある。
-- session resumeができる。
+- 全test green。
+- mock providerで代表ジャーニーのE2E自動走行(init→serve→介入込み複数turn→export)が
+  CIでpass。
 
 ## 26.3 β版完成
 
-β版完成とは、次を満たす状態である。
+β gate = α +
 
-- 長期セッションで100ターン以上遊べる。
-- 小説原案exportが使える。
-- TRPGリプレイexportが使える。
-- branch/rollbackが使える。
-- LLM providerを複数選べる。
-- cost/token trackingがある。
-- backup/restoreがある。
+- 正式2経路(uv / docker compose)のclean install smokeがCIでpass。
+- βschema凍結宣言(migration互換保証の起点、宣言形式はIssue 059)。
+- 実LLMでの代表ジャーニー人手smoke 1回合格(合否基準はIssue 057 rubricの簡易版)。
 
 ## 26.4 1.0完成
 
-1.0完成とは、次を満たす状態である。
+1.0 gate = β + must全充足 ∧ 全gate green。
 
-- ローカルインストールまたはDockerで安定起動。
-- 複数サンプル世界。
-- Web UIが日常利用可能。
-- 状態管理・介入・自律進行・ログ・exportが一通り安定。
-- plugin拡張の基本設計がある。
-- ドキュメントが整備されている。
-- セキュリティ・権利注意が明示されている。
-- 実用的に「リアルタイム生成物語を楽しむ」体験が成立している。
+- ADR-0005 D3のmust項目全充足。
+- βschema→1.0のmigration regression test pass。
+- 実LLM品質gate pass(Issue 057)。
+- UX受入pass(Issue 058)。
+- release checklist完了(Issue 059)。
+- version 1.0.0。
 
 ---
 

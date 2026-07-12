@@ -26,6 +26,7 @@ blocked_by: [053, 056]
 - thread SLO、scene transitionの論理定義、narrator identity surfaceを決める
 - resume／branch／rollback／export／backup/restoreを含むlong-run journeyを定義する
 - provider failureやreviewを含む再現可能なbenchmark artifact方針を決める
+- β gateの実LLM人手smoke(1回合格)に流用する簡易版rubricを定義する(ADR-0005 D4)
 
 ## 関連ファイル
 

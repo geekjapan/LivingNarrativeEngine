@@ -25,6 +25,8 @@ type: wayfinder:map
 
 <!-- closed child Issueの結論だけを1行で追記し、詳細は子Issueに置く -->
 
+- 053: 1.0契約確定 — persona=技術中級一人遊び、経路=uv/docker、βschema→1.0 migration保証、must原則とα/β/1.0 gate構造(ADR-0005)、plugin/provider stability tier(ADR-0006)。新規must実装=063 mock journey E2E。
+
 ## Not yet specified
 
 - 1.0の具体的な物語品質SLO、実LLM評価モデル、許容費用はRelease契約と品質ゲートの決定後に確定する。

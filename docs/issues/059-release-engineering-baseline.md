@@ -26,6 +26,7 @@ localでは951 testsがpassするが、CIは`uv sync`のみでoptional web extra
 - coverage、type check、dependency／container／taint scanの採否と閾値を決める
 - versioning、license、changelog、release artifact、upgrade policyを決める
 - clean machineでのquickstart／backup restore／migration検証を定義する
+- βschema凍結の宣言形式(git tag／文書)を決める(ADR-0005 D2/D4の保証起点発効)
 
 ## 関連ファイル
 
