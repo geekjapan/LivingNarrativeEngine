@@ -11,7 +11,9 @@ fastapi = pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+import living_narrative.web.app as web_app  # noqa: E402
 import living_narrative.web.service as service  # noqa: E402
+from living_narrative.state.transaction import ProjectLockError  # noqa: E402
 from living_narrative.web.app import create_app  # noqa: E402
 
 _POLL_TIMEOUT_S = 5.0
@@ -208,6 +210,37 @@ def test_review_with_no_pending_turn_is_409(tmp_path, build_project):
     )
 
     assert response.status_code == 409
+
+
+def test_turn_returns_409_for_project_lock_conflict(tmp_path, build_project, monkeypatch):
+    build_project(tmp_path)
+
+    def locked_run(*_args, **_kwargs):
+        raise ProjectLockError("project is already locked")
+
+    monkeypatch.setattr(web_app, "run_turn", locked_run)
+
+    response = _client(tmp_path).post("/api/project/project/turn")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "project is already locked"
+
+
+def test_review_returns_409_for_project_lock_conflict(tmp_path, build_project, monkeypatch):
+    project_path = build_project(tmp_path)
+    _write_stopped_for_review_turn(project_path)
+
+    def locked_review(*_args, **_kwargs):
+        raise ProjectLockError("project is already locked")
+
+    monkeypatch.setattr(web_app, "submit_review", locked_review)
+
+    response = _client(tmp_path).post(
+        "/api/project/project/review", json={"decision": "accept_all"}
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "project is already locked"
 
 
 def test_review_rejects_unsupported_decisions_over_the_api(tmp_path, build_project):
