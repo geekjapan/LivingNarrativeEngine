@@ -11,12 +11,12 @@ FIXTURE = Path(__file__).parents[1] / "fixtures" / "beta-schema-v1" / "project.y
 
 def test_beta_schema_v1_fixture_loads_and_migrates_without_data_loss():
     raw = yaml.safe_load(FIXTURE.read_text(encoding="utf-8"))
-    assert raw["schema_version"] == CURRENT_SCHEMA_VERSION
-    assert migrate_project_data(raw) == raw
+    assert raw["schema_version"] == 1  # beta-schema-v1 freeze (ADR-0011)
+    migrated = migrate_project_data(raw)
 
     legacy = deepcopy(raw)
     del legacy["schema_version"]
-    assert migrate_project_data(legacy) == raw
+    assert migrate_project_data(legacy) == migrated
 
     report = load_project_config(FIXTURE)
     assert report.is_valid
