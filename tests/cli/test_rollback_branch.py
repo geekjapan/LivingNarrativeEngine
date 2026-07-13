@@ -73,15 +73,24 @@ def test_rollback_restores_state_and_timeline(tmp_path, build_project):
 def test_rollback_then_next_turn_renumbers_and_rng_accounting_survives(tmp_path, build_project):
     project_path = build_project(tmp_path)
     _run_turns(project_path, 5)
+    runs_dir = _runs_dir(project_path)
+    expected_rolls = {
+        turn: yaml.safe_load((runs_dir / f"turn_{turn:04d}" / "rolls.yaml").read_text())
+        for turn in (4, 5)
+    }
 
     result = runner.invoke(
         app, ["rollback", "--project", str(project_path), "--to-turn", "3", "--yes"]
     )
     assert result.exit_code == 0, result.output
 
-    next_result = TurnPipeline().run(project_path)
-    assert next_result.turn == 4
-    assert next_result.status == TurnStatus.APPLIED
+    next_results = [TurnPipeline().run(project_path), TurnPipeline().run(project_path)]
+    assert [result.turn for result in next_results] == [4, 5]
+    assert all(result.status == TurnStatus.APPLIED for result in next_results)
+    actual_rolls = [
+        yaml.safe_load((result.turn_dir / "rolls.yaml").read_text()) for result in next_results
+    ]
+    assert actual_rolls == [expected_rolls[4], expected_rolls[5]]
 
 
 def test_rollback_rejects_to_turn_at_or_above_current(tmp_path, build_project):
