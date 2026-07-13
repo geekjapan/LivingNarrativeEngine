@@ -1,7 +1,9 @@
 import yaml
 from typer.testing import CliRunner
 
+import living_narrative.cli.turn as turn_module
 from living_narrative.cli import app
+from living_narrative.state.transaction import RecoveryError
 
 runner = CliRunner()
 
@@ -35,6 +37,22 @@ def test_turn_blocks_when_previous_turn_is_unresolved(tmp_path, build_project):
 
     assert result.exit_code != 0
     assert "review" in result.output
+
+
+def test_turn_cli_reports_recovery_error_guidance(tmp_path, build_project, monkeypatch):
+    project_path = build_project(tmp_path)
+
+    def fail_run(*_args, **_kwargs):
+        raise RecoveryError(
+            "cannot mutate project while recovery state is quarantine", quarantine=True
+        )
+
+    monkeypatch.setattr(turn_module.TurnPipeline, "run", fail_run)
+    result = runner.invoke(app, ["turn", "--project", str(project_path)])
+
+    assert result.exit_code == 1
+    assert "restore a backup" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_turn_free_text_intervention_is_recorded(tmp_path, build_project):

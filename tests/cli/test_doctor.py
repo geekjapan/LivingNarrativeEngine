@@ -100,6 +100,21 @@ def test_doctor_repair_keeps_discarded_turn_audit_fields(tmp_path, build_project
     assert report["turn_dir"] == str(turn_dir)
 
 
+def test_doctor_repair_reports_legacy_applied_turn_preserved(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    turn_dir.mkdir(parents=True)
+    (turn_dir / "meta.yaml").write_text(yaml.safe_dump({"status": "applied"}), encoding="utf-8")
+
+    result = runner.invoke(app, ["doctor", "--project", str(project_path), "--repair", "--json"])
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report["state"] == "discard"
+    assert report["action"] == "no action needed (legacy applied turn preserved)"
+    assert turn_dir.exists()
+
+
 def test_doctor_repair_reports_io_errors_without_traceback(tmp_path, build_project, monkeypatch):
     project_path = build_project(tmp_path)
     doctor_module = importlib.import_module("living_narrative.cli.doctor")
@@ -118,9 +133,12 @@ def test_doctor_repair_reports_io_errors_without_traceback(tmp_path, build_proje
 def test_doctor_repair_trusts_post_repair_diagnosis(tmp_path, build_project, monkeypatch):
     project_path = build_project(tmp_path)
     doctor_module = importlib.import_module("living_narrative.cli.doctor")
+    calls = 0
 
     def classify(_turn_dir, _state_dir, *, apply=True):
-        return RecoveryState.DISCARD if apply else RecoveryState.QUARANTINE
+        nonlocal calls
+        calls += 1
+        return RecoveryState.DISCARD if calls == 1 else RecoveryState.QUARANTINE
 
     monkeypatch.setattr(doctor_module, "classify_recovery_state", classify)
     result = runner.invoke(app, ["doctor", "--project", str(project_path), "--repair", "--json"])

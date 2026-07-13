@@ -208,24 +208,26 @@ def classify_recovery_state(
     return state
 
 
-def _apply_recovery_state(turn_dir: Path, state: RecoveryState) -> None:
+def _apply_recovery_state(turn_dir: Path, state: RecoveryState) -> bool:
     if state is RecoveryState.RECOVER_META:
         intent = read_commit_intent(turn_dir)
         if intent is not None:
             _write_commit_meta(turn_dir, None, intent)
-        return
+            return True
+        return False
     if state is not RecoveryState.DISCARD:
-        return
+        return False
 
     # A legacy applied turn has no journal to recover.  Keep it as live history; the
     # existing turn-number resolver will advance past it as before Issue 066.
     if read_commit_intent(turn_dir) is None:
         meta = _read_mapping(turn_dir / "meta.yaml")
         if meta is not None and meta.get("status") == "applied":
-            return
+            return False
     from living_narrative.pipeline.turn_numbering import discard_turn_directory
 
     discard_turn_directory(turn_dir)
+    return True
 
 
 def _write_commit_meta(

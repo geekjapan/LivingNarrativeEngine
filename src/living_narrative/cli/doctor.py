@@ -11,6 +11,7 @@ from living_narrative.state.transaction import (
     ProjectLockError,
     RecoveryError,
     RecoveryState,
+    _apply_recovery_state,
     classify_recovery_state,
     latest_turn_directory,
     project_lock,
@@ -72,17 +73,20 @@ def doctor(
             with project_lock(read.paths.root):
                 turn_dir = latest_turn_directory(read.paths.runs)
                 before_report = _diagnose(read.paths.root, read.paths.state, read.paths.runs)
-                state = classify_recovery_state(turn_dir, read.paths.state)
+                state = RecoveryState(before_report["state"])
                 if state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
                     raise RecoveryError(
                         f"cannot repair project while recovery state is {state.value}",
                         target="doctor",
                         quarantine=state is RecoveryState.QUARANTINE,
                     )
+                applied = _apply_recovery_state(turn_dir, state) if turn_dir is not None else False
                 action = (
                     "completed meta.yaml"
-                    if state is RecoveryState.RECOVER_META
+                    if state is RecoveryState.RECOVER_META and applied
                     else "discarded incomplete turn"
+                    if state is RecoveryState.DISCARD and applied
+                    else "no action needed (legacy applied turn preserved)"
                     if state is RecoveryState.DISCARD
                     else "no changes"
                 )
