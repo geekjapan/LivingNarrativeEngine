@@ -75,7 +75,9 @@ def doctor(
                 state = classify_recovery_state(turn_dir, read.paths.state)
                 if state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
                     raise RecoveryError(
-                        f"cannot repair project while recovery state is {state.value}"
+                        f"cannot repair project while recovery state is {state.value}",
+                        target="doctor",
+                        quarantine=state is RecoveryState.QUARANTINE,
                     )
                 action = (
                     "completed meta.yaml"
@@ -85,14 +87,11 @@ def doctor(
                     else "no changes"
                 )
                 report = _diagnose(read.paths.root, read.paths.state, read.paths.runs)
-                if state in {RecoveryState.RECOVER_META, RecoveryState.DISCARD}:
-                    report["state"] = RecoveryState.CLEAN.value
-                    report["recovery_state"] = RecoveryState.CLEAN.value
                 for field in ("turn", "turn_dir"):
                     if before_report[field] is not None:
                         report[field] = before_report[field]
                 report["action"] = action
-        except (ProjectLockError, RecoveryError) as exc:
+        except (ProjectLockError, RecoveryError, OSError) as exc:
             runtime_error(str(exc))
     else:
         report = _diagnose(read.paths.root, read.paths.state, read.paths.runs)

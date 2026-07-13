@@ -6,6 +6,7 @@ from living_narrative.state.models import Visibility
 from living_narrative.state.store import StateStore
 from living_narrative.state.transaction import (
     ProjectLockError,
+    RecoveryError,
     RecoveryState,
     classify_recovery_state,
     commit_state_diff,
@@ -28,6 +29,30 @@ def _diff(value: str = "committed") -> StateDiff:
             )
         ],
     )
+
+
+def test_recovery_error_guidance_is_scoped_to_the_recovery_target():
+    project = RecoveryError(
+        "cannot mutate project while recovery state is quarantine",
+        target="project",
+        quarantine=True,
+    )
+    journal = RecoveryError(
+        "cannot mutate project while rollback journal recovery state is quarantine",
+        target="rollback_journal",
+        quarantine=True,
+    )
+    doctor = RecoveryError(
+        "cannot repair project while recovery state is quarantine",
+        target="doctor",
+        quarantine=True,
+    )
+
+    assert "restore a backup" in str(project)
+    assert "doctor" in str(project)
+    assert "restore a backup" not in str(journal)
+    assert "doctor" not in str(journal)
+    assert "doctor" not in str(doctor)
 
 
 def test_commit_writes_journal_before_state_and_pins_meta(tmp_path, build_project):

@@ -11,7 +11,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -30,15 +30,32 @@ class ProjectLockError(BlockingIOError):
     """Raised when another process already owns a project's mutation lock."""
 
 
+RecoveryTarget = Literal["project", "rollback_journal", "doctor"]
+
+
 class RecoveryError(RuntimeError):
     """Raised when an unsafe incomplete turn blocks a state mutation."""
 
-    def __init__(self, message: str) -> None:
-        if "quarantine" in message.lower() and "restore" not in message.lower():
-            message = (
-                f"{message}; restore a backup or manually repair the state, "
-                "then run `living-narrative doctor`"
-            )
+    def __init__(
+        self,
+        message: str,
+        *,
+        target: RecoveryTarget = "project",
+        quarantine: bool = False,
+    ) -> None:
+        if quarantine:
+            if target == "project":
+                message = (
+                    f"{message}; restore a backup or manually repair the state, "
+                    "then run `living-narrative doctor`"
+                )
+            elif target == "rollback_journal":
+                message = f"{message}; manually repair the rollback journal before retrying"
+            else:
+                message = (
+                    f"{message}; quarantine cannot be cleared safely; restore a backup "
+                    "or manually repair the state"
+                )
         super().__init__(message)
 
 
@@ -302,6 +319,7 @@ __all__ = [
     "ProjectLockError",
     "RecoveryError",
     "RecoveryClassification",
+    "RecoveryTarget",
     "RecoveryState",
     "classify_recovery_state",
     "commit_state_diff",

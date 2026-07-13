@@ -1,3 +1,4 @@
+import importlib
 import json
 
 import yaml
@@ -8,7 +9,7 @@ from living_narrative.pipeline import TurnPipeline
 from living_narrative.state.diff import StateDiff, StateDiffChange
 from living_narrative.state.models import Visibility
 from living_narrative.state.store import StateStore
-from living_narrative.state.transaction import commit_state_diff, state_hash
+from living_narrative.state.transaction import RecoveryState, commit_state_diff, state_hash
 
 runner = CliRunner()
 
@@ -97,3 +98,32 @@ def test_doctor_repair_keeps_discarded_turn_audit_fields(tmp_path, build_project
     assert report["state"] == "clean"
     assert report["turn"] == "turn_0001"
     assert report["turn_dir"] == str(turn_dir)
+
+
+def test_doctor_repair_reports_io_errors_without_traceback(tmp_path, build_project, monkeypatch):
+    project_path = build_project(tmp_path)
+    doctor_module = importlib.import_module("living_narrative.cli.doctor")
+
+    def fail_classification(*_args, **_kwargs):
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(doctor_module, "classify_recovery_state", fail_classification)
+    result = runner.invoke(app, ["doctor", "--project", str(project_path), "--repair"])
+
+    assert result.exit_code == 1
+    assert "permission denied" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_doctor_repair_trusts_post_repair_diagnosis(tmp_path, build_project, monkeypatch):
+    project_path = build_project(tmp_path)
+    doctor_module = importlib.import_module("living_narrative.cli.doctor")
+
+    def classify(_turn_dir, _state_dir, *, apply=True):
+        return RecoveryState.DISCARD if apply else RecoveryState.QUARANTINE
+
+    monkeypatch.setattr(doctor_module, "classify_recovery_state", classify)
+    result = runner.invoke(app, ["doctor", "--project", str(project_path), "--repair", "--json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output)["state"] == "quarantine"

@@ -120,7 +120,9 @@ def execute_rollback(paths: WorkspacePaths, plan: RollbackPlan) -> RollbackResul
         if journal_recovery_state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
             raise RecoveryError(
                 "cannot mutate project while rollback journal recovery state is "
-                f"{journal_recovery_state.value}"
+                f"{journal_recovery_state.value}",
+                target="rollback_journal",
+                quarantine=journal_recovery_state is RecoveryState.QUARANTINE,
             )
         recovery_state = classify_recovery_state(
             latest_turn_directory(paths.runs),
@@ -128,7 +130,8 @@ def execute_rollback(paths: WorkspacePaths, plan: RollbackPlan) -> RollbackResul
         )
         if recovery_state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
             raise RecoveryError(
-                f"cannot mutate project while recovery state is {recovery_state.value}"
+                f"cannot mutate project while recovery state is {recovery_state.value}",
+                quarantine=recovery_state is RecoveryState.QUARANTINE,
             )
         inverse_diffs: list[InverseStateDiff] = [
             load_inverse_diff(turn_dir_path(paths.runs, turn) / "inverse_diff.yaml")

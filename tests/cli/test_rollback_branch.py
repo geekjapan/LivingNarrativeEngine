@@ -136,6 +136,20 @@ def test_rollback_rejects_quarantined_latest_turn(tmp_path, build_project):
         execute_rollback(paths, plan)
 
 
+def test_rollback_cli_reports_quarantine_recovery_error(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _run_turns(project_path, 1)
+    paths = load_project(project_path).paths
+    (paths.runs / "turn_0001" / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+
+    result = runner.invoke(
+        app, ["rollback", "--project", str(project_path), "--to-turn", "0", "--yes"]
+    )
+
+    assert result.exit_code == 1
+    assert "quarantine" in result.output
+
+
 def test_rollback_rejects_blocked_rollback_journal(tmp_path, build_project):
     project_path = build_project(tmp_path)
     _run_turns(project_path, 1)
