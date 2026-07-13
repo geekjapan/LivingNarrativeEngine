@@ -1,7 +1,7 @@
 ---
 id: 084
 title: web UIのDOMレベルXSS regression test(browser harness)を追加する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P2
