@@ -11,8 +11,10 @@ from living_narrative.state.transaction import (
     TransactionFaultPoint,
     classify_recovery_state,
     commit_state_diff,
+    finalize_rollback_renames,
     project_lock,
     recover_rollback_journals,
+    rotate_completed_rollback_journal,
     state_hash,
 )
 
@@ -103,6 +105,72 @@ def test_on_commit_artifacts_are_durable_before_state_is_published(tmp_path, bui
     assert (turn_dir / "state_diff.yaml").read_text(encoding="utf-8") == "artifact\n"
     assert state_hash(state_dir) != before_hash
     assert classify_recovery_state(turn_dir, state_dir) is RecoveryState.CLEAN
+
+
+def _noop_diff() -> StateDiff:
+    return StateDiff(id="diff_0001", turn=1, changes=[])
+
+
+def test_on_commit_runs_before_the_commit_intent_is_journalled(tmp_path, build_project):
+    # A no-op diff has before == after, so the live hash already equals state_hash_after and
+    # RECOVER_META would fire the instant commit_intent.yaml exists. The artifacts must be
+    # durable *before* the intent, so recovery can never stamp an applied turn without them.
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    # Normalize the on-disk state to its serialized form so an empty diff is a true no-op
+    # (its re-serialized bundle is byte-identical, hence before == after).
+    StateStore.save(StateStore.load(state_dir), state_dir)
+    observed: dict[str, object] = {}
+
+    def _on_commit() -> None:
+        observed["intent_exists"] = (turn_dir / "commit_intent.yaml").exists()
+        (turn_dir / "state_diff.yaml").write_text("artifact\n", encoding="utf-8")
+
+    commit_state_diff(
+        StateStore.load(state_dir), _noop_diff(), state_dir, turn_dir, on_commit=_on_commit
+    )
+
+    assert observed["intent_exists"] is False
+    intent = yaml.safe_load((turn_dir / "commit_intent.yaml").read_text(encoding="utf-8"))
+    assert intent["state_hash_before"] == intent["state_hash_after"]
+    assert (turn_dir / "state_diff.yaml").exists()
+    assert classify_recovery_state(turn_dir, state_dir) is RecoveryState.CLEAN
+
+
+def test_rotate_completed_rollback_journal_frees_the_name_for_reuse(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    runs_dir = project_path.parent / "workspace" / "runs"
+    state_dir = project_path.parent / "workspace" / "state"
+
+    # A completed rollback leaves a terminal journal (applied + renames_complete).
+    terminal = runs_dir / ".transactions" / "rollback_0003_to_0001"
+    commit_state_diff(
+        StateStore.load(state_dir),
+        _diff("rolled-back"),
+        state_dir,
+        terminal,
+        meta={"turn": 1, "commit_mode": "rollback", "rollback_from_turn": 3},
+    )
+    finalize_rollback_renames(runs_dir, terminal, from_turn=3, to_turn=1)
+
+    archived = rotate_completed_rollback_journal(terminal)
+
+    assert archived is not None
+    assert archived.name == "rollback_0003_to_0001_done_1"
+    assert not terminal.exists()
+
+    # An incomplete journal (no renames_complete) is left in place for real recovery.
+    incomplete = runs_dir / ".transactions" / "rollback_0005_to_0002"
+    commit_state_diff(
+        StateStore.load(state_dir),
+        _diff("partial"),
+        state_dir,
+        incomplete,
+        meta={"turn": 2, "commit_mode": "rollback", "rollback_from_turn": 5},
+    )
+    assert rotate_completed_rollback_journal(incomplete) is None
+    assert incomplete.exists()
 
 
 def test_recover_rollback_journals_completes_pending_renames(tmp_path, build_project):

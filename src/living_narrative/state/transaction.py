@@ -137,10 +137,13 @@ def commit_state_diff(
 ) -> StateDiffApplyResult:
     """Apply and persist one diff using the journal-before-state ordering.
 
-    ``on_commit`` runs after the commit intent is journalled but *before* the live
-    state is published, so callers can fold their own turn artifacts (``state_diff.yaml``,
-    ``review.yaml``, ...) into the recoverable transaction: the applied ``meta.yaml``
-    marker is written last, only once every artifact and the state itself are durable.
+    ``on_commit`` runs after the diff's own artifacts are saved but *before* the commit
+    intent is journalled and the state is published, so callers can fold their turn
+    artifacts (``state_diff.yaml``, ``review.yaml``, ...) into the recoverable transaction.
+    The commit intent — and therefore the applied ``meta.yaml`` marker that recovery may
+    reconstruct from it — is written only once every caller artifact is durable, so an
+    applied turn can never be missing them, even for a no-op diff whose before/after state
+    hashes are equal (where the live hash already matches ``state_hash_after``).
 
     ``fault_hook`` receives a named boundary and the number of completed writes in
     that boundary. A hook may raise to leave a deterministic crash fixture behind.
@@ -157,11 +160,11 @@ def commit_state_diff(
     )
 
     save_apply_artifacts(result, turn_dir)
+    if on_commit is not None:
+        on_commit()
     _call_fault_hook(fault_hook, TransactionFaultPoint.INTENT_BEFORE, 0)
     _atomic_write_yaml(turn_dir / "commit_intent.yaml", intent.model_dump(mode="json"))
     _call_fault_hook(fault_hook, TransactionFaultPoint.INTENT_AFTER_SAVE_BEFORE, 1)
-    if on_commit is not None:
-        on_commit()
     state_write_number = 0
 
     def after_state_write(_path: Path) -> None:
@@ -321,6 +324,29 @@ def recover_rollback_journals(runs_dir: Path, state_dir: Path) -> None:
         )
 
 
+def rotate_completed_rollback_journal(journal_dir: Path) -> Path | None:
+    """Archive a fully-completed rollback journal aside so its name can be reused.
+
+    A rollback names its journal ``rollback_<from>_to_<to>`` deterministically, so rolling
+    back the same range again reuses the directory. A prior *terminal* journal (already
+    applied and ``renames_complete``) carries stale hashes that no longer match the live
+    state, which would make ``classify_recovery_state`` report ``QUARANTINE`` and block the
+    new, valid rollback. Move it to ``..._done_<n>`` (D112 spirit: never destroy history);
+    an incomplete/unrecovered journal is left in place so its real recovery state surfaces.
+    """
+    meta = _read_mapping(journal_dir / "meta.yaml")
+    if meta is None or not meta.get("renames_complete"):
+        return None
+    n = 1
+    while True:
+        candidate = journal_dir.with_name(f"{journal_dir.name}_done_{n}")
+        if not candidate.exists():
+            break
+        n += 1
+    journal_dir.rename(candidate)
+    return candidate
+
+
 def _write_commit_meta(
     turn_dir: Path,
     meta: Mapping[str, Any] | None,
@@ -459,5 +485,6 @@ __all__ = [
     "recover_rollback_journals",
     "project_lock",
     "read_commit_intent",
+    "rotate_completed_rollback_journal",
     "state_hash",
 ]

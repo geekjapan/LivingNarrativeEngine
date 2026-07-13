@@ -31,6 +31,7 @@ from living_narrative.state.transaction import (
     latest_turn_directory,
     project_lock,
     recover_rollback_journals,
+    rotate_completed_rollback_journal,
 )
 from living_narrative.workspace.copy import WorkspaceCopyError, copy_directory_atomic
 from living_narrative.workspace.loader import WorkspacePaths
@@ -119,6 +120,9 @@ def execute_rollback(paths: WorkspacePaths, plan: RollbackPlan) -> RollbackResul
             / ".transactions"
             / (f"rollback_{plan.current_turn:04d}_to_{plan.to_turn:04d}")
         )
+        # A prior identical rollback that already completed would leave a terminal journal
+        # of the same name whose stale hashes now spuriously quarantine this valid rollback.
+        rotate_completed_rollback_journal(journal_dir)
         journal_recovery_state = classify_recovery_state(journal_dir, paths.state)
         if journal_recovery_state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
             raise RecoveryError(
