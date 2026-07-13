@@ -7,7 +7,7 @@ import fcntl
 import hashlib
 import os
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
@@ -92,6 +92,19 @@ class RecoveryState(StrEnum):
 RecoveryClassification = RecoveryState
 
 
+class TransactionFaultPoint(StrEnum):
+    """Crash-injection boundaries for the commit journal protocol."""
+
+    INTENT_BEFORE = "intent_before"
+    INTENT_AFTER_SAVE_BEFORE = "intent_after_save_before"
+    SAVE_MID = "save_mid"
+    SAVE_AFTER_META_BEFORE = "save_after_meta_before"
+    META_MID = "meta_mid"
+
+
+TransactionFaultHook = Callable[[TransactionFaultPoint, int], None]
+
+
 class CommitIntent(BaseModel):
     state_hash_before: str = Field(min_length=1)
     state_hash_after: str = Field(min_length=1)
@@ -119,8 +132,13 @@ def commit_state_diff(
     rng_start_offset: int = 0,
     selected_change_indexes: set[int] | None = None,
     meta: Mapping[str, Any] | None = None,
+    fault_hook: TransactionFaultHook | None = None,
 ) -> StateDiffApplyResult:
-    """Apply and persist one diff using the journal-before-state ordering."""
+    """Apply and persist one diff using the journal-before-state ordering.
+
+    ``fault_hook`` receives a named boundary and the number of completed writes in
+    that boundary. A hook may raise to leave a deterministic crash fixture behind.
+    """
     result = apply_state_diff(bundle, diff, selected_change_indexes)
     resolved_state_dir = _resolve_state_dir(state_dir)
     state_hash_before = state_hash(resolved_state_dir)
@@ -133,9 +151,19 @@ def commit_state_diff(
     )
 
     save_apply_artifacts(result, turn_dir)
+    _call_fault_hook(fault_hook, TransactionFaultPoint.INTENT_BEFORE, 0)
     _atomic_write_yaml(turn_dir / "commit_intent.yaml", intent.model_dump(mode="json"))
-    StateStore.save(result.bundle, resolved_state_dir)
-    _write_commit_meta(turn_dir, meta, intent)
+    _call_fault_hook(fault_hook, TransactionFaultPoint.INTENT_AFTER_SAVE_BEFORE, 1)
+    state_write_number = 0
+
+    def after_state_write(_path: Path) -> None:
+        nonlocal state_write_number
+        state_write_number += 1
+        _call_fault_hook(fault_hook, TransactionFaultPoint.SAVE_MID, state_write_number)
+
+    StateStore.save(result.bundle, resolved_state_dir, on_write=after_state_write)
+    _call_fault_hook(fault_hook, TransactionFaultPoint.SAVE_AFTER_META_BEFORE, state_write_number)
+    _write_commit_meta(turn_dir, meta, intent, fault_hook=fault_hook)
     return result
 
 
@@ -234,6 +262,8 @@ def _write_commit_meta(
     turn_dir: Path,
     meta: Mapping[str, Any] | None,
     intent: CommitIntent,
+    *,
+    fault_hook: TransactionFaultHook | None = None,
 ) -> None:
     data = dict(_read_mapping(turn_dir / "meta.yaml") or {})
     data.update(meta or {})
@@ -246,7 +276,11 @@ def _write_commit_meta(
             "rng_start_offset": intent.rng_start_offset,
         }
     )
-    _atomic_write_yaml(turn_dir / "meta.yaml", data)
+    _atomic_write_yaml(
+        turn_dir / "meta.yaml",
+        data,
+        after_temp_write=lambda: _call_fault_hook(fault_hook, TransactionFaultPoint.META_MID, 1),
+    )
 
 
 def _resolve_state_dir(path: Path) -> Path:
@@ -291,7 +325,12 @@ def _read_mapping(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def _atomic_write_yaml(path: Path, data: Any) -> None:
+def _atomic_write_yaml(
+    path: Path,
+    data: Any,
+    *,
+    after_temp_write: Callable[[], None] | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
@@ -299,6 +338,8 @@ def _atomic_write_yaml(path: Path, data: Any) -> None:
             stream.write(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
             stream.flush()
             os.fsync(stream.fileno())
+        if after_temp_write is not None:
+            after_temp_write()
         os.replace(tmp, path)
         _fsync_directory(path.parent)
     finally:
@@ -316,6 +357,15 @@ def _fsync_directory(path: Path) -> None:
         os.close(fd)
 
 
+def _call_fault_hook(
+    hook: TransactionFaultHook | None,
+    point: TransactionFaultPoint,
+    write_number: int,
+) -> None:
+    if hook is not None:
+        hook(point, write_number)
+
+
 __all__ = [
     "CommitIntent",
     "ProjectLockError",
@@ -323,6 +373,8 @@ __all__ = [
     "RecoveryClassification",
     "RecoveryTarget",
     "RecoveryState",
+    "TransactionFaultHook",
+    "TransactionFaultPoint",
     "classify_recovery_state",
     "commit_state_diff",
     "latest_turn_directory",
