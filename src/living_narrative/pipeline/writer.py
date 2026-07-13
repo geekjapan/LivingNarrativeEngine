@@ -19,7 +19,7 @@ from living_narrative.pipeline.status import TurnStatus
 from living_narrative.pipeline.version import PIPELINE_VERSION
 from living_narrative.random.engine import append_roll
 from living_narrative.random.models import Roll
-from living_narrative.state.diff import StateDiff
+from living_narrative.state.diff import StateDiff, fsync_directory
 from living_narrative.state.models import Event
 
 
@@ -32,6 +32,7 @@ def _atomic_write_yaml(path: Path, data: Any) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, path)
+        fsync_directory(path.parent)
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -45,6 +46,7 @@ def _atomic_write_text(path: Path, content: str) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, path)
+        fsync_directory(path.parent)
     finally:
         tmp.unlink(missing_ok=True)
 

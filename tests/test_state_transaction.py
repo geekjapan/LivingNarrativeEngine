@@ -138,6 +138,25 @@ def test_on_commit_runs_before_the_commit_intent_is_journalled(tmp_path, build_p
     assert classify_recovery_state(turn_dir, state_dir) is RecoveryState.CLEAN
 
 
+def test_commit_state_diff_does_not_publish_when_on_commit_raises(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    before = StateStore.load(state_dir).model_dump(mode="json")
+
+    def _boom() -> None:
+        raise RuntimeError("artifact write failed")
+
+    with pytest.raises(RuntimeError, match="artifact write failed"):
+        commit_state_diff(StateStore.load(state_dir), _diff(), state_dir, turn_dir, on_commit=_boom)
+
+    # on_commit runs before the intent and the state publish, so a raising callback leaves
+    # no journal, no applied marker, and the state untouched.
+    assert not (turn_dir / "commit_intent.yaml").exists()
+    assert not (turn_dir / "meta.yaml").exists()
+    assert StateStore.load(state_dir).model_dump(mode="json") == before
+
+
 def test_rotate_completed_rollback_journal_frees_the_name_for_reuse(tmp_path, build_project):
     project_path = build_project(tmp_path)
     runs_dir = project_path.parent / "workspace" / "runs"

@@ -353,16 +353,17 @@ def _write_yaml(path: Path, data: Any) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, path)
-        _fsync_directory(path.parent)
+        fsync_directory(path.parent)
     finally:
         tmp.unlink(missing_ok=True)
 
 
-def _fsync_directory(path: Path) -> None:
+def fsync_directory(path: Path) -> None:
     """Best-effort fsync of a directory so a rename survives a crash.
 
-    Only the errnos platforms/filesystems raise when they cannot fsync a directory are
-    tolerated; real durability failures (EIO, EACCES, EBADF, ...) surface.
+    Shared by the atomic writers in ``state`` and ``pipeline``. Only the errnos
+    platforms/filesystems raise when they cannot fsync a directory are tolerated; real
+    durability failures (EIO, EACCES, EBADF, ...) surface.
     """
     fd = os.open(path, os.O_RDONLY)
     try:

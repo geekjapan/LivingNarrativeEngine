@@ -20,6 +20,7 @@ from living_narrative.state.diff import (
     StateDiff,
     StateDiffApplyResult,
     apply_state_diff,
+    fsync_directory,
     save_apply_artifacts,
 )
 from living_narrative.state.models import WorldStateBundle
@@ -430,33 +431,9 @@ def _atomic_write_yaml(
         if after_temp_write is not None:
             after_temp_write()
         os.replace(tmp, path)
-        _fsync_directory(path.parent)
+        fsync_directory(path.parent)
     finally:
         tmp.unlink(missing_ok=True)
-
-
-_DIR_FSYNC_UNSUPPORTED = {
-    errno.EINVAL,
-    getattr(errno, "ENOTSUP", errno.EINVAL),
-    getattr(errno, "EOPNOTSUPP", errno.EINVAL),
-}
-
-
-def _fsync_directory(path: Path) -> None:
-    """Best-effort fsync of a directory so a rename survives a crash.
-
-    Only the errnos platforms/filesystems raise when they cannot fsync a directory are
-    tolerated; real durability failures (EIO, EACCES, EBADF, ...) surface.
-    """
-    fd = os.open(path, os.O_RDONLY)
-    try:
-        try:
-            os.fsync(fd)
-        except OSError as exc:
-            if exc.errno not in _DIR_FSYNC_UNSUPPORTED:
-                raise
-    finally:
-        os.close(fd)
 
 
 def _call_fault_hook(
