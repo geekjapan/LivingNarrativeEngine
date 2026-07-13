@@ -39,6 +39,9 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run python -c "import fastapi, uvicorn"
         if: matrix.dependency-set == 'web'
+      - name: install Playwright Chromium
+        if: matrix.dependency-set == 'web'
+        run: uv run playwright install --with-deps chromium
       - run: uv run pytest
 
   quality:
@@ -53,6 +56,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen --extra web
+      - name: install Playwright Chromium
+        run: uv run playwright install --with-deps chromium
       - name: pip-audit
         if: github.event_name == 'pull_request' || github.event_name == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
         run: uv run --with pip-audit pip-audit

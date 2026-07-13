@@ -2,6 +2,7 @@
 (fastapi/uvicorn) is not installed — the core suite must not depend on it."""
 
 import re
+from urllib.parse import urlsplit
 
 import pytest
 import yaml
@@ -315,6 +316,85 @@ def test_hostile_project_payload_stays_in_json_and_is_escaped_in_page(tmp_path, 
     assert response.json()["scenes"][0]["summary"] == hostile
     assert "escapeHtml(world.world.summary)" in page
     assert 'escapeHtml(s.summary || "")' in page
+
+
+@pytest.mark.parametrize("user_mode", ["player_character", "full_gm"])
+def test_hostile_payload_is_not_injected_into_reader_or_gm_dom(tmp_path, build_project, user_mode):
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import sync_playwright
+
+    hostile = '<img src=x onerror="alert(1)">'
+    project_path = build_project(tmp_path, scene_summary=hostile)
+    project = yaml.safe_load(project_path.read_text(encoding="utf-8"))
+    project["user_mode"] = user_mode
+    if user_mode == "player_character":
+        project["player_char_id"] = "char_001"
+    project_path.write_text(
+        yaml.safe_dump(project, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    character_path = project_path.parent / "workspace" / "state" / "characters" / "char_001.yaml"
+    character = yaml.safe_load(character_path.read_text(encoding="utf-8"))
+    character["name"] = hostile
+    character["visual_profile"] = {"summary": hostile}
+    character_path.write_text(
+        yaml.safe_dump(character, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    world_path = project_path.parent / "workspace" / "state" / "world.yaml"
+    world = yaml.safe_load(world_path.read_text(encoding="utf-8"))
+    world["summary"] = hostile
+    world_path.write_text(
+        yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+    client = _client(tmp_path)
+    status_response = client.get("/api/project/project/status")
+    assert status_response.json()["characters"][0]["name"] == hostile
+    if user_mode == "full_gm":
+        gm_response = client.get("/api/project/project/gm/world")
+        assert gm_response.json()["world"]["summary"] == hostile
+
+    html_response = client.get("/")
+
+    def fulfill_from_test_client(route):
+        request = route.request
+        target = urlsplit(request.url)
+        path = target.path + (f"?{target.query}" if target.query else "")
+        if path == "/":
+            route.fulfill(
+                status=html_response.status_code,
+                headers={"content-type": html_response.headers["content-type"]},
+                body=html_response.content,
+            )
+            return
+        response = client.request(request.method, path, content=request.post_data)
+        route.fulfill(
+            status=response.status_code,
+            headers={"content-type": response.headers.get("content-type", "application/json")},
+            body=response.content,
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.route("**/*", fulfill_from_test_client)
+            page.goto("http://testserver/")
+            page.locator("#characters .char").wait_for()
+            if user_mode == "full_gm":
+                page.locator("#gm-toggle-button:not([disabled])").click()
+                page.locator("#gm-panel.open").wait_for()
+                page.locator("#gm-world p").wait_for()
+
+            assert page.locator("#characters img, #story img, #gm-panel img").count() == 0
+            event_handlers = page.locator("body").evaluate(
+                """body => [...body.querySelectorAll('#characters *, #story *, #gm-panel *')]
+                  .flatMap(node => [...node.attributes]
+                    .filter(attribute => /^on/i.test(attribute.name))
+                    .map(attribute => `${node.tagName}.${attribute.name}`))"""
+            )
+            assert event_handlers == []
+        finally:
+            browser.close()
 
 
 @pytest.mark.parametrize("name", ["..", "../etc", "a/b", "a\\b", ""])

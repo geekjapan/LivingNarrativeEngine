@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 web = [
     "fastapi>=0.110",
+    "playwright>=1.40",
     "uvicorn>=0.27",
 ]
 
