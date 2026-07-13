@@ -14,8 +14,8 @@ other commands) do not require the optional ``web`` extra to be installed.
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from living_narrative.pipeline import LoadError, UnresolvedTurnError
@@ -90,6 +90,15 @@ def create_app(project_root: Path) -> FastAPI:
     a client can only ever reach projects the operator chose to serve.
     """
     app = FastAPI(title="Living Narrative Engine — Web UI")
+
+    @app.middleware("http")
+    async def check_mutation_origin(request: Request, call_next):
+        if request.method in {"POST", "PUT"}:
+            origin = request.headers.get("origin")
+            allowed_origin = f"http://127.0.0.1:{request.url.port}"
+            if origin is not None and origin != allowed_origin:
+                return JSONResponse(status_code=403, content={"detail": "origin not allowed"})
+        return await call_next(request)
 
     def _project_yaml(name: str) -> Path:
         try:
