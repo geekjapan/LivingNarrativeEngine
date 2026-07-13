@@ -120,7 +120,7 @@ jobs:
             --title "Docker smoke" --output /projects/docker-smoke
           docker compose up -d
           for attempt in $(seq 1 30); do
-            projects="$(curl --fail --silent http://127.0.0.1:8000/api/projects)"
+            projects="$(curl --fail --silent http://127.0.0.1:8000/api/projects || true)"
             if grep -Fq '"name":"docker-smoke"' <<<"$projects"; then
               break
             fi
