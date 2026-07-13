@@ -1,7 +1,7 @@
 ---
 id: 080
 title: release契約doc+CHANGELOG+release checklist+βschema凍結宣言を発行する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P1

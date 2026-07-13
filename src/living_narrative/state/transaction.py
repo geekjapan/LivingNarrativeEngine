@@ -232,11 +232,11 @@ def classify_recovery_state(
             state = RecoveryState.QUARANTINE
 
     if apply:
-        _apply_recovery_state(turn_dir, state)
+        apply_recovery_state(turn_dir, state)
     return state
 
 
-def _apply_recovery_state(turn_dir: Path, state: RecoveryState) -> bool:
+def apply_recovery_state(turn_dir: Path, state: RecoveryState) -> bool:
     if state is RecoveryState.RECOVER_META:
         intent = read_commit_intent(turn_dir)
         if intent is not None:
@@ -346,17 +346,26 @@ def _atomic_write_yaml(
         tmp.unlink(missing_ok=True)
 
 
+_DIR_FSYNC_UNSUPPORTED = {
+    errno.EINVAL,
+    getattr(errno, "ENOTSUP", errno.EINVAL),
+    getattr(errno, "EOPNOTSUPP", errno.EINVAL),
+}
+
+
 def _fsync_directory(path: Path) -> None:
-    try:
-        fd = os.open(path, os.O_RDONLY)
-    except OSError:
-        return
+    """Best-effort fsync of a directory so a rename survives a crash.
+
+    Only the errnos platforms/filesystems raise when they cannot fsync a directory are
+    tolerated; real durability failures (EIO, EACCES, EBADF, ...) surface.
+    """
+    fd = os.open(path, os.O_RDONLY)
     try:
         try:
             os.fsync(fd)
-        except OSError:
-            # Some platforms/filesystems do not support fsync on directories.
-            pass
+        except OSError as exc:
+            if exc.errno not in _DIR_FSYNC_UNSUPPORTED:
+                raise
     finally:
         os.close(fd)
 
@@ -379,6 +388,7 @@ __all__ = [
     "RecoveryState",
     "TransactionFaultHook",
     "TransactionFaultPoint",
+    "apply_recovery_state",
     "classify_recovery_state",
     "commit_state_diff",
     "latest_turn_directory",

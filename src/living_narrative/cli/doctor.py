@@ -11,7 +11,7 @@ from living_narrative.state.transaction import (
     ProjectLockError,
     RecoveryError,
     RecoveryState,
-    _apply_recovery_state,
+    apply_recovery_state,
     classify_recovery_state,
     latest_turn_directory,
     project_lock,
@@ -80,7 +80,7 @@ def doctor(
                         target="doctor",
                         quarantine=state is RecoveryState.QUARANTINE,
                     )
-                applied = _apply_recovery_state(turn_dir, state) if turn_dir is not None else False
+                applied = apply_recovery_state(turn_dir, state) if turn_dir is not None else False
                 action = (
                     "completed meta.yaml"
                     if state is RecoveryState.RECOVER_META and applied

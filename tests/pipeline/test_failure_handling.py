@@ -83,7 +83,10 @@ def _run_mutation_worker(
 
 def _join_worker(process, result_queue):
     process.join(10)
-    assert not process.is_alive()
+    if process.is_alive():
+        process.terminate()
+        process.join(2)
+        pytest.fail("mutation worker did not exit within 10 seconds")
     return result_queue.get(timeout=2)
 
 

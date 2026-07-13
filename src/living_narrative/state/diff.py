@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 from copy import deepcopy
 from enum import Enum
@@ -352,5 +353,30 @@ def _write_yaml(path: Path, data: Any) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, path)
+        _fsync_directory(path.parent)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def _fsync_directory(path: Path) -> None:
+    """Best-effort fsync of a directory so a rename survives a crash.
+
+    Only the errnos platforms/filesystems raise when they cannot fsync a directory are
+    tolerated; real durability failures (EIO, EACCES, EBADF, ...) surface.
+    """
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        try:
+            os.fsync(fd)
+        except OSError as exc:
+            if exc.errno not in _DIR_FSYNC_UNSUPPORTED:
+                raise
+    finally:
+        os.close(fd)
+
+
+_DIR_FSYNC_UNSUPPORTED = {
+    errno.EINVAL,
+    getattr(errno, "ENOTSUP", errno.EINVAL),
+    getattr(errno, "EOPNOTSUPP", errno.EINVAL),
+}

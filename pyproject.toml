@@ -51,5 +51,5 @@ select = ["E", "F", "I", "UP"]
 testpaths = ["tests"]
 filterwarnings = [
     "error",
-    "ignore:Using `httpx` with `starlette.testclient` is deprecated:UserWarning",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]

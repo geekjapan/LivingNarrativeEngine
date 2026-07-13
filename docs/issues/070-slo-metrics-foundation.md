@@ -1,7 +1,7 @@
 ---
 id: 070
 title: SLO測定基盤: metrics拡張+transition論理定義修正+rollback-RNG結合testを実装する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P1

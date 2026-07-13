@@ -369,5 +369,8 @@ def test_non_gm_endpoints_never_leak_secrets_private_mind_or_hidden_facts(tmp_pa
         assert response.status_code == 200, f"{label} failed: {response.text}"
         for marker in forbidden_markers:
             assert marker not in response.text, f"{label} leaked disclosure marker {marker!r}"
+        response_values = list(_string_values(response.json()))
         for value in forbidden_values:
-            assert value not in response.text, f"{label} leaked GM-only content: {value!r}"
+            assert all(value not in item for item in response_values), (
+                f"{label} leaked GM-only content: {value!r}"
+            )

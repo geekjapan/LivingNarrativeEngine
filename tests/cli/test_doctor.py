@@ -99,6 +99,14 @@ def test_doctor_repair_keeps_discarded_turn_audit_fields(tmp_path, build_project
     assert report["turn"] == "turn_0001"
     assert report["turn_dir"] == str(turn_dir)
 
+    discarded = list(turn_dir.parent.glob("turn_0001_discarded_*"))
+    assert len(discarded) == 1
+    discarded_intent = yaml.safe_load(
+        (discarded[0] / "commit_intent.yaml").read_text(encoding="utf-8")
+    )
+    assert discarded_intent["state_hash_before"] == intent["state_hash_before"]
+    assert discarded_intent["state_hash_after"] == intent["state_hash_after"]
+
 
 def test_doctor_repair_reports_legacy_applied_turn_preserved(tmp_path, build_project):
     project_path = build_project(tmp_path)
