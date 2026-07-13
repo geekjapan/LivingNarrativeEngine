@@ -59,3 +59,73 @@ jobs:
         continue-on-error: ${{ github.event_name == 'pull_request' }}
       - name: coverage (report-only)
         run: uv run --with pytest-cov pytest --cov=living_narrative --cov-report=term-missing
+
+  clean-install:
+    name: clean-install-acceptance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: build wheel
+        run: uv build --wheel
+      - name: install wheel into a fresh virtualenv
+        env:
+          VENV: ${{ runner.temp }}/living-narrative-wheel-venv
+        run: |
+          python -m venv "$VENV"
+          uv pip install --python "$VENV/bin/python" dist/*.whl
+      - name: wheel CLI smoke
+        env:
+          VENV: ${{ runner.temp }}/living-narrative-wheel-venv
+          PROJECT: ${{ runner.temp }}/wheel-project
+        run: |
+          "$VENV/bin/living-narrative" --help
+          "$VENV/bin/living-narrative" init --title "Wheel smoke" --output "$PROJECT"
+          test -f "$PROJECT/project.yaml"
+      - name: backup modify restore equality smoke
+        env:
+          VENV: ${{ runner.temp }}/living-narrative-wheel-venv
+          ROOT: ${{ runner.temp }}/backup-restore-smoke
+        run: |
+          mkdir -p "$ROOT"
+          "$VENV/bin/living-narrative" init --title "Backup smoke" --output "$ROOT/source"
+          "$VENV/bin/living-narrative" backup --project "$ROOT/source/project.yaml" --output "$ROOT/backups"
+          backup_root="$(find "$ROOT/backups" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          cp -a "$ROOT/source" "$ROOT/before-modification"
+          printf 'modified after backup\n' >> "$ROOT/source/backup-smoke.txt"
+          "$VENV/bin/living-narrative" restore "$backup_root" --output "$ROOT/restored"
+          diff -ru "$ROOT/before-modification" "$ROOT/restored"
+      - name: beta schema fixture migration regression
+        run: |
+          test "$(git rev-parse beta-schema-v1^{commit})" = "b17f72a289cada0170e00a10ee9222a8057063e0"
+          test "$(git show beta-schema-v1:src/living_narrative/workspace/migrations.py | sed -n 's/^CURRENT_SCHEMA_VERSION = //p')" = "1"
+          grep -Fq "schema_version: 1" tests/fixtures/beta-schema-v1/project.yaml
+          uv sync --frozen
+          uv run pytest tests/workspace/test_beta_schema_fixture.py
+      - name: Docker Compose smoke
+        run: |
+          mkdir -p projects
+          trap 'docker compose down --remove-orphans' EXIT
+          docker compose build
+          docker compose run --rm app living-narrative init \
+            --title "Docker smoke" --output /projects/docker-smoke
+          docker compose up -d
+          for attempt in $(seq 1 30); do
+            projects="$(curl --fail --silent http://127.0.0.1:8000/api/projects)"
+            if grep -Fq '"name":"docker-smoke"' <<<"$projects"; then
+              break
+            fi
+            if [ "$attempt" = 30 ]; then
+              docker compose logs
+              exit 1
+            fi
+            sleep 2
+          done
+          docker compose down --remove-orphans
