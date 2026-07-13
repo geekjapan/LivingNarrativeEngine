@@ -1,7 +1,7 @@
 ---
 id: 073
 title: β/1.0人手rubric文書を確定する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P1
@@ -22,3 +22,4 @@ Issue 057の決定(2026-07-13承認)とIssue 062のDAGに基づく実装Issue。
 
 - `docs/adr/0010-quality-gate-narrative-slo.md`
 - `docs/adr/0005-v1-release-contract.md`
+- `docs/beta-quality-gate-rubric.md`
