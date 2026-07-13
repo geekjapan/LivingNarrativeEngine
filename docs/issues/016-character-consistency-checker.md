@@ -28,7 +28,8 @@ DAG Track A(並列可ノード)。Phase 5機能。leak checkerは「読者への
 - [x] 秘密開示warn(reader可視のみ)、character/gm_only可視イベントは無視
 - [x] 非該当で沈黙、auto-apply非停止(warn)
 - [x] mock全テストpass(568+)(579 pass、ruff clean)
-- [ ] 実LLM確認は次回の総合ランに相乗り(専用ラン不要 — checkerは非ブロッキング)— 今回は未実施、次の統合実LLMランに持ち越し
+- [ ] 実LLM確認は次回の総合ランに相乗り(専用ラン不要 — checkerは非ブロッキング)— 今回は未実施。
+  次の統合実LLMランでの確認は、品質ゲートの検証負債としてIssue 057が所管する。
 
 ## 関連ファイル
 

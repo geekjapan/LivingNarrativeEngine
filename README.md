@@ -112,6 +112,64 @@ afterward) — `--as player_character` is rejected, since that mode requires a s
 conditions fire (printing which one). `auto --until scene_end` instead runs until the
 active scene ends.
 
+### Metrics, history, and backup
+
+```bash
+uv run living-narrative metrics \
+  --project projects/mist_station/project.yaml \
+  --json
+
+uv run living-narrative rollback \
+  --project projects/mist_station/project.yaml \
+  --to-turn 3 \
+  --yes
+
+uv run living-narrative branch \
+  --project projects/mist_station/project.yaml \
+  --from-turn 3 \
+  --output projects/mist_station_branch
+
+uv run living-narrative backup \
+  --project projects/mist_station/project.yaml \
+  --output backups
+
+uv run living-narrative restore \
+  backups/mist_station-<timestamp> \
+  --output projects/mist_station_restored
+```
+
+`metrics` reports run, pacing, thread, checker, game, and cost metrics (`--json` emits
+machine-readable output). `rollback` rewinds the project using saved inverse diffs;
+`branch` copies the project before rewinding the copy. `backup` creates a timestamped,
+manifest-backed project copy, and `restore` validates that backup before recreating it.
+
+### Export
+
+All export commands read the project artifacts and write under its `workspace/exports/` unless
+an option says otherwise:
+
+| command | purpose |
+|---|---|
+| `export replay` | Reader replay (`--style novel|log`), or GM replay with `--trpg` |
+| `export scenes` | Reconstructed scene YAML and Markdown (`--gm` includes GM-only events) |
+| `export outline` | LLM-free chapter outline |
+| `export novel` | LLM-assisted novel draft (`--profile`) |
+| `export revise` | LLM-assisted revision and notes (`--profile`, `--input`) |
+| `export arcs` | Character, relationship, thread, and memory arc report |
+| `export vn-script` | Reader-visible narration to visual-novel script (`--profile`) |
+| `export tts-script` | Canonical visual-novel script to reader-visible TTS script |
+| `export image-prompts` | Auditable scene image prompts (`--profile`) |
+| `export images` | Generate or accept/discard image assets (`--provider`, `--profile`) |
+
+For example, the basic replay export is:
+
+```bash
+uv run living-narrative export replay \
+  --project projects/mist_station/project.yaml \
+  --output projects/mist_station/workspace/exports/replay.md \
+  --style novel
+```
+
 `review --project <path>` presents the pending/stopped-for-review turn's state diff and
 resolves it via `--decision accept_all|reject_all|partial|edit|rerun_turn` (matching
 `review.yaml`'s canonical decision values 1:1) — `partial` takes `--apply <index,...>`,
