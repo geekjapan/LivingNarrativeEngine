@@ -58,6 +58,8 @@ jobs:
         run: uv run --with pip-audit pip-audit
         continue-on-error: ${{ github.event_name == 'pull_request' }}
       - name: coverage (report-only)
+        env:
+          LNE_PERF_BUDGET_SCALE: "3"
         run: uv run --with pytest-cov pytest --cov=living_narrative --cov-report=term-missing
 
   clean-install:

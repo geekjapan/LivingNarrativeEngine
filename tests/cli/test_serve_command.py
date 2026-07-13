@@ -5,6 +5,7 @@ Does not actually start uvicorn (it blocks forever) — patches ``living_narrati
 extra is installed; the actual server import is covered by the web matrix jobs.
 """
 
+import re
 import sys
 
 import pytest
@@ -15,13 +16,22 @@ from living_narrative.cli import app
 runner = CliRunner()
 
 
+def _normalize_help_output(output: str) -> str:
+    """Strips ANSI escapes and collapses whitespace so option-name assertions survive rich's
+    CI-only color + narrow-panel wrapping (GitHub Actions detection can wrap long option names
+    mid-token at hyphens)."""
+    no_ansi = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    return re.sub(r"\s+", "", no_ansi)
+
+
 def test_serve_help_has_no_host_option():
     result = runner.invoke(app, ["serve", "--help"])
+    normalized = _normalize_help_output(result.output)
 
     assert result.exit_code == 0, result.output
-    assert "--host" not in result.output
-    assert "--project-root" in result.output
-    assert "--port" in result.output
+    assert "--host" not in normalized
+    assert "--project-root" in normalized
+    assert "--port" in normalized
 
 
 def test_serve_rejects_missing_project_root(tmp_path):
