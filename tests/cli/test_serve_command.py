@@ -1,12 +1,13 @@
 """``living-narrative serve`` CLI wiring (docs/issues/020).
 
 Does not actually start uvicorn (it blocks forever) — patches ``living_narrative.web.server
-.run_server`` to capture the call instead. These tests run regardless of whether the ``web``
-extra is installed: the CLI package itself must import cleanly either way (import-guard).
+.run_server`` to capture the call instead. CLI-only tests run regardless of whether the ``web``
+extra is installed; the actual server import is covered by the web matrix jobs.
 """
 
 import sys
 
+import pytest
 from typer.testing import CliRunner
 
 from living_narrative.cli import app
@@ -32,6 +33,8 @@ def test_serve_rejects_missing_project_root(tmp_path):
 
 
 def test_serve_delegates_to_run_server_with_no_host_override(tmp_path, monkeypatch):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("uvicorn")
     import living_narrative.web.server as server
 
     captured = {}

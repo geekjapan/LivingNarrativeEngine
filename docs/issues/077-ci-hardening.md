@@ -1,7 +1,7 @@
 ---
 id: 077
 title: CI hardening: frozen sync+Python matrix+web-extra import guardを導入する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P1
