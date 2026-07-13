@@ -38,6 +38,18 @@ def test_configured_loopback_origin_is_allowed(tmp_path, build_project):
     assert response.status_code == 200
 
 
+def test_localhost_origin_is_allowed(tmp_path, build_project):
+    build_project(tmp_path)
+
+    response = _client(tmp_path, port=9876).put(
+        "/api/project/project/settings/pricing.yaml",
+        headers={"Origin": "http://localhost:9876"},
+        json={"yaml": "{}\n"},
+    )
+
+    assert response.status_code == 200
+
+
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [

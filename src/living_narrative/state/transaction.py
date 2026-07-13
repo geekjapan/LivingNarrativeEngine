@@ -352,7 +352,11 @@ def _fsync_directory(path: Path) -> None:
     except OSError:
         return
     try:
-        os.fsync(fd)
+        try:
+            os.fsync(fd)
+        except OSError:
+            # Some platforms/filesystems do not support fsync on directories.
+            pass
     finally:
         os.close(fd)
 

@@ -276,7 +276,13 @@ def _dump_value(value: Any) -> Any:
 def _atomic_yaml(path: Path, data: Any, *, on_write: Callable[[Path], None] | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f"{path.suffix}.tmp")
-    tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        with tmp.open("w", encoding="utf-8") as stream:
+            stream.write(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
     if on_write is not None:
         on_write(path)

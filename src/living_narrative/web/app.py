@@ -96,9 +96,14 @@ def create_app(project_root: Path) -> FastAPI:
     async def check_mutation_origin(request: Request, call_next):
         if request.method in {"POST", "PUT"}:
             origin = request.headers.get("origin")
-            allowed_origin = f"http://127.0.0.1:{request.url.port}"
-            if origin is not None and origin != allowed_origin:
-                return JSONResponse(status_code=403, content={"detail": "origin not allowed"})
+            if origin is not None:
+                port_suffix = f":{request.url.port}" if request.url.port is not None else ""
+                allowed_origins = {
+                    f"http://127.0.0.1{port_suffix}",
+                    f"http://localhost{port_suffix}",
+                }
+                if origin not in allowed_origins:
+                    return JSONResponse(status_code=403, content={"detail": "origin not allowed"})
         return await call_next(request)
 
     def _project_yaml(name: str) -> Path:
