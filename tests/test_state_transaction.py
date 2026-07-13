@@ -12,6 +12,7 @@ from living_narrative.state.transaction import (
     classify_recovery_state,
     commit_state_diff,
     project_lock,
+    recover_rollback_journals,
     state_hash,
 )
 
@@ -102,6 +103,65 @@ def test_on_commit_artifacts_are_durable_before_state_is_published(tmp_path, bui
     assert (turn_dir / "state_diff.yaml").read_text(encoding="utf-8") == "artifact\n"
     assert state_hash(state_dir) != before_hash
     assert classify_recovery_state(turn_dir, state_dir) is RecoveryState.CLEAN
+
+
+def test_recover_rollback_journals_completes_pending_renames(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    runs_dir = project_path.parent / "workspace" / "runs"
+    state_dir = project_path.parent / "workspace" / "state"
+    (runs_dir / "turn_0002").mkdir(parents=True)
+    (runs_dir / "turn_0003").mkdir(parents=True)
+    journal_dir = runs_dir / ".transactions" / "rollback_0003_to_0001"
+
+    # Simulate a rollback whose state commit finished but whose renames did not.
+    commit_state_diff(
+        StateStore.load(state_dir),
+        _diff("rolled-back"),
+        state_dir,
+        journal_dir,
+        meta={"turn": 1, "commit_mode": "rollback", "rollback_from_turn": 3},
+    )
+    assert (runs_dir / "turn_0002").exists()
+    assert (runs_dir / "turn_0003").exists()
+
+    recover_rollback_journals(runs_dir, state_dir)
+
+    assert not (runs_dir / "turn_0002").exists()
+    assert not (runs_dir / "turn_0003").exists()
+    assert list(runs_dir.glob("turn_0002_rolledback_*"))
+    assert list(runs_dir.glob("turn_0003_rolledback_*"))
+    journal_meta = yaml.safe_load((journal_dir / "meta.yaml").read_text(encoding="utf-8"))
+    assert journal_meta["renames_complete"] is True
+
+    # Idempotent: a second pass is a no-op and does not re-archive anything.
+    recover_rollback_journals(runs_dir, state_dir)
+    assert len(list(runs_dir.glob("turn_0002_rolledback_*"))) == 1
+
+
+def test_recover_rollback_journals_skips_incomplete_state_commit(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    runs_dir = project_path.parent / "workspace" / "runs"
+    state_dir = project_path.parent / "workspace" / "state"
+    (runs_dir / "turn_0002").mkdir(parents=True)
+    journal_dir = runs_dir / ".transactions" / "rollback_0002_to_0001"
+    commit_state_diff(
+        StateStore.load(state_dir),
+        _diff("rolled-back"),
+        state_dir,
+        journal_dir,
+        meta={"turn": 1, "commit_mode": "rollback", "rollback_from_turn": 2},
+    )
+    # The live state does not match the journal's recorded hash_after (the state commit
+    # phase did not really land), so renames must NOT be completed.
+    intent = yaml.safe_load((journal_dir / "commit_intent.yaml").read_text(encoding="utf-8"))
+    intent["state_hash_after"] = "not-the-live-state"
+    (journal_dir / "commit_intent.yaml").write_text(
+        yaml.safe_dump(intent, sort_keys=False), encoding="utf-8"
+    )
+
+    recover_rollback_journals(runs_dir, state_dir)
+
+    assert (runs_dir / "turn_0002").exists()
 
 
 def test_artifact_failure_cannot_advance_state_without_inverse(

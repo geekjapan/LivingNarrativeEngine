@@ -20,6 +20,7 @@ from living_narrative.state.transaction import (
     commit_state_diff,
     latest_turn_directory,
     project_lock,
+    recover_rollback_journals,
 )
 
 UNRESOLVED_STATUS_VALUES = {"pending_review", "stopped_for_review"}
@@ -177,6 +178,7 @@ def _resolve_review_locked(
     selected_change_indices: set[int] | None = None,
     edited_diff: StateDiff | dict[str, Any] | None = None,
 ) -> ReviewResult:
+    recover_rollback_journals(turn_dir.parent, state_dir)
     recovery_state = classify_recovery_state(
         latest_turn_directory(turn_dir.parent),
         state_dir,

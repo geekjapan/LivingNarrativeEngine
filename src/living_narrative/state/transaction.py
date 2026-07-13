@@ -266,6 +266,61 @@ def apply_recovery_state(turn_dir: Path, state: RecoveryState) -> bool:
     return True
 
 
+def finalize_rollback_renames(
+    runs_dir: Path,
+    journal_dir: Path,
+    *,
+    from_turn: int,
+    to_turn: int,
+) -> list[Path]:
+    """Archive the rolled-back canonical turn dirs and mark the journal terminal.
+
+    Idempotent: only turns still present as ``turn_NNNN`` are renamed aside, and the
+    journal is stamped ``renames_complete`` so recovery does not revisit it.
+    """
+    from living_narrative.pipeline.turn_numbering import rollback_turn_directory, turn_dir_path
+
+    renamed: list[Path] = []
+    for turn in range(to_turn + 1, from_turn + 1):
+        canonical = turn_dir_path(runs_dir, turn)
+        if canonical.exists():
+            renamed.append(rollback_turn_directory(canonical))
+    meta = dict(_read_mapping(journal_dir / "meta.yaml") or {})
+    meta["renames_complete"] = True
+    _atomic_write_yaml(journal_dir / "meta.yaml", meta)
+    return renamed
+
+
+def recover_rollback_journals(runs_dir: Path, state_dir: Path) -> None:
+    """Complete the turn-dir archival of any rollback whose state commit finished but
+    whose renames did not (e.g. a crash between the two phases).
+
+    Mutation entry points call this right after taking the project lock, before they
+    trust ``latest_turn_directory``: otherwise the pre-rollback highest turn is still
+    canonical and classifies against a hash that matches neither its before nor after
+    state, spuriously quarantining a project whose rollback journal actually completed.
+    """
+    tx_dir = runs_dir / ".transactions"
+    if not tx_dir.exists():
+        return
+    for journal_dir in sorted(tx_dir.glob("rollback_*")):
+        if not journal_dir.is_dir():
+            continue
+        meta = _read_mapping(journal_dir / "meta.yaml")
+        if meta is None or meta.get("status") != "applied" or meta.get("renames_complete"):
+            continue
+        intent = read_commit_intent(journal_dir)
+        if intent is None or state_hash(state_dir) != intent.state_hash_after:
+            continue
+        from_turn = meta.get("rollback_from_turn")
+        to_turn = meta.get("turn")
+        if from_turn is None or to_turn is None:
+            continue
+        finalize_rollback_renames(
+            runs_dir, journal_dir, from_turn=int(from_turn), to_turn=int(to_turn)
+        )
+
+
 def _write_commit_meta(
     turn_dir: Path,
     meta: Mapping[str, Any] | None,
@@ -399,7 +454,9 @@ __all__ = [
     "apply_recovery_state",
     "classify_recovery_state",
     "commit_state_diff",
+    "finalize_rollback_renames",
     "latest_turn_directory",
+    "recover_rollback_journals",
     "project_lock",
     "read_commit_intent",
     "state_hash",

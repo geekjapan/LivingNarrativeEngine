@@ -15,6 +15,7 @@ from living_narrative.state.transaction import (
     classify_recovery_state,
     latest_turn_directory,
     project_lock,
+    recover_rollback_journals,
 )
 
 
@@ -71,6 +72,7 @@ def doctor(
     if repair:
         try:
             with project_lock(read.paths.root):
+                recover_rollback_journals(read.paths.runs, read.paths.state)
                 turn_dir = latest_turn_directory(read.paths.runs)
                 before_report = _diagnose(read.paths.root, read.paths.state, read.paths.runs)
                 state = RecoveryState(before_report["state"])

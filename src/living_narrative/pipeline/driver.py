@@ -53,6 +53,7 @@ from living_narrative.state.transaction import (
     latest_turn_directory,
     project_lock,
     read_commit_intent,
+    recover_rollback_journals,
 )
 from living_narrative.workspace.loader import load_project
 
@@ -134,6 +135,7 @@ class TurnPipeline:
                     rng_offset_override=rng_offset_override,
                     _lock_held=True,
                 )
+        recover_rollback_journals(paths.runs, paths.state)
         recovery_state = classify_recovery_state(
             latest_turn_directory(paths.runs),
             paths.state,

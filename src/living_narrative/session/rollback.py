@@ -18,7 +18,6 @@ from living_narrative.pipeline.status import UNRESOLVED_STATUSES, TurnStatus
 from living_narrative.pipeline.turn_numbering import (
     existing_turn_numbers,
     read_turn_status,
-    rollback_turn_directory,
     turn_dir_path,
 )
 from living_narrative.state.diff import InverseStateDiff, StateDiff, load_inverse_diff
@@ -28,8 +27,10 @@ from living_narrative.state.transaction import (
     RecoveryState,
     classify_recovery_state,
     commit_state_diff,
+    finalize_rollback_renames,
     latest_turn_directory,
     project_lock,
+    recover_rollback_journals,
 )
 from living_narrative.workspace.copy import WorkspaceCopyError, copy_directory_atomic
 from living_narrative.workspace.loader import WorkspacePaths
@@ -111,6 +112,7 @@ def execute_rollback(paths: WorkspacePaths, plan: RollbackPlan) -> RollbackResul
     (``branch``'s use case).
     """
     with project_lock(paths.root):
+        recover_rollback_journals(paths.runs, paths.state)
         plan = plan_rollback(paths.runs, plan.to_turn)
         journal_dir = (
             paths.runs
@@ -160,10 +162,12 @@ def execute_rollback(paths: WorkspacePaths, plan: RollbackPlan) -> RollbackResul
             },
         )
 
-        rolled_back_dirs = [
-            rollback_turn_directory(turn_dir_path(paths.runs, turn))
-            for turn in plan.rolled_back_turns
-        ]
+        rolled_back_dirs = finalize_rollback_renames(
+            paths.runs,
+            journal_dir,
+            from_turn=plan.current_turn,
+            to_turn=plan.to_turn,
+        )
         return RollbackResult(
             current_turn=plan.current_turn,
             to_turn=plan.to_turn,
