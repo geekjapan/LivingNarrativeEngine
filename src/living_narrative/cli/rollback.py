@@ -5,8 +5,9 @@ from pathlib import Path
 
 import typer
 
-from living_narrative.cli._common import load_project_or_exit, usage_error
+from living_narrative.cli._common import load_project_or_exit, runtime_error, usage_error
 from living_narrative.session.rollback import RollbackError, execute_rollback, plan_rollback
+from living_narrative.state.transaction import RecoveryError
 
 
 def rollback(
@@ -29,7 +30,10 @@ def rollback(
             typer.echo("Aborted.")
             raise typer.Exit(code=0)
 
-    result = execute_rollback(read.paths, plan)
+    try:
+        result = execute_rollback(read.paths, plan)
+    except RecoveryError as exc:
+        runtime_error(str(exc))
     turns = ", ".join(str(turn) for turn in result.rolled_back_turns)
     typer.echo(f"rolled back turn(s): {turns}")
     typer.echo(f"now at turn {result.to_turn}")

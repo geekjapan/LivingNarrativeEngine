@@ -6,9 +6,15 @@ from pathlib import Path
 import typer
 import yaml
 
-from living_narrative.cli._common import echo_turn_result, load_project_or_exit, usage_error
+from living_narrative.cli._common import (
+    echo_turn_result,
+    load_project_or_exit,
+    runtime_error,
+    usage_error,
+)
 from living_narrative.pipeline import LoadError, TurnStatus, UnresolvedTurnError
 from living_narrative.session.loop import run_auto_loop
+from living_narrative.state.transaction import RecoveryError
 
 # ponytail: no engine primitive stops "exactly at scene_end and nothing else" — the
 # pipeline's own stop-condition evaluation (which always includes scene_end) already
@@ -40,6 +46,8 @@ def auto(
         usage_error(f"{exc} — resolve it first with `living-narrative review --project {project}`")
     except LoadError as exc:
         usage_error(str(exc))
+    except RecoveryError as exc:
+        runtime_error(str(exc))
 
     for run_result in loop_result.turns:
         echo_turn_result(run_result.turn_dir, run_result.turn, run_result.status.value)

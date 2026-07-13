@@ -6,6 +6,7 @@ from living_narrative.state.models import Visibility
 from living_narrative.state.store import StateStore
 from living_narrative.state.transaction import (
     ProjectLockError,
+    RecoveryError,
     RecoveryState,
     classify_recovery_state,
     commit_state_diff,
@@ -28,6 +29,30 @@ def _diff(value: str = "committed") -> StateDiff:
             )
         ],
     )
+
+
+def test_recovery_error_guidance_is_scoped_to_the_recovery_target():
+    project = RecoveryError(
+        "cannot mutate project while recovery state is quarantine",
+        target="project",
+        quarantine=True,
+    )
+    journal = RecoveryError(
+        "cannot mutate project while rollback journal recovery state is quarantine",
+        target="rollback_journal",
+        quarantine=True,
+    )
+    doctor = RecoveryError(
+        "cannot repair project while recovery state is quarantine",
+        target="doctor",
+        quarantine=True,
+    )
+
+    assert "restore a backup" in str(project)
+    assert "doctor" in str(project)
+    assert "restore a backup" not in str(journal)
+    assert "doctor" not in str(journal)
+    assert "doctor" not in str(doctor)
 
 
 def test_commit_writes_journal_before_state_and_pins_meta(tmp_path, build_project):
@@ -130,6 +155,38 @@ def test_recovery_classifies_hash_after_and_hash_before(tmp_path, build_project)
     assert intent["state_hash_before"] != intent_before
     assert intent["state_hash_before"] != before_hash
     assert classify_recovery_state(turn_dir, state_dir) is RecoveryState.DISCARD
+    assert not turn_dir.exists()
+    assert (turn_dir.parent / "turn_0001_discarded_1").exists()
+
+
+def test_recovery_completes_meta_when_state_matches_after(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+
+    commit_state_diff(StateStore.load(state_dir), _diff(), state_dir, turn_dir)
+    (turn_dir / "meta.yaml").unlink()
+
+    assert classify_recovery_state(turn_dir, state_dir) is RecoveryState.RECOVER_META
+    meta = yaml.safe_load((turn_dir / "meta.yaml").read_text(encoding="utf-8"))
+    assert meta["status"] == "applied"
+    assert classify_recovery_state(turn_dir, state_dir, apply=False) is RecoveryState.CLEAN
+
+
+def test_recovery_quarantine_is_not_mutated(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+
+    commit_state_diff(StateStore.load(state_dir), _diff(), state_dir, turn_dir)
+    intent = yaml.safe_load((turn_dir / "commit_intent.yaml").read_text(encoding="utf-8"))
+    intent["state_hash_after"] = "not-the-live-state"
+    (turn_dir / "commit_intent.yaml").write_text(
+        yaml.safe_dump(intent, sort_keys=False), encoding="utf-8"
+    )
+
+    assert classify_recovery_state(turn_dir, state_dir, apply=False) is RecoveryState.QUARANTINE
+    assert turn_dir.exists()
 
 
 def test_project_lock_is_non_blocking(tmp_path):

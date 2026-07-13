@@ -136,6 +136,20 @@ def test_rollback_rejects_quarantined_latest_turn(tmp_path, build_project):
         execute_rollback(paths, plan)
 
 
+def test_rollback_cli_reports_quarantine_recovery_error(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _run_turns(project_path, 1)
+    paths = load_project(project_path).paths
+    (paths.runs / "turn_0001" / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+
+    result = runner.invoke(
+        app, ["rollback", "--project", str(project_path), "--to-turn", "0", "--yes"]
+    )
+
+    assert result.exit_code == 1
+    assert "quarantine" in result.output
+
+
 def test_rollback_rejects_blocked_rollback_journal(tmp_path, build_project):
     project_path = build_project(tmp_path)
     _run_turns(project_path, 1)
@@ -221,3 +235,31 @@ def test_branch_rejects_existing_output_dir(tmp_path, build_project):
     )
 
     assert result.exit_code == 2
+
+
+def test_branch_recovery_failure_cleans_output_for_retry(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _run_turns(project_path, 1)
+    paths = load_project(project_path).paths
+    (paths.runs / "turn_0001" / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+    output = tmp_path / "branch_recovery_failure"
+    args = [
+        "branch",
+        "--project",
+        str(project_path),
+        "--from-turn",
+        "0",
+        "--output",
+        str(output),
+    ]
+
+    first = runner.invoke(app, args)
+    second = runner.invoke(app, args)
+
+    assert first.exit_code == 1, first.output
+    assert "restore a backup" in first.output
+    assert not output.exists()
+    assert second.exit_code == 1, second.output
+    assert "restore a backup" in second.output
+    assert "already exists" not in second.output
+    assert not output.exists()

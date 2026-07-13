@@ -182,7 +182,10 @@ def _resolve_review_locked(
         state_dir,
     )
     if recovery_state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
-        raise RecoveryError(f"cannot mutate project while recovery state is {recovery_state.value}")
+        raise RecoveryError(
+            f"cannot mutate project while recovery state is {recovery_state.value}",
+            quarantine=recovery_state is RecoveryState.QUARANTINE,
+        )
     from living_narrative.pipeline.turn_numbering import read_turn_status
 
     decision = ReviewDecision(decision)

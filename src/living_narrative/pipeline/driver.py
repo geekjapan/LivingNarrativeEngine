@@ -140,7 +140,8 @@ class TurnPipeline:
         )
         if recovery_state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
             raise RecoveryError(
-                f"cannot mutate project while recovery state is {recovery_state.value}"
+                f"cannot mutate project while recovery state is {recovery_state.value}",
+                quarantine=recovery_state is RecoveryState.QUARANTINE,
             )
         project = read.config
         from living_narrative.plugins import create_plugin_runtime
