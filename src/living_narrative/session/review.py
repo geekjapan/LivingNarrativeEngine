@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 
 from living_narrative.intervention.history import append_history, build_history_entries
-from living_narrative.state.diff import StateDiff
+from living_narrative.state.diff import StateDiff, fsync_directory
 from living_narrative.state.models import Event, UserMode
 from living_narrative.state.store import StateStore
 from living_narrative.state.transaction import (
@@ -64,6 +64,7 @@ def _atomic_write_yaml(path: Path, data: Any) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, path)
+        fsync_directory(path.parent)
     finally:
         tmp.unlink(missing_ok=True)
 

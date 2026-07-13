@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ValidationError
 
+from living_narrative.state.diff import fsync_directory
 from living_narrative.state.models import (
     CanonEntry,
     CharacterState,
@@ -282,6 +283,7 @@ def _atomic_yaml(path: Path, data: Any, *, on_write: Callable[[Path], None] | No
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, path)
+        fsync_directory(path.parent)
     finally:
         tmp.unlink(missing_ok=True)
     if on_write is not None:
