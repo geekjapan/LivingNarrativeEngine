@@ -1,6 +1,8 @@
 """FastAPI web layer tests (docs/issues/020). Skips entirely when the optional ``web`` extra
 (fastapi/uvicorn) is not installed — the core suite must not depend on it."""
 
+import re
+
 import pytest
 import yaml
 
@@ -226,6 +228,73 @@ def test_gm_character_pane_renders_one_escaped_visual_profile_line(tmp_path, bui
     assert response.json()[0]["visual_profile"]["summary"] == '<img src=x onerror="alert(1)">'
     assert "escapeHtml(c.visual_profile.summary)" in page
     assert "<div>visual: ${visualProfile}</div>" in page
+
+
+def test_inner_html_template_values_use_escape_html(tmp_path, build_project):
+    build_project(tmp_path)
+    page = _client(tmp_path).get("/").text
+
+    sink_blocks = re.findall(r"\.innerHTML\s*=.*?;", page, re.DOTALL)
+    sink_blocks.append(
+        page[
+            page.index("function renderInterventionEntry") : page.index(
+                "function renderInterventionHistory"
+            )
+        ]
+    )
+    expressions = [
+        expression.strip()
+        for block in sink_blocks
+        for expression in re.findall(r"\$\{(?:[^{}]|\{[^{}]*\})*\}", block)
+    ]
+    allowed_html_fragments = {
+        "badge",
+        "body",
+        "detail",
+        "events",
+        "emotions",
+        "hidden",
+        "models",
+        "privateMind",
+        "profiles",
+        "relationships",
+        "secrets",
+        "skills",
+        "stats",
+        "summaries",
+        "threads",
+        "threats",
+        "visualProfile",
+    }
+    unsafe = [
+        expression
+        for expression in expressions
+        if not expression.startswith("${escapeHtml(")
+        and not expression.startswith("${statusBadge(")
+        and not expression.startswith("${visibilityBadge(")
+        and not expression.startswith("${severityBadge(")
+        and expression[2:-1].strip() not in allowed_html_fragments
+    ]
+
+    assert unsafe == []
+
+
+def test_hostile_project_payload_stays_in_json_and_is_escaped_in_page(tmp_path, build_project):
+    hostile = '<img src=x onerror="alert(1)">'
+    project_path = build_project(tmp_path, scene_summary=hostile)
+    world_path = project_path.parent / "workspace" / "state" / "world.yaml"
+    world = yaml.safe_load(world_path.read_text(encoding="utf-8"))
+    world["summary"] = hostile
+    world_path.write_text(yaml.safe_dump(world, allow_unicode=True), encoding="utf-8")
+
+    client = _client(tmp_path)
+    response = client.get("/api/project/project/gm/world")
+    page = client.get("/").text
+
+    assert response.json()["world"]["summary"] == hostile
+    assert response.json()["scenes"][0]["summary"] == hostile
+    assert "escapeHtml(world.world.summary)" in page
+    assert 'escapeHtml(s.summary || "")' in page
 
 
 @pytest.mark.parametrize("name", ["..", "../etc", "a/b", "a\\b", ""])
