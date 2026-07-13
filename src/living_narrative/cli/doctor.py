@@ -34,7 +34,10 @@ def _diagnose(project_root: Path, state_dir: Path, runs_dir: Path) -> dict[str, 
         "project_root": str(project_root),
     }
     if state is RecoveryState.QUARANTINE:
-        report["action"] = "restore backup or manually repair state, then rerun doctor --repair"
+        report["action"] = (
+            "quarantine cannot be cleared safely; restore a backup or manually repair "
+            "state, then rerun doctor"
+        )
         report["restore_command"] = _restore_command(None)
     elif state is RecoveryState.BLOCKED:
         report["action"] = "resolve the incomplete pre-beta turn manually before retrying"
@@ -53,7 +56,6 @@ def doctor(
         False,
         "--repair",
         "--fix",
-        "--clear-quarantine",
         help="Apply only hash-safe metadata completion or turn discard",
     ),
     backup: Path | None = typer.Option(
@@ -69,6 +71,7 @@ def doctor(
         try:
             with project_lock(read.paths.root):
                 turn_dir = latest_turn_directory(read.paths.runs)
+                before_report = _diagnose(read.paths.root, read.paths.state, read.paths.runs)
                 state = classify_recovery_state(turn_dir, read.paths.state)
                 if state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
                     raise RecoveryError(
@@ -85,6 +88,9 @@ def doctor(
                 if state in {RecoveryState.RECOVER_META, RecoveryState.DISCARD}:
                     report["state"] = RecoveryState.CLEAN.value
                     report["recovery_state"] = RecoveryState.CLEAN.value
+                for field in ("turn", "turn_dir"):
+                    if before_report[field] is not None:
+                        report[field] = before_report[field]
                 report["action"] = action
         except (ProjectLockError, RecoveryError) as exc:
             runtime_error(str(exc))

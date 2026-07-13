@@ -8,7 +8,7 @@ from living_narrative.pipeline import TurnPipeline
 from living_narrative.state.diff import StateDiff, StateDiffChange
 from living_narrative.state.models import Visibility
 from living_narrative.state.store import StateStore
-from living_narrative.state.transaction import commit_state_diff
+from living_narrative.state.transaction import commit_state_diff, state_hash
 
 runner = CliRunner()
 
@@ -66,4 +66,34 @@ def test_doctor_quarantine_guides_backup_restore(tmp_path, build_project):
 
     assert result.exit_code == 0, result.output
     assert "quarantine" in result.output
+    assert "cannot be cleared safely" in result.output
     assert "living-narrative restore <backup-root>" in result.output
+
+
+def test_doctor_repair_help_does_not_claim_to_clear_quarantine():
+    result = runner.invoke(app, ["doctor", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--clear-quarantine" not in result.output
+
+
+def test_doctor_repair_keeps_discarded_turn_audit_fields(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    before = StateStore.load(state_dir)
+    commit_state_diff(before, _diff(), state_dir, turn_dir)
+    StateStore.save(before, state_dir)
+    intent = yaml.safe_load((turn_dir / "commit_intent.yaml").read_text(encoding="utf-8"))
+    intent["state_hash_before"] = state_hash(state_dir)
+    (turn_dir / "commit_intent.yaml").write_text(
+        yaml.safe_dump(intent, sort_keys=False), encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["doctor", "--project", str(project_path), "--repair", "--json"])
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report["state"] == "clean"
+    assert report["turn"] == "turn_0001"
+    assert report["turn_dir"] == str(turn_dir)
