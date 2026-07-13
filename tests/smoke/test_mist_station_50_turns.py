@@ -218,9 +218,9 @@ def test_50_turn_mist_station_regression(tmp_path, monkeypatch):
     # scene_transition-bearing stage (pressure >= 100) exactly once within 50 turns: scene_001
     # ends, scene_002 becomes active, and that stage never fires again once pressure is already
     # >= 100. So exactly one scene is active at the end (confirmed by an unmonkeypatched run at
-    # this fixed seed -- never 0, never 2+). `transition_count` is 2 because a single transition
-    # is two diff changes (end scene_001 + start scene_002).
-    assert metrics.scenes.transition_count == 2
+    # this fixed seed -- never 0, never 2+). `transition_count` is 1 because a single transition
+    # is an outgoing/incoming status pair (end scene_001 + start scene_002).
+    assert metrics.scenes.transition_count == 1
     assert metrics.scenes.final_active_count == 1
     assert metrics.scenes.final_active_scene_ids == ["scene_002"]
 

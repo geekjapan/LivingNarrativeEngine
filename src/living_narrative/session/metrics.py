@@ -87,6 +87,7 @@ class ThreadsMetrics(BaseModel):
     advanced: int
     resolved: int
     max_open_turns: int | None
+    resolved_ratio: float | None = None
 
 
 class ThreatMetrics(BaseModel):
@@ -106,6 +107,18 @@ class SceneMetrics(BaseModel):
 class ChecksMetrics(BaseModel):
     by_source: dict[str, int]
     by_severity: dict[str, int]
+    leak_by_severity: dict[str, int] = {}
+
+    @property
+    def leak_findings_by_severity(self) -> dict[str, int]:
+        """Compatibility spelling for callers that name the finding explicitly."""
+        return self.leak_by_severity
+
+
+class ReplayMetrics(BaseModel):
+    matched_turns: int
+    evaluated_turns: int
+    match_rate: float | None
 
 
 class MemoryMetrics(BaseModel):
@@ -134,6 +147,12 @@ class ProjectMetrics(BaseModel):
     checks: ChecksMetrics
     memory: MemoryMetrics
     game: GameMetrics
+    replay: ReplayMetrics
+
+    @property
+    def replay_match_rate(self) -> float | None:
+        """Convenience access to the replay rate without unpacking the section."""
+        return self.replay.match_rate
 
 
 def collect_metrics(project_path: Path) -> ProjectMetrics:
@@ -172,6 +191,7 @@ def collect_metrics(project_path: Path) -> ProjectMetrics:
         checks=_collect_checks(live_turns),
         memory=MemoryMetrics(summary_count=len(bundle.memory_summaries)),
         game=_collect_game(live_turns),
+        replay=_collect_replay(result.paths.runs, live_turns),
     )
 
 
@@ -391,11 +411,13 @@ def _collect_threads(
         and thread.opened_turn is not None
         and last_turn_number is not None
     ]
+    resolved_ratio = resolved / opened if opened else None
     return ThreadsMetrics(
         opened=opened,
         advanced=advanced,
         resolved=resolved,
         max_open_turns=max(open_ages) if open_ages else None,
+        resolved_ratio=resolved_ratio,
     )
 
 
@@ -453,13 +475,17 @@ def _collect_scenes(bundle: WorldStateBundle, live_turns: list[tuple[int, Path]]
         applied, changes = read_state_diff(turn_dir)
         if not applied:
             continue
-        for change in changes:
+        status_changes = [
+            change
+            for change in changes
             if (
                 change.get("target") == "scene"
                 and change.get("op") == "set"
                 and change.get("path") == "status"
-            ):
-                transitions += 1
+            )
+        ]
+        # A scene transition is the outgoing/incoming status pair, not two independent writes.
+        transitions += len(status_changes) // 2
 
     active = [scene for scene in bundle.scenes if scene.status == SceneStatus.ACTIVE]
     return SceneMetrics(
@@ -473,12 +499,65 @@ def _collect_scenes(bundle: WorldStateBundle, live_turns: list[tuple[int, Path]]
 def _collect_checks(live_turns: list[tuple[int, Path]]) -> ChecksMetrics:
     by_source: Counter[str] = Counter()
     by_severity: Counter[str] = Counter()
+    leak_by_severity: Counter[str] = Counter()
     for _, turn_dir in live_turns:
         data = _load_yaml(turn_dir / "checks.yaml") or {}
         for finding in data.get("findings") or []:
-            by_source[finding.get("source") or "unknown"] += 1
-            by_severity[finding.get("severity") or "unknown"] += 1
-    return ChecksMetrics(by_source=dict(by_source), by_severity=dict(by_severity))
+            source = finding.get("source") or "unknown"
+            severity = finding.get("severity") or "unknown"
+            by_source[source] += 1
+            by_severity[severity] += 1
+            if source in {"leak", "leak_check"}:
+                leak_by_severity[severity] += 1
+    return ChecksMetrics(
+        by_source=dict(by_source),
+        by_severity=dict(by_severity),
+        leak_by_severity=dict(leak_by_severity),
+    )
+
+
+def _collect_replay(runs_dir: Path, live_turns: list[tuple[int, Path]]) -> ReplayMetrics:
+    """Measure whether each live turn's pinned RNG offset follows prior attempts.
+
+    Discarded attempts consume RNG and therefore contribute to the next offset; rolled-back
+    attempts do not match ``ANY_TURN_DIR_RE`` and are intentionally absent from this scan.
+    """
+    live_names = {turn: turn_dir.name for turn, turn_dir in live_turns}
+    attempt_re = re.compile(r"^turn_(\d+)(?:_discarded_(\d+))?$")
+    entries: list[tuple[int, int, Path]] = []
+    if runs_dir.exists():
+        for entry in runs_dir.iterdir():
+            if not entry.is_dir():
+                continue
+            match = attempt_re.match(entry.name)
+            if match is None:
+                continue
+            turn = int(match.group(1))
+            suffix = match.group(2)
+            entries.append((turn, 1 if suffix is None else 0, entry))
+
+    expected_offset = 0
+    matched_turns = evaluated_turns = 0
+    for turn, live_marker, turn_dir in sorted(entries, key=lambda item: (item[0], item[1])):
+        meta = _load_yaml(turn_dir / "meta.yaml") or {}
+        if live_marker and live_names.get(turn) == turn_dir.name:
+            actual_offset = meta.get("rng_start_offset")
+            if actual_offset is not None:
+                evaluated_turns += 1
+                try:
+                    matched_turns += int(actual_offset) == expected_offset
+                except (TypeError, ValueError):
+                    pass
+        try:
+            expected_offset += int(meta.get("rng_draws_consumed") or 0)
+        except (TypeError, ValueError):
+            pass
+
+    return ReplayMetrics(
+        matched_turns=matched_turns,
+        evaluated_turns=evaluated_turns,
+        match_rate=(matched_turns / evaluated_turns if evaluated_turns else None),
+    )
 
 
 def _collect_game(live_turns: list[tuple[int, Path]]) -> GameMetrics:
