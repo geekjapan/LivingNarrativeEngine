@@ -8,8 +8,7 @@ Keeping it import-light means it can be unit tested even in environments without
 
 import os
 import re
-import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +18,7 @@ from pydantic import TypeAdapter, ValidationError
 from living_narrative.cli._common import read_narration_body
 from living_narrative.intervention.history import load_history
 from living_narrative.llm.costs import ModelPricing, ProjectCostSummary, collect_project_costs
-from living_narrative.pipeline import TurnPipeline, TurnRunResult, TurnStatus
+from living_narrative.pipeline import TurnPipeline, TurnRunResult
 from living_narrative.pipeline.turn_numbering import read_turn_status, turn_dir_path
 from living_narrative.session.mode import MODE_PERMISSIONS
 from living_narrative.session.player_character import build_player_character_projection
@@ -33,6 +32,14 @@ from living_narrative.state.models import (
     UserMode,
 )
 from living_narrative.state.store import StateStore
+from living_narrative.state.transaction import project_lock
+from living_narrative.web.auto_run import (
+    AutoRunAlreadyRunningError,
+    RunStatus,
+    get_run_status,
+    request_stop,
+    start_auto_run,
+)
 from living_narrative.workspace.loader import load_project
 
 __all__ = [
@@ -77,10 +84,6 @@ _PRICING_ADAPTER = TypeAdapter(dict[str, ModelPricing])
 
 class ProjectNotFoundError(Exception):
     """A project name did not resolve to a valid project directly under the served root."""
-
-
-class AutoRunAlreadyRunningError(Exception):
-    """An ``auto`` run was requested for a project that already has one in progress."""
 
 
 class NoPendingReviewError(Exception):
@@ -151,30 +154,31 @@ def get_settings_yaml(project_yaml: Path, filename: str) -> str:
 
 def update_settings_yaml(project_yaml: Path, filename: str, text: str) -> str:
     """Validate then atomically replace one fixed settings file, leaving failures untouched."""
-    path = _settings_path(project_yaml, filename)
-    submitted = _parse_settings_yaml(text)
-    if filename == "pricing.yaml":
-        try:
-            validated = _PRICING_ADAPTER.validate_python(submitted)
-        except ValidationError as exc:
-            raise SettingsValidationError(f"invalid pricing.yaml: {exc}") from exc
-        data = {name: price.model_dump(mode="python") for name, price in validated.items()}
-    else:
-        unexpected = set(submitted) - _PROJECT_SETTINGS_KEYS
-        if unexpected:
-            raise SettingsValidationError(
-                "project settings may only contain llm_profiles and llm_bindings; "
-                f"unexpected keys: {sorted(unexpected)}"
-            )
-        current = _parse_settings_yaml(path.read_text(encoding="utf-8"))
-        merged = {**current, **submitted}
-        try:
-            ProjectConfig.model_validate(merged)
-        except ValidationError as exc:
-            raise SettingsValidationError(f"invalid project settings: {exc}") from exc
-        data = merged
-    _atomic_settings_write(path, data)
-    return get_settings_yaml(project_yaml, filename)
+    with project_lock(project_yaml.parent):
+        path = _settings_path(project_yaml, filename)
+        submitted = _parse_settings_yaml(text)
+        if filename == "pricing.yaml":
+            try:
+                validated = _PRICING_ADAPTER.validate_python(submitted)
+            except ValidationError as exc:
+                raise SettingsValidationError(f"invalid pricing.yaml: {exc}") from exc
+            data = {name: price.model_dump(mode="python") for name, price in validated.items()}
+        else:
+            unexpected = set(submitted) - _PROJECT_SETTINGS_KEYS
+            if unexpected:
+                raise SettingsValidationError(
+                    "project settings may only contain llm_profiles and llm_bindings; "
+                    f"unexpected keys: {sorted(unexpected)}"
+                )
+            current = _parse_settings_yaml(path.read_text(encoding="utf-8"))
+            merged = {**current, **submitted}
+            try:
+                ProjectConfig.model_validate(merged)
+            except ValidationError as exc:
+                raise SettingsValidationError(f"invalid project settings: {exc}") from exc
+            data = merged
+        _atomic_settings_write(path, data)
+        return get_settings_yaml(project_yaml, filename)
 
 
 def resolve_project_dir(root: Path, name: str) -> Path:
@@ -691,102 +695,3 @@ def get_interventions(project_yaml: Path) -> InterventionsInfo:
             }
 
     return InterventionsInfo(history=history_dicts, last_turn=last_turn)
-
-
-@dataclass
-class _ProjectRunState:
-    """Mutable in-process auto-run state for one project directory, guarded by ``lock``."""
-
-    lock: threading.Lock = field(default_factory=threading.Lock)
-    stop_flag: threading.Event = field(default_factory=threading.Event)
-    thread: threading.Thread | None = None
-    running: bool = False
-    current_turn: int = 0
-    last_status: str | None = None
-    stopped_reason: str | None = None
-
-
-_RUN_STATES: dict[Path, _ProjectRunState] = {}
-_REGISTRY_LOCK = threading.Lock()
-
-
-def _run_state_for(project_dir: Path) -> _ProjectRunState:
-    with _REGISTRY_LOCK:
-        return _RUN_STATES.setdefault(project_dir, _ProjectRunState())
-
-
-@dataclass(frozen=True)
-class RunStatus:
-    running: bool
-    current_turn: int
-    last_status: str | None
-    stopped_reason: str | None
-
-
-def get_run_status(project_yaml: Path) -> RunStatus:
-    state = _run_state_for(project_yaml.parent)
-    with state.lock:
-        return RunStatus(
-            running=state.running,
-            current_turn=state.current_turn,
-            last_status=state.last_status,
-            stopped_reason=state.stopped_reason,
-        )
-
-
-def request_stop(project_yaml: Path) -> None:
-    """Ask a running ``auto`` loop to stop at the next turn boundary. A no-op if none is running."""
-    state = _run_state_for(project_yaml.parent)
-    state.stop_flag.set()
-
-
-def start_auto_run(project_yaml: Path, turns: int) -> None:
-    """Start a background thread running up to ``turns`` turns via the normal ``TurnPipeline``.
-
-    Raises ``AutoRunAlreadyRunningError`` if a run for this project is already in progress
-    (mirrors the "one active run per project" constraint the CLI's ``auto`` command gets for
-    free by being a single blocking process). The loop checks the stop flag at each turn
-    boundary (before starting the next turn) and halts on any non-``applied`` status, same as
-    ``session.loop.run_auto_loop``.
-    """
-    state = _run_state_for(project_yaml.parent)
-    with state.lock:
-        if state.running:
-            raise AutoRunAlreadyRunningError(
-                f"an auto run is already in progress for {project_yaml}"
-            )
-        state.running = True
-        state.stopped_reason = None
-        state.last_status = None
-        state.stop_flag.clear()
-
-    def _worker() -> None:
-        pipeline = TurnPipeline()
-        stopped_reason: str | None = "turns_complete"
-        try:
-            for _ in range(turns):
-                if state.stop_flag.is_set():
-                    stopped_reason = "stopped"
-                    break
-                result = pipeline.run(project_yaml)
-                with state.lock:
-                    state.current_turn = result.turn
-                    state.last_status = result.status.value
-                if result.status != TurnStatus.APPLIED:
-                    stopped_reason = result.status.value
-                    break
-            else:
-                stopped_reason = "turns_complete"
-        except Exception as exc:  # noqa: BLE001 - must surface via run_status, never swallow
-            with state.lock:
-                state.last_status = "failed"
-            stopped_reason = f"error: {exc}"
-        finally:
-            with state.lock:
-                state.running = False
-                state.stopped_reason = stopped_reason
-
-    thread = threading.Thread(target=_worker, daemon=True)
-    with state.lock:
-        state.thread = thread
-    thread.start()

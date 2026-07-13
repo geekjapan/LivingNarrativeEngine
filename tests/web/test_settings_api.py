@@ -1,5 +1,7 @@
 """Settings API/UI regression tests for issue 046."""
 
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -163,3 +165,40 @@ def test_player_character_mode_rejects_settings_read_and_write(tmp_path, build_p
         ).status_code
         == 403
     )
+
+
+def test_settings_write_returns_409_while_auto_run_holds_project_lock(
+    tmp_path, build_project, monkeypatch
+):
+    entered = threading.Event()
+    release = threading.Event()
+    original_run = service.TurnPipeline.run
+
+    def hold_run(self, *args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return original_run(self, *args, **kwargs)
+
+    monkeypatch.setattr(service.TurnPipeline, "run", hold_run)
+    build_project(tmp_path)
+    client = _client(tmp_path)
+
+    auto_response = client.post("/api/project/project/auto", json={"turns": 1})
+    assert auto_response.status_code == 200
+    assert entered.wait(5)
+
+    response = client.put(
+        "/api/project/project/settings/pricing.yaml",
+        json={"yaml": "model-x:\n  input_usd_per_1m: 1\n  output_usd_per_1m: 2\n"},
+    )
+    assert response.status_code == 409
+    assert "already locked" in response.json()["detail"]
+
+    release.set()
+    deadline = time.monotonic() + 5
+    while (
+        time.monotonic() < deadline
+        and client.get("/api/project/project/run_status").json()["running"]
+    ):
+        time.sleep(0.02)
+    assert client.get("/api/project/project/run_status").json()["running"] is False
