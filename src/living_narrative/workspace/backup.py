@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from living_narrative.state.transaction import project_lock
 from living_narrative.workspace.copy import (
     copy_directory_atomic,
     copy_directory_into,
@@ -70,30 +71,34 @@ def create_backup(
     if not read.is_valid or read.config is None:
         raise BackupError(_project_error(project_path))
 
-    timestamp = created_at or datetime.now(UTC)
-    if timestamp.tzinfo is None:
-        raise BackupError("backup timestamp must be timezone-aware")
-    timestamp = timestamp.astimezone(UTC)
-    project_name = re.sub(r"[^A-Za-z0-9._-]+", "-", read.config.id).strip("-.") or "project"
-    backup_name = f"{project_name}-backup-{timestamp.strftime('%Y%m%dT%H%M%SZ')}"
-    backup_root = output_parent / backup_name
-    if backup_root.exists():
-        raise BackupError(f"backup destination already exists: {backup_root}")
+    with project_lock(read.paths.root):
+        read = load_project(project_path)
+        if not read.is_valid or read.config is None:
+            raise BackupError(_project_error(project_path))
+        timestamp = created_at or datetime.now(UTC)
+        if timestamp.tzinfo is None:
+            raise BackupError("backup timestamp must be timezone-aware")
+        timestamp = timestamp.astimezone(UTC)
+        project_name = re.sub(r"[^A-Za-z0-9._-]+", "-", read.config.id).strip("-.") or "project"
+        backup_name = f"{project_name}-backup-{timestamp.strftime('%Y%m%dT%H%M%SZ')}"
+        backup_root = output_parent / backup_name
+        if backup_root.exists():
+            raise BackupError(f"backup destination already exists: {backup_root}")
 
-    manifest = BackupManifest(
-        source_path=source_root,
-        created_at=timestamp,
-        schema_version=read.config.schema_version,
-    )
-
-    def populate(temporary: Path) -> None:
-        (temporary / "project").mkdir()
-        copy_directory_into(source_root, temporary / "project")
-        (temporary / "manifest.yaml").write_text(
-            yaml.safe_dump(manifest.model_dump(mode="json"), sort_keys=False), encoding="utf-8"
+        manifest = BackupManifest(
+            source_path=source_root,
+            created_at=timestamp,
+            schema_version=read.config.schema_version,
         )
 
-    return publish_directory_atomic(backup_root, populate)
+        def populate(temporary: Path) -> None:
+            (temporary / "project").mkdir()
+            copy_directory_into(source_root, temporary / "project")
+            (temporary / "manifest.yaml").write_text(
+                yaml.safe_dump(manifest.model_dump(mode="json"), sort_keys=False), encoding="utf-8"
+            )
+
+        return publish_directory_atomic(backup_root, populate)
 
 
 def load_backup_manifest(backup_root: Path) -> BackupManifest:

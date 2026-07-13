@@ -8,6 +8,7 @@ from living_narrative.state.transaction import (
     ProjectLockError,
     RecoveryError,
     RecoveryState,
+    TransactionFaultPoint,
     classify_recovery_state,
     commit_state_diff,
     project_lock,
@@ -194,3 +195,30 @@ def test_project_lock_is_non_blocking(tmp_path):
         with pytest.raises(ProjectLockError):
             with project_lock(tmp_path):
                 pass
+
+
+@pytest.mark.parametrize(
+    ("point", "expected"),
+    [
+        (TransactionFaultPoint.INTENT_BEFORE, RecoveryState.BLOCKED),
+        (TransactionFaultPoint.INTENT_AFTER_SAVE_BEFORE, RecoveryState.DISCARD),
+        (TransactionFaultPoint.SAVE_MID, RecoveryState.QUARANTINE),
+        (TransactionFaultPoint.SAVE_AFTER_META_BEFORE, RecoveryState.RECOVER_META),
+        (TransactionFaultPoint.META_MID, RecoveryState.RECOVER_META),
+    ],
+)
+def test_commit_fault_matrix_classifies_partial_turns(tmp_path, build_project, point, expected):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+
+    def crash_hook(actual_point, _write_number):
+        if actual_point is point:
+            raise RuntimeError(f"injected crash at {actual_point.value}")
+
+    with pytest.raises(RuntimeError, match="injected crash"):
+        commit_state_diff(
+            StateStore.load(state_dir), _diff(), state_dir, turn_dir, fault_hook=crash_hook
+        )
+
+    assert classify_recovery_state(turn_dir, state_dir, apply=False) is expected

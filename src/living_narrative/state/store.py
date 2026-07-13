@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -123,11 +124,16 @@ class StateStore:
         return bundle
 
     @staticmethod
-    def save(bundle: WorldStateBundle, workspace_path: Path) -> None:
+    def save(
+        bundle: WorldStateBundle,
+        workspace_path: Path,
+        *,
+        on_write: Callable[[Path], None] | None = None,
+    ) -> None:
         state_dir = _state_dir(workspace_path)
         state_dir.mkdir(parents=True, exist_ok=True)
         for relative_path, data in _bundle_files(bundle).items():
-            _atomic_yaml(state_dir / relative_path, data)
+            _atomic_yaml(state_dir / relative_path, data, on_write=on_write)
 
 
 def _state_dir(workspace_path: Path) -> Path:
@@ -267,8 +273,10 @@ def _dump_value(value: Any) -> Any:
     return value
 
 
-def _atomic_yaml(path: Path, data: Any) -> None:
+def _atomic_yaml(path: Path, data: Any, *, on_write: Callable[[Path], None] | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f"{path.suffix}.tmp")
     tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
     os.replace(tmp, path)
+    if on_write is not None:
+        on_write(path)

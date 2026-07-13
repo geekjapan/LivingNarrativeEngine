@@ -111,6 +111,7 @@ def execute_rollback(paths: WorkspacePaths, plan: RollbackPlan) -> RollbackResul
     (``branch``'s use case).
     """
     with project_lock(paths.root):
+        plan = plan_rollback(paths.runs, plan.to_turn)
         journal_dir = (
             paths.runs
             / ".transactions"

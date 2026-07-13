@@ -1,7 +1,7 @@
 ---
 id: 068
 title: fault injection+multiprocessテストmatrixでtransaction契約を固定する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P0
