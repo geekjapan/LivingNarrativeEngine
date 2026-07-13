@@ -1,0 +1,18 @@
+# Pinned to beta-schema-v1 @ b17f72a289cada0170e00a10ee9222a8057063e0.
+schema_version: 1
+id: beta-schema-fixture
+title: Beta schema fixture
+genre: acceptance
+tone: deterministic
+autonomy_level: manual
+user_mode: assistant_gm
+random_seed: beta-schema-seed
+renderer: novel
+llm:
+  provider: mock
+  model: mock-v1
+workspace:
+  root: workspace
+  state: workspace/state
+  runs: workspace/runs
+  exports: workspace/exports

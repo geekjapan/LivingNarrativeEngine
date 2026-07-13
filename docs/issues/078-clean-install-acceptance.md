@@ -1,7 +1,7 @@
 ---
 id: 078
 title: packaging+clean-install acceptance(wheel/Docker/backup-restore/migration harness)を実装する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P1
