@@ -26,8 +26,14 @@ from living_narrative.state.models import Event
 def _atomic_write_yaml(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f"{path.suffix}.tmp")
-    tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        with tmp.open("w", encoding="utf-8") as stream:
+            stream.write(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _atomic_write_text(path: Path, content: str) -> None:
@@ -115,6 +121,10 @@ def build_meta_dict(
     phase_durations: dict[str, float],
     calls: list[CallMetadata],
     rng_draws_consumed: int,
+    rng_start_offset: int | None = None,
+    diff_id: str | None = None,
+    state_hash_before: str | None = None,
+    state_hash_after: str | None = None,
     error: ErrorReport | None = None,
 ) -> dict[str, Any]:
     turn_meta = build_turn_meta(calls)
@@ -129,6 +139,14 @@ def build_meta_dict(
         "rng_draws_consumed": rng_draws_consumed,
         "pipeline_version": PIPELINE_VERSION,
     }
+    if rng_start_offset is not None:
+        meta["rng_start_offset"] = rng_start_offset
+    if diff_id is not None:
+        meta["diff_id"] = diff_id
+    if state_hash_before is not None:
+        meta["state_hash_before"] = state_hash_before
+    if state_hash_after is not None:
+        meta["state_hash_after"] = state_hash_after
     if turn_meta["llm_tokens_total"] is not None:
         meta["llm_tokens_total"] = turn_meta["llm_tokens_total"]
     if error is not None:

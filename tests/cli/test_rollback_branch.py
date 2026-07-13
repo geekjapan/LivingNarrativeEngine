@@ -1,12 +1,15 @@
 """``living-narrative rollback``/``branch`` (cli/spec.md; Issue 018): rewind project state
 using saved inverse diffs, and copy-then-rewind for branches."""
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
 from living_narrative.cli import app
 from living_narrative.pipeline import TurnPipeline, TurnStatus
+from living_narrative.session.rollback import execute_rollback, plan_rollback
 from living_narrative.state.store import StateStore
+from living_narrative.state.transaction import RecoveryError
 from living_narrative.workspace.loader import load_project
 
 runner = CliRunner()
@@ -120,6 +123,28 @@ def test_rollback_rejects_pending_review_latest_turn(tmp_path, build_project):
 
     assert result.exit_code == 2
     assert "review" in result.output
+
+
+def test_rollback_rejects_quarantined_latest_turn(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _run_turns(project_path, 1)
+    paths = load_project(project_path).paths
+    plan = plan_rollback(paths.runs, to_turn=0)
+    (paths.runs / "turn_0001" / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+
+    with pytest.raises(RecoveryError, match="quarantine"):
+        execute_rollback(paths, plan)
+
+
+def test_rollback_rejects_blocked_rollback_journal(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _run_turns(project_path, 1)
+    paths = load_project(project_path).paths
+    plan = plan_rollback(paths.runs, to_turn=0)
+    (paths.runs / ".transactions" / "rollback_0001_to_0000").mkdir(parents=True)
+
+    with pytest.raises(RecoveryError, match="rollback journal.*blocked"):
+        execute_rollback(paths, plan)
 
 
 def test_rollback_prompts_and_aborts_without_yes(tmp_path, build_project):

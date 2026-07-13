@@ -1,7 +1,7 @@
 ---
 id: 066
 title: state/transaction.pyを新設しlock+commit journal+順序反転を全state変更経路へ統合する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P0
@@ -28,3 +28,9 @@ Issue 055の決定(2026-07-13承認)とIssue 062のDAGに基づく実装Issue。
 - `src/living_narrative/state/store.py`、`src/living_narrative/state/diff.py`
 - `src/living_narrative/session/review.py`、`src/living_narrative/session/rollback.py`
 - `docs/adr/0008-project-transaction-recovery.md`、`docs/adr/0009-v1-architecture-debt-scope.md`
+
+## 実装・検証記録
+
+- 2026-07-13: `node .gitnexus/run.cjs analyze --index-only` — repository indexed successfully（6,913 nodes、12,920 edges、300 flows）。
+- 2026-07-13: GitNexus `detect_changes(scope=staged)` — 8 files、28 affected symbols、risk `critical`（repo=`/Users/geekjapan/dev/projects/LivingNarrativeEngine`、worktree=`deliver-066`）。
+- 2026-07-13: `NO_COLOR=1 uv run pytest` — 960 passed、1 warning。`uv run ruff check .`、`uv run ruff format --check .`、`git diff --check` — pass。

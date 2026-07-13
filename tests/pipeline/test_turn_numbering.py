@@ -8,6 +8,7 @@ from living_narrative.pipeline import (
     default_registry,
     total_rng_draws_consumed,
 )
+from living_narrative.state.transaction import RecoveryError
 
 
 def test_pending_review_turn_blocks_next_turn(tmp_path, build_project):
@@ -35,6 +36,16 @@ def test_missing_meta_yaml_blocks_next_turn(tmp_path, build_project):
     (first.turn_dir / "meta.yaml").unlink()
 
     with pytest.raises(UnresolvedTurnError):
+        TurnPipeline().run(project_path)
+
+
+def test_quarantined_latest_turn_blocks_pipeline_mutation(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    turn_dir.mkdir(parents=True)
+    (turn_dir / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+
+    with pytest.raises(RecoveryError, match="quarantine"):
         TurnPipeline().run(project_path)
 
 
