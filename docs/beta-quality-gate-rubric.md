@@ -15,7 +15,7 @@
 - [ADR-0010: 実LLM長期品質ゲートと物語SLO](adr/0010-quality-gate-narrative-slo.md)
 - [ADR-0005: 1.0リリース契約](adr/0005-v1-release-contract.md)
 - 実LLM 30ターンの実行・JSON artifact・`docs/evaluations/`転記手順は
-  [Issue 072](issues/072-real-llm-bench.md) に従う。
+  [Issue 072](issues/072-real-llm-bench.md) と[実行手順](real-llm-benchmark.md)に従う。
 
 ## 判定ルール
 
