@@ -1,6 +1,7 @@
 """``living-narrative branch``: copy a project and rewind the copy to an earlier turn,
 leaving the original untouched (cli/spec.md; Issue 018)."""
 
+import shutil
 from pathlib import Path
 
 import typer
@@ -38,6 +39,10 @@ def branch(
     try:
         execute_rollback(branch_read.paths, plan)
     except RecoveryError as exc:
+        try:
+            shutil.rmtree(output)
+        except OSError:
+            pass
         runtime_error(str(exc))
     append_branch_title_suffix(branch_project_path, from_turn)
 
