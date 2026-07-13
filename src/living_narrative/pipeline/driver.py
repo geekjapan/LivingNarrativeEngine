@@ -359,7 +359,33 @@ class TurnPipeline:
                 if has_error or any(item.should_stop for item in stop_conditions):
                     status = TurnStatus.STOPPED_FOR_REVIEW
                     applied = False
+                    write_state_diff(
+                        turn_dir,
+                        build_diff_output.diff,
+                        build_diff_output.rejected_changes,
+                        applied,
+                    )
                 elif commit_mode == "auto":
+
+                    def _write_applied_artifacts() -> None:
+                        # Runs inside the commit transaction, before the state is published,
+                        # so an applied turn can never lack its authoritative diff/review log.
+                        write_state_diff(
+                            turn_dir,
+                            build_diff_output.diff,
+                            build_diff_output.rejected_changes,
+                            True,
+                        )
+                        if project.user_mode == UserMode.GOD:
+                            write_review_yaml(
+                                turn_dir,
+                                turn=turn,
+                                decision="accept_all",
+                                decided_by=project.user_mode,
+                                resulting_turn_status=TurnStatus.APPLIED,
+                                auto_applied=True,
+                            )
+
                     commit_state_diff(
                         bundle,
                         build_diff_output.diff,
@@ -367,29 +393,26 @@ class TurnPipeline:
                         turn_dir,
                         rng_start_offset=initial_rng_offset,
                         meta={"turn": turn, "commit_mode": commit_mode},
+                        on_commit=_write_applied_artifacts,
                     )
                     commit_intent = read_commit_intent(turn_dir)
                     status = TurnStatus.APPLIED
                     applied = True
+                    if intervention_file.interventions:
+                        history_entries = build_history_entries(
+                            intervention_file.interventions,
+                            resolved_events,
+                            build_diff_output.diff,
+                        )
+                        append_history(paths.root / "interventions.yaml", history_entries)
                 else:
                     status = TurnStatus.PENDING_REVIEW
                     applied = False
-                write_state_diff(
-                    turn_dir, build_diff_output.diff, build_diff_output.rejected_changes, applied
-                )
-                if status == TurnStatus.APPLIED and intervention_file.interventions:
-                    history_entries = build_history_entries(
-                        intervention_file.interventions, resolved_events, build_diff_output.diff
-                    )
-                    append_history(paths.root / "interventions.yaml", history_entries)
-                if status == TurnStatus.APPLIED and project.user_mode == UserMode.GOD:
-                    write_review_yaml(
+                    write_state_diff(
                         turn_dir,
-                        turn=turn,
-                        decision="accept_all",
-                        decided_by=project.user_mode,
-                        resulting_turn_status=status,
-                        auto_applied=True,
+                        build_diff_output.diff,
+                        build_diff_output.rejected_changes,
+                        applied,
                     )
         except Exception as exc:  # noqa: BLE001 - must never swallow: recorded as `failed`
             status = TurnStatus.FAILED

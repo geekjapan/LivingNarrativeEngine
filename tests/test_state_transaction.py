@@ -78,6 +78,32 @@ def test_commit_writes_journal_before_state_and_pins_meta(tmp_path, build_projec
     assert classify_recovery_state(turn_dir, state_dir) is RecoveryState.CLEAN
 
 
+def test_on_commit_artifacts_are_durable_before_state_is_published(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    before = StateStore.load(state_dir)
+    before_hash = state_hash(state_dir)
+    observed: dict[str, object] = {}
+
+    def _write_artifacts() -> None:
+        # The live state must still be the pre-commit state, and the applied marker
+        # must not yet exist, when the caller writes its turn artifacts.
+        observed["state_hash"] = state_hash(state_dir)
+        observed["meta_exists"] = (turn_dir / "meta.yaml").exists()
+        (turn_dir / "state_diff.yaml").write_text("artifact\n", encoding="utf-8")
+
+    commit_state_diff(before, _diff(), state_dir, turn_dir, on_commit=_write_artifacts)
+
+    assert observed["state_hash"] == before_hash
+    assert observed["meta_exists"] is False
+    # Reaching hash_after (a CLEAN/RECOVER_META classification) therefore guarantees the
+    # artifact is already on disk.
+    assert (turn_dir / "state_diff.yaml").read_text(encoding="utf-8") == "artifact\n"
+    assert state_hash(state_dir) != before_hash
+    assert classify_recovery_state(turn_dir, state_dir) is RecoveryState.CLEAN
+
+
 def test_artifact_failure_cannot_advance_state_without_inverse(
     tmp_path, build_project, monkeypatch
 ):

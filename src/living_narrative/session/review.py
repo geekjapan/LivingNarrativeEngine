@@ -232,6 +232,21 @@ def _resolve_review_locked(
         applied_diff = original_diff
         selected = None
 
+    def _finalize_review_artifacts() -> None:
+        # For a committed review these run inside the transaction (before the state is
+        # published) so a resolved turn can never end up applied without its artifact
+        # diff and review record.
+        write_artifact_diff(turn_dir, applied_diff, applied=True)
+        write_review_yaml(
+            turn_dir,
+            turn=original_diff.turn,
+            decision=decision,
+            decided_by=decided_by,
+            applied_change_indices=sorted(selected) if selected is not None else None,
+            edit_diff=applied_diff if decision == ReviewDecision.EDIT else None,
+            resulting_turn_status=APPLIED_STATUS,
+        )
+
     if decision != ReviewDecision.REJECT_ALL:
         bundle = StateStore.load(state_dir)
         meta = yaml.safe_load((turn_dir / "meta.yaml").read_text(encoding="utf-8")) or {}
@@ -242,18 +257,13 @@ def _resolve_review_locked(
             turn_dir,
             rng_start_offset=int(meta.get("rng_start_offset") or 0),
             meta={"turn": original_diff.turn, "commit_mode": "review"},
+            on_commit=_finalize_review_artifacts,
         )
+    else:
+        # No state mutation to journal; write the artifacts directly, still before the
+        # applied marker below.
+        _finalize_review_artifacts()
 
-    write_artifact_diff(turn_dir, applied_diff, applied=True)
-    write_review_yaml(
-        turn_dir,
-        turn=original_diff.turn,
-        decision=decision,
-        decided_by=decided_by,
-        applied_change_indices=sorted(selected) if selected is not None else None,
-        edit_diff=applied_diff if decision == ReviewDecision.EDIT else None,
-        resulting_turn_status=APPLIED_STATUS,
-    )
     update_meta_status(turn_dir, APPLIED_STATUS)
     _append_deferred_history(workspace_root, turn_dir, applied_diff)
     return ReviewResult(decision, APPLIED_STATUS, turn_dir)

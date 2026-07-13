@@ -132,9 +132,15 @@ def commit_state_diff(
     rng_start_offset: int = 0,
     selected_change_indexes: set[int] | None = None,
     meta: Mapping[str, Any] | None = None,
+    on_commit: Callable[[], None] | None = None,
     fault_hook: TransactionFaultHook | None = None,
 ) -> StateDiffApplyResult:
     """Apply and persist one diff using the journal-before-state ordering.
+
+    ``on_commit`` runs after the commit intent is journalled but *before* the live
+    state is published, so callers can fold their own turn artifacts (``state_diff.yaml``,
+    ``review.yaml``, ...) into the recoverable transaction: the applied ``meta.yaml``
+    marker is written last, only once every artifact and the state itself are durable.
 
     ``fault_hook`` receives a named boundary and the number of completed writes in
     that boundary. A hook may raise to leave a deterministic crash fixture behind.
@@ -154,6 +160,8 @@ def commit_state_diff(
     _call_fault_hook(fault_hook, TransactionFaultPoint.INTENT_BEFORE, 0)
     _atomic_write_yaml(turn_dir / "commit_intent.yaml", intent.model_dump(mode="json"))
     _call_fault_hook(fault_hook, TransactionFaultPoint.INTENT_AFTER_SAVE_BEFORE, 1)
+    if on_commit is not None:
+        on_commit()
     state_write_number = 0
 
     def after_state_write(_path: Path) -> None:
