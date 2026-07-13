@@ -46,7 +46,11 @@ from living_narrative.session.stop_conditions import evaluate_stop_conditions
 from living_narrative.state.models import SceneStatus, UserMode
 from living_narrative.state.store import StateLoadError, StateStore
 from living_narrative.state.transaction import (
+    RecoveryError,
+    RecoveryState,
+    classify_recovery_state,
     commit_state_diff,
+    latest_turn_directory,
     project_lock,
     read_commit_intent,
 )
@@ -130,6 +134,14 @@ class TurnPipeline:
                     rng_offset_override=rng_offset_override,
                     _lock_held=True,
                 )
+        recovery_state = classify_recovery_state(
+            latest_turn_directory(paths.runs),
+            paths.state,
+        )
+        if recovery_state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
+            raise RecoveryError(
+                f"cannot mutate project while recovery state is {recovery_state.value}"
+            )
         project = read.config
         from living_narrative.plugins import create_plugin_runtime
 

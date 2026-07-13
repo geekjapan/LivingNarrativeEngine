@@ -6,6 +6,7 @@ import errno
 import fcntl
 import hashlib
 import os
+import re
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from enum import StrEnum
@@ -27,6 +28,10 @@ from living_narrative.state.store import StateStore, _bundle_files
 
 class ProjectLockError(BlockingIOError):
     """Raised when another process already owns a project's mutation lock."""
+
+
+class RecoveryError(RuntimeError):
+    """Raised when an unsafe incomplete turn blocks a state mutation."""
 
 
 @contextmanager
@@ -119,24 +124,35 @@ def read_commit_intent(turn_dir: Path) -> CommitIntent | None:
         return None
 
 
-def classify_recovery_state(turn_dir: Path, state_dir: Path) -> RecoveryState:
+def latest_turn_directory(runs_dir: Path) -> Path | None:
+    """Return the latest canonical turn directory, if one exists."""
+    candidates: list[tuple[int, Path]] = []
+    if not runs_dir.exists():
+        return None
+    for entry in runs_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        match = re.fullmatch(r"turn_(\d+)", entry.name)
+        if match is not None:
+            candidates.append((int(match.group(1)), entry))
+    return max(candidates, default=(0, None))[1]
+
+
+def classify_recovery_state(turn_dir: Path | None, state_dir: Path) -> RecoveryState:
     """Classify an incomplete turn by comparing its intent hashes to live state."""
+    if turn_dir is None:
+        return RecoveryState.CLEAN
     meta = _read_mapping(turn_dir / "meta.yaml")
     intent = read_commit_intent(turn_dir)
-    if (
-        meta is not None
-        and meta.get("status")
-        in {
-            "pending_review",
-            "stopped_for_review",
-            "failed",
-        }
-        and intent is None
-    ):
-        return RecoveryState.CLEAN
     if intent is None:
         if (turn_dir / "commit_intent.yaml").exists():
             return RecoveryState.QUARANTINE
+        if meta is not None and meta.get("status") in {
+            "pending_review",
+            "stopped_for_review",
+            "failed",
+        }:
+            return RecoveryState.CLEAN
         return RecoveryState.BLOCKED if meta is None else RecoveryState.DISCARD
 
     current_hash = state_hash(state_dir)
@@ -158,7 +174,8 @@ def _write_commit_meta(
     meta: Mapping[str, Any] | None,
     intent: CommitIntent,
 ) -> None:
-    data = dict(meta or {})
+    data = dict(_read_mapping(turn_dir / "meta.yaml") or {})
+    data.update(meta or {})
     data.update(
         {
             "status": "applied",
@@ -241,10 +258,12 @@ def _fsync_directory(path: Path) -> None:
 __all__ = [
     "CommitIntent",
     "ProjectLockError",
+    "RecoveryError",
     "RecoveryClassification",
     "RecoveryState",
     "classify_recovery_state",
     "commit_state_diff",
+    "latest_turn_directory",
     "project_lock",
     "read_commit_intent",
     "state_hash",

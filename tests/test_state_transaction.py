@@ -75,6 +75,38 @@ def test_artifact_failure_cannot_advance_state_without_inverse(
     assert not (turn_dir / "inverse_diff.yaml").exists()
 
 
+def test_commit_preserves_existing_meta_fields(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    state_dir = project_path.parent / "workspace" / "state"
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    turn_dir.mkdir(parents=True)
+    (turn_dir / "meta.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "turn": 1,
+                "status": "pending_review",
+                "pipeline_version": "test-pipeline",
+                "custom_meta": {"source": "fixture"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    commit_state_diff(
+        StateStore.load(state_dir),
+        _diff(),
+        state_dir,
+        turn_dir,
+        meta={"turn": 1, "commit_mode": "review"},
+    )
+
+    meta = yaml.safe_load((turn_dir / "meta.yaml").read_text(encoding="utf-8"))
+    assert meta["pipeline_version"] == "test-pipeline"
+    assert meta["custom_meta"] == {"source": "fixture"}
+    assert meta["commit_mode"] == "review"
+    assert meta["status"] == "applied"
+
+
 def test_recovery_classifies_hash_after_and_hash_before(tmp_path, build_project):
     project_path = build_project(tmp_path)
     state_dir = project_path.parent / "workspace" / "state"

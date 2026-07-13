@@ -13,7 +13,14 @@ from living_narrative.intervention.history import append_history, build_history_
 from living_narrative.state.diff import StateDiff
 from living_narrative.state.models import Event, UserMode
 from living_narrative.state.store import StateStore
-from living_narrative.state.transaction import commit_state_diff, project_lock
+from living_narrative.state.transaction import (
+    RecoveryError,
+    RecoveryState,
+    classify_recovery_state,
+    commit_state_diff,
+    latest_turn_directory,
+    project_lock,
+)
 
 UNRESOLVED_STATUS_VALUES = {"pending_review", "stopped_for_review"}
 APPLIED_STATUS = "applied"
@@ -170,6 +177,12 @@ def _resolve_review_locked(
     selected_change_indices: set[int] | None = None,
     edited_diff: StateDiff | dict[str, Any] | None = None,
 ) -> ReviewResult:
+    recovery_state = classify_recovery_state(
+        latest_turn_directory(turn_dir.parent),
+        state_dir,
+    )
+    if recovery_state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
+        raise RecoveryError(f"cannot mutate project while recovery state is {recovery_state.value}")
     from living_narrative.pipeline.turn_numbering import read_turn_status
 
     decision = ReviewDecision(decision)

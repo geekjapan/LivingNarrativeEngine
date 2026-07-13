@@ -23,7 +23,14 @@ from living_narrative.pipeline.turn_numbering import (
 )
 from living_narrative.state.diff import InverseStateDiff, StateDiff, load_inverse_diff
 from living_narrative.state.store import StateStore
-from living_narrative.state.transaction import commit_state_diff, project_lock
+from living_narrative.state.transaction import (
+    RecoveryError,
+    RecoveryState,
+    classify_recovery_state,
+    commit_state_diff,
+    latest_turn_directory,
+    project_lock,
+)
 from living_narrative.workspace.copy import WorkspaceCopyError, copy_directory_atomic
 from living_narrative.workspace.loader import WorkspacePaths
 
@@ -104,6 +111,14 @@ def execute_rollback(paths: WorkspacePaths, plan: RollbackPlan) -> RollbackResul
     (``branch``'s use case).
     """
     with project_lock(paths.root):
+        recovery_state = classify_recovery_state(
+            latest_turn_directory(paths.runs),
+            paths.state,
+        )
+        if recovery_state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
+            raise RecoveryError(
+                f"cannot mutate project while recovery state is {recovery_state.value}"
+            )
         inverse_diffs: list[InverseStateDiff] = [
             load_inverse_diff(turn_dir_path(paths.runs, turn) / "inverse_diff.yaml")
             for turn in plan.rolled_back_turns
