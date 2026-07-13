@@ -14,6 +14,7 @@ from living_narrative.pipeline.status import UNRESOLVED_STATUSES, TurnStatus
 
 _TURN_DIR_RE = re.compile(r"^turn_(\d+)$")
 ANY_TURN_DIR_RE = re.compile(r"^turn_(\d+)(?:_discarded_\d+)?$")
+_DISCARDED_TURN_DIR_RE = re.compile(r"^turn_(\d+)_discarded_\d+$")
 
 
 def turn_dir_path(runs_dir: Path, turn: int) -> Path:
@@ -53,8 +54,15 @@ def existing_turn_numbers(runs_dir: Path) -> list[int]:
 def determine_next_turn_number(runs_dir: Path) -> int:
     """ "Last applied turn + 1", blocking on an unresolved latest turn (SHALL/MUST NOT)."""
     numbers = existing_turn_numbers(runs_dir)
+    discarded_numbers = []
+    if runs_dir.exists():
+        discarded_numbers = [
+            int(match.group(1))
+            for entry in runs_dir.iterdir()
+            if entry.is_dir() and (match := _DISCARDED_TURN_DIR_RE.match(entry.name))
+        ]
     if not numbers:
-        return 1
+        return max(discarded_numbers, default=0) or 1
 
     latest = numbers[-1]
     status = read_turn_status(turn_dir_path(runs_dir, latest))
@@ -64,6 +72,8 @@ def determine_next_turn_number(runs_dir: Path) -> int:
         raise UnresolvedTurnError(f"turn_{latest:04d} is unresolved (status={status.value})")
     if status is TurnStatus.FAILED:
         return latest
+    if discarded_numbers and max(discarded_numbers) > latest:
+        return max(discarded_numbers)
     return latest + 1
 
 

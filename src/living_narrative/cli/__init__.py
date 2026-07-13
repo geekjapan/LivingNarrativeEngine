@@ -9,6 +9,7 @@ import typer
 from living_narrative.cli import auto as _auto
 from living_narrative.cli import backup as _backup
 from living_narrative.cli import branch as _branch
+from living_narrative.cli import doctor as _doctor
 from living_narrative.cli import export as _export
 from living_narrative.cli import init as _init
 from living_narrative.cli import metrics as _metrics
@@ -33,6 +34,7 @@ app.command("metrics")(_metrics.metrics)
 app.command("serve")(_serve.serve)
 app.command("rollback")(_rollback.rollback)
 app.command("branch")(_branch.branch)
+app.command("doctor")(_doctor.doctor)
 app.command("backup")(_backup.backup)
 app.command("restore")(_backup.restore)
 app.add_typer(_export.app, name="export")

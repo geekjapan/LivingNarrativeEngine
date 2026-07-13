@@ -7,11 +7,17 @@ from pathlib import Path
 import typer
 import yaml
 
-from living_narrative.cli._common import echo_turn_result, load_project_or_exit, usage_error
+from living_narrative.cli._common import (
+    echo_turn_result,
+    load_project_or_exit,
+    runtime_error,
+    usage_error,
+)
 from living_narrative.pipeline import TurnPipeline, TurnStatus, turn_dir_path
 from living_narrative.session.rerun import rerun_rng_offset
 from living_narrative.session.resume import restore_resume_state
 from living_narrative.session.review import ReviewDecision, resolve_review
+from living_narrative.state.transaction import RecoveryError
 
 
 def _parse_apply_indices(raw: list[str]) -> set[int]:
@@ -76,15 +82,18 @@ def review(
     if decision == ReviewDecision.EDIT:
         edited_diff = yaml.safe_load(patch.read_text(encoding="utf-8"))
 
-    result = resolve_review(
-        workspace_root=read.paths.root,
-        state_dir=read.paths.state,
-        turn_dir=turn_dir,
-        decision=decision,
-        decided_by=read.config.user_mode,
-        selected_change_indices=selected_indices,
-        edited_diff=edited_diff,
-    )
+    try:
+        result = resolve_review(
+            workspace_root=read.paths.root,
+            state_dir=read.paths.state,
+            turn_dir=turn_dir,
+            decision=decision,
+            decided_by=read.config.user_mode,
+            selected_change_indices=selected_indices,
+            edited_diff=edited_diff,
+        )
+    except RecoveryError as exc:
+        runtime_error(str(exc))
 
     if decision != ReviewDecision.RERUN_TURN:
         typer.echo(f"turn {pending_turn}: {decision.value} -> {result.resulting_turn_status}")

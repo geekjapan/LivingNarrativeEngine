@@ -33,6 +33,14 @@ class ProjectLockError(BlockingIOError):
 class RecoveryError(RuntimeError):
     """Raised when an unsafe incomplete turn blocks a state mutation."""
 
+    def __init__(self, message: str) -> None:
+        if "quarantine" in message.lower() and "restore" not in message.lower():
+            message = (
+                f"{message}; restore a backup or manually repair the state, "
+                "then run `living-narrative doctor`"
+            )
+        super().__init__(message)
+
 
 @contextmanager
 def project_lock(project_root: Path) -> Iterator[Path]:
@@ -138,8 +146,17 @@ def latest_turn_directory(runs_dir: Path) -> Path | None:
     return max(candidates, default=(0, None))[1]
 
 
-def classify_recovery_state(turn_dir: Path | None, state_dir: Path) -> RecoveryState:
-    """Classify an incomplete turn by comparing its intent hashes to live state."""
+def classify_recovery_state(
+    turn_dir: Path | None,
+    state_dir: Path,
+    *,
+    apply: bool = True,
+) -> RecoveryState:
+    """Classify and, for safe cases, recover an incomplete turn.
+
+    Mutation callers invoke this immediately after taking the project lock.  ``apply=False``
+    is for read-only diagnostics such as ``doctor``.
+    """
     if turn_dir is None or not turn_dir.exists():
         return RecoveryState.CLEAN
     meta = _read_mapping(turn_dir / "meta.yaml")
@@ -153,20 +170,45 @@ def classify_recovery_state(turn_dir: Path | None, state_dir: Path) -> RecoveryS
             "failed",
         }:
             return RecoveryState.CLEAN
-        return RecoveryState.BLOCKED if meta is None else RecoveryState.DISCARD
+        state = RecoveryState.BLOCKED if meta is None else RecoveryState.DISCARD
+    else:
+        current_hash = state_hash(state_dir)
+        if (
+            meta is not None
+            and meta.get("status") == "applied"
+            and current_hash == intent.state_hash_after
+        ):
+            return RecoveryState.CLEAN
+        if current_hash == intent.state_hash_after:
+            state = RecoveryState.RECOVER_META
+        elif current_hash == intent.state_hash_before:
+            state = RecoveryState.DISCARD
+        else:
+            state = RecoveryState.QUARANTINE
 
-    current_hash = state_hash(state_dir)
-    if (
-        meta is not None
-        and meta.get("status") == "applied"
-        and current_hash == intent.state_hash_after
-    ):
-        return RecoveryState.CLEAN
-    if current_hash == intent.state_hash_after:
-        return RecoveryState.RECOVER_META
-    if current_hash == intent.state_hash_before:
-        return RecoveryState.DISCARD
-    return RecoveryState.QUARANTINE
+    if apply:
+        _apply_recovery_state(turn_dir, state)
+    return state
+
+
+def _apply_recovery_state(turn_dir: Path, state: RecoveryState) -> None:
+    if state is RecoveryState.RECOVER_META:
+        intent = read_commit_intent(turn_dir)
+        if intent is not None:
+            _write_commit_meta(turn_dir, None, intent)
+        return
+    if state is not RecoveryState.DISCARD:
+        return
+
+    # A legacy applied turn has no journal to recover.  Keep it as live history; the
+    # existing turn-number resolver will advance past it as before Issue 066.
+    if read_commit_intent(turn_dir) is None:
+        meta = _read_mapping(turn_dir / "meta.yaml")
+        if meta is not None and meta.get("status") == "applied":
+            return
+    from living_narrative.pipeline.turn_numbering import discard_turn_directory
+
+    discard_turn_directory(turn_dir)
 
 
 def _write_commit_meta(

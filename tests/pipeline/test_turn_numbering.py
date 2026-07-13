@@ -34,8 +34,11 @@ def test_missing_meta_yaml_blocks_next_turn(tmp_path, build_project):
     project_path = build_project(tmp_path)
     first = TurnPipeline().run(project_path)
     (first.turn_dir / "meta.yaml").unlink()
+    # A pre-beta turn has no commit journal, so the recovery state machine keeps
+    # the historical safe block behavior.
+    (first.turn_dir / "commit_intent.yaml").unlink()
 
-    with pytest.raises(UnresolvedTurnError):
+    with pytest.raises(RecoveryError):
         TurnPipeline().run(project_path)
 
 

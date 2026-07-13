@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer
 
-from living_narrative.cli._common import load_project_or_exit, usage_error
+from living_narrative.cli._common import load_project_or_exit, runtime_error, usage_error
 from living_narrative.session.rollback import (
     RollbackError,
     append_branch_title_suffix,
@@ -13,6 +13,7 @@ from living_narrative.session.rollback import (
     execute_rollback,
     plan_rollback,
 )
+from living_narrative.state.transaction import RecoveryError
 from living_narrative.workspace.loader import load_project
 
 
@@ -34,7 +35,10 @@ def branch(
         usage_error(str(exc))
 
     branch_read = load_project(branch_project_path)
-    execute_rollback(branch_read.paths, plan)
+    try:
+        execute_rollback(branch_read.paths, plan)
+    except RecoveryError as exc:
+        runtime_error(str(exc))
     append_branch_title_suffix(branch_project_path, from_turn)
 
     typer.echo(f"branched at turn {from_turn}: {output}")
