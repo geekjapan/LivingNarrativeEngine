@@ -2835,9 +2835,8 @@ living-narrative export replay \
 ## 29.6 Web UI
 
 ```bash
-living-narrative web \
-  --project projects/mist_station/project.yaml \
-  --host 127.0.0.1 \
+living-narrative serve \
+  --project-root projects \
   --port 8765
 ```
 
