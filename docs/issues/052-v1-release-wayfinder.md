@@ -1,7 +1,7 @@
 ---
 id: 052
 title: 1.0リリース準備の道筋を確定する
-status: open
+status: done
 created: 2026-07-12
 type: wayfinder:map
 ---
@@ -26,6 +26,15 @@ type: wayfinder:map
 <!-- closed child Issueの結論だけを1行で追記し、詳細は子Issueに置く -->
 
 - 053: 1.0契約確定 — persona=技術中級一人遊び、経路=uv/docker、βschema→1.0 migration保証、must原則とα/β/1.0 gate構造(ADR-0005)、plugin/provider stability tier(ADR-0006)。新規must実装=063 mock journey E2E。
+- 054: security floor確定 — innerHTML全面escape+grep guard+Origin検証=must、CSP/plugin診断=should、TrustedHost/sandbox/認証=post-1.0(ADR-0007)。
+- 055: transaction契約確定 — flock排他+commit journal(hash/rng-offset)+順序反転=must、recovery state machine+doctor、fault/multiprocess test matrix(ADR-0008)。
+- 056: current truth再同期 — 3層索引(README/spec-foundation §3-§8/ADR-0005)、stale/historical分類確定、DOC-1〜8を082/083へ、rollback-RNG検証は057所管。
+- 057: 品質gate確定 — mock 100ターンCI常設gate+実LLM30ターンβ/1.0時+人手rubric 8項目、rollback-RNG結合test=must、transition論理定義修正(ADR-0010)。
+- 058: UX受入確定 — Web必須=turn/介入/review/停止再開/観測、init/export/backup=CLI+導線でmust充足、最小page.pyパッチ、人手2セッション評価。
+- 059: release engineering確定 — --frozen+import guard+Docker/wheel smoke、βschema凍結=ADR+git tag、SemVer(ADR-0006)、LICENSE=人間選定(ADR-0011)。
+- 060: architecture debt範囲確定 — state/transaction.py=唯一のcommit境界、auto-run抽出まで1.0、cycle解消/分割はpost-1.0計測付き延期(ADR-0009)。
+- 061: scope確定 — 1.0新機能ゼロ。post-1.0はE-media/E-trpg/E-ux/E-arch/E-distの5 epic。
+- 062: 実装DAG確定 — issue 064-083、6 lane、Gate-P0→Gate-β→Gate-1.0、ADR-0007〜0011発行。
 
 ## Not yet specified
 

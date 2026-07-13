@@ -5,6 +5,7 @@ import living_narrative.cli.auto as auto_module
 from living_narrative.cli import app
 from living_narrative.pipeline import TurnRunResult, TurnStatus
 from living_narrative.session.loop import AutoLoopResult
+from living_narrative.state.transaction import RecoveryError
 
 runner = CliRunner()
 
@@ -37,6 +38,22 @@ def test_auto_requires_turns_or_until(tmp_path, build_project):
     result = runner.invoke(app, ["auto", "--project", str(project_path)])
 
     assert result.exit_code == 2
+
+
+def test_auto_cli_reports_recovery_error_guidance(tmp_path, build_project, monkeypatch):
+    project_path = build_project(tmp_path)
+
+    def fail_run(*_args, **_kwargs):
+        raise RecoveryError(
+            "cannot mutate project while recovery state is quarantine", quarantine=True
+        )
+
+    monkeypatch.setattr(auto_module, "run_auto_loop", fail_run)
+    result = runner.invoke(app, ["auto", "--project", str(project_path), "--turns", "1"])
+
+    assert result.exit_code == 1
+    assert "restore a backup" in result.output
+    assert "Traceback" not in result.output
 
 
 def _write_turn_dir(runs_dir, turn, *, stop_conditions=()):

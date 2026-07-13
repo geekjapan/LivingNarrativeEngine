@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ValidationError
 
+from living_narrative.state.diff import fsync_directory
 from living_narrative.state.models import (
     CanonEntry,
     CharacterState,
@@ -123,44 +125,45 @@ class StateStore:
         return bundle
 
     @staticmethod
-    def save(bundle: WorldStateBundle, workspace_path: Path) -> None:
+    def save(
+        bundle: WorldStateBundle,
+        workspace_path: Path,
+        *,
+        on_write: Callable[[Path], None] | None = None,
+    ) -> None:
         state_dir = _state_dir(workspace_path)
         state_dir.mkdir(parents=True, exist_ok=True)
-        _atomic_yaml(state_dir / "world.yaml", _dump_model(bundle.world))
-        _atomic_yaml(state_dir / "factions.yaml", [_dump_model(item) for item in bundle.factions])
-        _atomic_yaml(
-            state_dir / "relationships.yaml",
-            [_dump_model(item) for item in bundle.relationships],
-        )
-        _atomic_yaml(state_dir / "canon.yaml", [_dump_model(item) for item in bundle.canon])
-        _atomic_yaml(
-            state_dir / "reader_state.yaml",
-            [_dump_model(item) for item in bundle.reader_state],
-        )
-        _atomic_yaml(state_dir / "gm_vault.yaml", [_dump_model(item) for item in bundle.gm_vault])
-        _atomic_yaml(state_dir / "timeline.yaml", [_dump_model(item) for item in bundle.timeline])
-        _atomic_yaml(
-            state_dir / "unresolved_threads.yaml",
-            [_dump_model(item) for item in bundle.unresolved_threads],
-        )
-        _atomic_yaml(state_dir / "quests.yaml", [_dump_model(item) for item in bundle.quests])
-        _atomic_yaml(
-            state_dir / "memory_summaries.yaml",
-            [_dump_model(item) for item in bundle.memory_summaries],
-        )
-        _atomic_yaml(state_dir / "visual_profiles.yaml", _dump_model(bundle.visual_profiles))
-        _atomic_yaml(
-            state_dir / "encounters.yaml", [_dump_model(item) for item in bundle.encounters]
-        )
-        _atomic_yaml(state_dir / "voice_profiles.yaml", _dump_model(bundle.voice_profiles))
-        _save_dir(state_dir / "characters", bundle.characters)
-        _save_dir(state_dir / "scenes", bundle.scenes)
+        for relative_path, data in _bundle_files(bundle).items():
+            _atomic_yaml(state_dir / relative_path, data, on_write=on_write)
 
 
 def _state_dir(workspace_path: Path) -> Path:
     if workspace_path.name == "state" or (workspace_path / "world.yaml").exists():
         return workspace_path
     return workspace_path / "state"
+
+
+def _bundle_files(bundle: WorldStateBundle) -> dict[Path, Any]:
+    files: dict[Path, Any] = {
+        Path("world.yaml"): _dump_model(bundle.world),
+        Path("factions.yaml"): [_dump_model(item) for item in bundle.factions],
+        Path("relationships.yaml"): [_dump_model(item) for item in bundle.relationships],
+        Path("canon.yaml"): [_dump_model(item) for item in bundle.canon],
+        Path("reader_state.yaml"): [_dump_model(item) for item in bundle.reader_state],
+        Path("gm_vault.yaml"): [_dump_model(item) for item in bundle.gm_vault],
+        Path("timeline.yaml"): [_dump_model(item) for item in bundle.timeline],
+        Path("unresolved_threads.yaml"): [_dump_model(item) for item in bundle.unresolved_threads],
+        Path("quests.yaml"): [_dump_model(item) for item in bundle.quests],
+        Path("memory_summaries.yaml"): [_dump_model(item) for item in bundle.memory_summaries],
+        Path("visual_profiles.yaml"): _dump_model(bundle.visual_profiles),
+        Path("encounters.yaml"): [_dump_model(item) for item in bundle.encounters],
+        Path("voice_profiles.yaml"): _dump_model(bundle.voice_profiles),
+    }
+    files.update(
+        {Path("characters") / f"{item.id}.yaml": _dump_model(item) for item in bundle.characters}
+    )
+    files.update({Path("scenes") / f"{item.id}.yaml": _dump_model(item) for item in bundle.scenes})
+    return files
 
 
 def _load_yaml(path: Path, optional: bool = False) -> Any:
@@ -271,8 +274,17 @@ def _dump_value(value: Any) -> Any:
     return value
 
 
-def _atomic_yaml(path: Path, data: Any) -> None:
+def _atomic_yaml(path: Path, data: Any, *, on_write: Callable[[Path], None] | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f"{path.suffix}.tmp")
-    tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        with tmp.open("w", encoding="utf-8") as stream:
+            stream.write(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+        fsync_directory(path.parent)
+    finally:
+        tmp.unlink(missing_ok=True)
+    if on_write is not None:
+        on_write(path)

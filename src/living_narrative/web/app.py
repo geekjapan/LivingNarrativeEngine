@@ -4,7 +4,7 @@ No state mutation logic lives here — every route delegates to ``web.service`` 
 delegates to ``workspace.loader``/``state.store``/``pipeline.driver``/``session.review``). YAML
 files remain the single source of truth (spec-foundation.md D103); this module never holds state
 of its own beyond the ``project_root`` it was created with (the auto-run registry lives in
-``web.service``, keyed by resolved project directory).
+``web.auto_run``, keyed by resolved project directory).
 
 Only imported from ``web.server`` and test modules that ``pytest.importorskip("fastapi")`` first
 — never from ``living_narrative.cli`` at module scope, so the core test suite (and the CLI's
@@ -14,13 +14,14 @@ other commands) do not require the optional ``web`` extra to be installed.
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from living_narrative.pipeline import LoadError, UnresolvedTurnError
 from living_narrative.session.mode import is_gm_vault_visible
 from living_narrative.session.review import ReviewDecision, ReviewStateError
+from living_narrative.state.transaction import ProjectLockError
 from living_narrative.web.page import INDEX_HTML
 from living_narrative.web.service import (
     AutoRunAlreadyRunningError,
@@ -91,6 +92,20 @@ def create_app(project_root: Path) -> FastAPI:
     """
     app = FastAPI(title="Living Narrative Engine — Web UI")
 
+    @app.middleware("http")
+    async def check_mutation_origin(request: Request, call_next):
+        if request.method in {"POST", "PUT"}:
+            origin = request.headers.get("origin")
+            if origin is not None:
+                port_suffix = f":{request.url.port}" if request.url.port is not None else ""
+                allowed_origins = {
+                    f"http://127.0.0.1{port_suffix}",
+                    f"http://localhost{port_suffix}",
+                }
+                if origin not in allowed_origins:
+                    return JSONResponse(status_code=403, content={"detail": "origin not allowed"})
+        return await call_next(request)
+
     def _project_yaml(name: str) -> Path:
         try:
             project_dir = resolve_project_dir(project_root, name)
@@ -148,6 +163,8 @@ def create_app(project_root: Path) -> FastAPI:
         _require_sensitive_session_access(project_yaml)
         try:
             saved = update_settings_yaml(project_yaml, filename, body.yaml)
+        except ProjectLockError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except (OSError, SettingsValidationError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"filename": filename, "yaml": saved}
@@ -186,6 +203,8 @@ def create_app(project_root: Path) -> FastAPI:
         drafts = body.drafts if body is not None else None
         try:
             result = run_turn(project_yaml, intervention_text=free_text, intervention_drafts=drafts)
+        except ProjectLockError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except UnresolvedTurnError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except LoadError as exc:
@@ -269,6 +288,8 @@ def create_app(project_root: Path) -> FastAPI:
         )
         try:
             result = submit_review(project_yaml, body.decision, selected_indices=selected_indices)
+        except ProjectLockError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except NoPendingReviewError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ReviewStateError as exc:

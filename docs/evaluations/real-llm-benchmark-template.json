@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "artifact_type": "real_llm_benchmark",
+  "run": {
+    "run_id": "<run-id>",
+    "gate": "beta",
+    "started_at": "<ISO-8601>",
+    "finished_at": "<ISO-8601>",
+    "git_revision": "<commit>",
+    "sample": "mist_station",
+    "project_path": "sandbox/<run-id>",
+    "seed": "<random_seed>",
+    "provider": "openai-compatible",
+    "model": "<model>",
+    "base_url": "redacted",
+    "timeout_seconds": 60,
+    "target_turns": 30,
+    "completed_turns": 0,
+    "status": "FAIL",
+    "interrupted": false,
+    "provider_failures": []
+  },
+  "turns": [],
+  "mechanical": {
+    "metrics": {},
+    "leak_scan": {
+      "status": "not_run",
+      "findings": []
+    },
+    "resume": {
+      "status": "not_run",
+      "checkpoint_turn": 15,
+      "resumed_at_turn": 16,
+      "notes": ""
+    }
+  },
+  "sources": {
+    "run_artifacts": "sandbox/<run-id>/workspace/runs",
+    "metrics_json": "sandbox/<run-id>/metrics.json",
+    "benchmark_markdown": "docs/evaluations/YYYY-MM-DD-<run-id>-benchmark.md"
+  }
+}

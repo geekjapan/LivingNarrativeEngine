@@ -6,12 +6,18 @@ from pathlib import Path
 import typer
 import yaml
 
-from living_narrative.cli._common import echo_turn_result, load_project_or_exit, usage_error
+from living_narrative.cli._common import (
+    echo_turn_result,
+    load_project_or_exit,
+    runtime_error,
+    usage_error,
+)
 from living_narrative.cli._intervention_flags import DEFAULT_VISIBILITY, TYPE_TARGET_KIND
 from living_narrative.intervention.schema import InterventionType
 from living_narrative.pipeline import LoadError, TurnPipeline, TurnStatus, UnresolvedTurnError
 from living_narrative.state.models import UserMode, Visibility
 from living_narrative.state.store import StateStore
+from living_narrative.state.transaction import RecoveryError
 
 
 @contextlib.contextmanager
@@ -115,6 +121,8 @@ def turn(
         usage_error(f"{exc} — resolve it first with `living-narrative review --project {project}`")
     except LoadError as exc:
         usage_error(str(exc))
+    except RecoveryError as exc:
+        runtime_error(str(exc))
 
     echo_turn_result(result.turn_dir, result.turn, result.status.value)
     if result.status == TurnStatus.FAILED:

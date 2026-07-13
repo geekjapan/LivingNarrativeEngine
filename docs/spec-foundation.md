@@ -5,6 +5,11 @@
 
 作成日: 2026-07-03 / 対象バッチ: 第1実装バッチ(Text MVP + Core Runtime + Intervention + Autonomy)
 
+> **現行契約（2026-07-13）**: §3〜§8は、現行実装・テストが満たす規範契約である。
+> §1.3、§2、§5の`unresolved_threads`記述、§9のD101/D108/D109、§10に残る第1バッチ時点の記述は
+> historicalな設計記録であり、現行契約を上書きしない。CLIの利用導線は`README.md`、
+> リリースgateはADR-0005を参照する。
+
 ---
 
 ## 1. スコープ地図
@@ -52,6 +57,9 @@ add-cli-and-sample     (CLI 完成、サンプル世界、20ターン smoke test
 
 ### 1.3 第1バッチに含めないもの(非ゴール)
 
+> **Historical note**: これは第1バッチ時点の非ゴール記録である。Web UI、branch/rollback、
+> TRPG/RPG、各種exportなどの現行提供範囲を否定するものではない。
+
 Web UI(FastAPI/HTMX)、SQLite、画像・音声生成、小説原案 export(replay のみ)、
 TRPG/RPG ルール、マルチユーザー、memory summary・foreshadowing ledger(Phase 5)、
 branch/rollback の UI(データ形式のみ将来対応可能に保つ)。
@@ -59,6 +67,9 @@ branch/rollback の UI(データ形式のみ将来対応可能に保つ)。
 ---
 
 ## 2. 技術スタック(確定)
+
+> **Historical note**: 「第1バッチでは無し」というDB/Webの記述は当時のスコープ判断である。
+> 現在のWeb UIはFastAPI/uvicornの`serve`で提供し、状態の正本をファイルとする契約は維持する。
 
 | 項目 | 決定 | 備考 |
 |---|---|---|
@@ -76,7 +87,7 @@ branch/rollback の UI(データ形式のみ将来対応可能に保つ)。
 
 ---
 
-## 3. ID・命名規約
+## 3. ID・命名規約（現行契約）
 
 - ID は `<type>_<zero-padded番号>`: `char_001` `faction_001` `scene_001` `world_001`
   `event_0001` `int_0001` `roll_0001` `diff_0001` `thread_001` `fact_001`
@@ -93,7 +104,7 @@ branch/rollback の UI(データ形式のみ将来対応可能に保つ)。
 
 ---
 
-## 4. 情報スコープモデル(最重要契約)
+## 4. 情報スコープモデル(最重要契約・現行契約)
 
 ### 4.1 スコープ定義
 
@@ -130,7 +141,7 @@ session-autonomy の停止条件は state/roll の具体的フィールドから
 
 ---
 
-## 5. データモデル概要
+## 5. データモデル概要（現行契約）
 
 スキーマ詳細は `state-model` spec が正本。ここでは形と役割のみ規定する。
 全ファイルは Pydantic モデルでロード時検証。未知フィールドは警告(forbid ではなく将来互換)。
@@ -146,7 +157,8 @@ session-autonomy の停止条件は state/roll の具体的フィールドから
 - **reader_state.yaml** — 読者開示済み事実のリスト(同上+開示ターン)
 - **gm_vault.yaml** — 隠された真実(id, text, reveal_condition?)
 - **timeline.yaml** — ターンごとの event id 索引
-- **unresolved_threads.yaml** — 未解決スレッド(第1バッチではデータ形式のみ、自動運用は Phase 5)
+- **unresolved_threads.yaml** — 未解決スレッド。第1バッチ時点の「データ形式のみ、自動運用は
+  Phase 5」という注記はhistoricalであり、現行のthread運用・メトリクスは実装とテストを正本とする。
 
 ### 5.1 State Diff 形式
 
@@ -170,7 +182,7 @@ state_diff:
 
 ---
 
-## 6. ターンパイプライン契約
+## 6. ターンパイプライン契約（現行契約）
 
 企画書 §15.1 の 16 ステップを次の 8 フェーズに正規化する(各フェーズの入出力が turn artifact):
 
@@ -195,7 +207,7 @@ state_diff:
 
 ---
 
-## 7. 乱数契約
+## 7. 乱数契約（現行契約）
 
 - プロジェクトの `random_seed` から決定的 RNG を初期化。roll ごとに通番(sequence)を記録。
 - 同一 seed + 同一介入列 + mock provider ⇒ 完全再現(回帰テストの基盤)。
@@ -205,7 +217,7 @@ state_diff:
 
 ---
 
-## 8. LLM 契約
+## 8. LLM 契約（現行契約）
 
 - Provider interface: `complete(messages, response_schema) -> validated object`。
 - 複数プロファイル(D122): 1ターン内で複数の provider/model インスタンスを同時に利用できる。呼び出し側は binding key でプロファイルを解決し、呼び出しメタデータにプロファイル名・model を記録する(meta.yaml は呼び出しごとの model を保持)。mock provider の決定性はプロファイルが異なっても保たれる。
@@ -245,7 +257,14 @@ state_diff:
 | D122 | LLM は名前付きプロファイル(`llm_profiles`)+ binding(`llm_bindings`)でエージェント種別・キャラクター単位に切替可能。`llm` は既定プロファイル。1ターン内の複数 provider 同時利用を正式サポート | ユーザー要件(キャラクターごと・進行役ごとに異なる LLM)。企画書 §24.4 の small/large モデル役割分担にも接続 |
 | D123 | `CharacterState.status`(alive/dead/missing)、`SceneState.status`(active/ended)、Roll の任意 `severity`(normal/critical)を追加し、停止条件(character_death/scene_end/heavy_roll_failure)を機械的に評価可能にする。severity は Conflict Resolver が明示指定、random-engine は自動判定しない | PR #11 Codexレビュー指摘: 判定材料が無いと停止条件が「推測または絶対に発火しない」実装になる |
 
+> **Historical note**: D101は第1バッチをCLI-onlyとした時点の判断であり、現在は`serve`による
+> Web UIが出荷済みである。D108の「plugin loaderは作らない」は049でplugin runtime/SDKが
+> 出荷されたため現行仕様ではない。D109のbranch運用機能は018以降で実装済みである。
+
 ## 10. 未決事項(ユーザー確認待ち・第1バッチをブロックしない)
+
+> **Historical note**: 以下は本仕様策定時の未決事項スナップショットである。現行の実装・
+> Issue・ADRがある項目はそれらを優先し、未解決の判断だけを現在の作業単位で扱う。
 
 - Web UI 技術(HTMX vs React)— Phase 4 proposal 時に決定
 - 実LLM の既定 provider/model(開発は mock、動作確認用の推奨構成のみ README に記載)

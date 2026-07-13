@@ -8,6 +8,7 @@ from living_narrative.pipeline import (
     default_registry,
     total_rng_draws_consumed,
 )
+from living_narrative.state.transaction import RecoveryError
 
 
 def test_pending_review_turn_blocks_next_turn(tmp_path, build_project):
@@ -29,12 +30,39 @@ def test_applied_turn_advances_to_next_number(tmp_path, build_project):
     assert second.status == TurnStatus.APPLIED
 
 
+def test_rollback_history_does_not_skip_to_stale_discarded_turn(tmp_path):
+    runs_dir = tmp_path / "runs"
+    for turn in (1, 2):
+        turn_dir = runs_dir / f"turn_{turn:04d}"
+        turn_dir.mkdir(parents=True)
+        (turn_dir / "meta.yaml").write_text(yaml.safe_dump({"status": "applied"}), encoding="utf-8")
+    (runs_dir / "turn_0006_discarded_1").mkdir()
+    (runs_dir / "turn_0003_rolledback_1").mkdir()
+
+    from living_narrative.pipeline.turn_numbering import determine_next_turn_number
+
+    assert determine_next_turn_number(runs_dir) == 3
+
+
 def test_missing_meta_yaml_blocks_next_turn(tmp_path, build_project):
     project_path = build_project(tmp_path)
     first = TurnPipeline().run(project_path)
     (first.turn_dir / "meta.yaml").unlink()
+    # A pre-beta turn has no commit journal, so the recovery state machine keeps
+    # the historical safe block behavior.
+    (first.turn_dir / "commit_intent.yaml").unlink()
 
-    with pytest.raises(UnresolvedTurnError):
+    with pytest.raises(RecoveryError):
+        TurnPipeline().run(project_path)
+
+
+def test_quarantined_latest_turn_blocks_pipeline_mutation(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    turn_dir = project_path.parent / "workspace" / "runs" / "turn_0001"
+    turn_dir.mkdir(parents=True)
+    (turn_dir / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+
+    with pytest.raises(RecoveryError, match="quarantine"):
         TurnPipeline().run(project_path)
 
 

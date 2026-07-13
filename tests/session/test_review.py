@@ -10,6 +10,7 @@ from living_narrative.session.review import (
 from living_narrative.state.diff import StateDiff, StateDiffChange
 from living_narrative.state.models import Visibility
 from living_narrative.state.store import StateStore
+from living_narrative.state.transaction import RecoveryError
 
 
 def _change(value: str, source_event: str = "event_0001"):
@@ -23,7 +24,7 @@ def _change(value: str, source_event: str = "event_0001"):
     )
 
 
-def _pending_turn(project_path, turn_dir, diff):
+def _pending_turn(project_path, turn_dir, diff, meta_extra=None):
     turn_dir.mkdir(parents=True)
     write_artifact_diff(turn_dir, diff, applied=False)
     (turn_dir / "events.yaml").write_text(
@@ -61,7 +62,7 @@ def _pending_turn(project_path, turn_dir, diff):
         encoding="utf-8",
     )
     (turn_dir / "meta.yaml").write_text(
-        yaml.safe_dump({"turn": 1, "status": "pending_review"}),
+        yaml.safe_dump({"turn": 1, "status": "pending_review", **(meta_extra or {})}),
         encoding="utf-8",
     )
     return project_path.parent / "workspace"
@@ -98,6 +99,11 @@ def test_edit_review_validates_and_applies_edited_diff(tmp_path, build_project):
         project_path,
         turn_dir,
         StateDiff(id="diff_0001", turn=1, changes=[_change("old")]),
+        meta_extra={
+            "pipeline_version": "test-pipeline",
+            "custom_meta": {"source": "fixture"},
+            "rng_start_offset": 12,
+        },
     )
 
     resolve_review(
@@ -111,6 +117,28 @@ def test_edit_review_validates_and_applies_edited_diff(tmp_path, build_project):
 
     assert StateStore.load(workspace / "state").world.summary == "edited"
     assert (turn_dir / "inverse_diff.yaml").exists()
+    applied_meta = yaml.safe_load((turn_dir / "meta.yaml").read_text(encoding="utf-8"))
+    assert applied_meta["pipeline_version"] == "test-pipeline"
+    assert applied_meta["custom_meta"] == {"source": "fixture"}
+    assert applied_meta["rng_start_offset"] == 12
+    assert applied_meta["status"] == "applied"
+
+
+def test_review_rejects_quarantined_latest_turn(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    workspace = project_path.parent / "workspace"
+    turn_dir = workspace / "runs" / "turn_0001"
+    _pending_turn(project_path, turn_dir, StateDiff(id="diff_0001", turn=1))
+    (turn_dir / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+
+    with pytest.raises(RecoveryError, match="quarantine"):
+        resolve_review(
+            workspace_root=workspace,
+            state_dir=workspace / "state",
+            turn_dir=turn_dir,
+            decision="accept_all",
+            decided_by="assistant_gm",
+        )
 
 
 def test_reject_all_records_applied_nothing_history_once(tmp_path, build_project):

@@ -394,6 +394,7 @@ def test_collect_metrics_hand_computed(tmp_path):
     assert result.threads.advanced == 1
     assert result.threads.resolved == 1
     assert result.threads.max_open_turns == 2  # thread_001: opened turn 1, last turn 3
+    assert result.threads.resolved_ratio == 1.0
 
     (threat,) = result.threats
     assert threat.threat_id == "threat_001"
@@ -401,13 +402,14 @@ def test_collect_metrics_hand_computed(tmp_path):
     assert threat.final_pressure == 55
     assert threat.stage_fired_turns == {"50": 2}
 
-    assert result.scenes.transition_count == 2  # one transition == 2 status-set diffs
+    assert result.scenes.transition_count == 1  # one transition == 2 status-set diffs
     assert result.scenes.final_active_count == 1
     assert result.scenes.final_active_scene_ids == ["scene_002"]
     assert result.scenes.final_statuses == {"scene_001": "ended", "scene_002": "active"}
 
     assert result.checks.by_source == {"leak": 2, "continuity": 1}
     assert result.checks.by_severity == {"warn": 2, "error": 1}
+    assert result.checks.leak_by_severity == {"warn": 2}
 
     assert result.memory.summary_count == 2
     assert result.game.combat_count == 1
@@ -419,6 +421,7 @@ def test_collect_metrics_hand_computed(tmp_path):
     assert result.game.skill_check_successes == 1
     assert result.game.skill_check_total == 1
     assert result.game.skill_check_success_rate == 1.0
+    assert result.replay.match_rate is None  # pre-066 hand-written fixture has no RNG pins
 
 
 def test_collect_metrics_on_a_project_with_zero_turns(tmp_path):
@@ -435,15 +438,44 @@ def test_collect_metrics_on_a_project_with_zero_turns(tmp_path):
     assert result.pacing.stall_event_count == 0
     assert result.pacing.max_consecutive_stall_turns == 0
     assert result.threads == result.threads.__class__(
-        opened=0, advanced=0, resolved=0, max_open_turns=None
+        opened=0, advanced=0, resolved=0, max_open_turns=None, resolved_ratio=None
     )
     assert result.threats == []
     assert result.scenes.transition_count == 0
     assert result.scenes.final_active_count == 0
     assert result.checks.by_source == {}
     assert result.checks.by_severity == {}
+    assert result.checks.leak_by_severity == {}
     assert result.memory.summary_count == 0
     assert result.game.skill_check_success_rate is None
+    assert result.replay.match_rate is None
+
+
+def test_replay_match_rate_uses_pinned_rng_offsets(tmp_path):
+    project_path = _build_hand_fixture(tmp_path)
+    runs_dir = project_path.parent / "workspace" / "runs"
+    for turn, offset, draws in ((1, 0, 2), (2, 2, 1), (3, 3, 4)):
+        _write_yaml(
+            runs_dir / f"turn_{turn:04d}" / "meta.yaml",
+            {
+                "turn": turn,
+                "status": "applied",
+                "rng_start_offset": offset,
+                "rng_draws_consumed": draws,
+            },
+        )
+
+    replay = collect_metrics(project_path).replay
+
+    assert replay.matched_turns == 3
+    assert replay.evaluated_turns == 3
+    assert replay.match_rate == 1.0
+
+    _write_yaml(
+        runs_dir / "turn_0003" / "meta.yaml",
+        {"turn": 3, "status": "applied", "rng_start_offset": 99, "rng_draws_consumed": 4},
+    )
+    assert collect_metrics(project_path).replay.match_rate == 2 / 3
 
 
 def test_game_metrics_exclude_reject_all_turn(tmp_path):

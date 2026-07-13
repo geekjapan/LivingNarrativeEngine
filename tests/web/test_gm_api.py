@@ -35,6 +35,34 @@ def _load_yaml(path):
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def _string_values(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _string_values(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _string_values(item)
+
+
+def _disclosure_values(project_path):
+    state_dir = project_path.parent / "workspace" / "state"
+    disclosed = set(_string_values(_load_yaml(state_dir / "reader_state.yaml")))
+    values = []
+    for entry in _load_yaml(state_dir / "gm_vault.yaml") or []:
+        values.extend(_string_values(entry.get("text")))
+        values.extend(_string_values(entry.get("reveal_condition")))
+    for scene_path in (state_dir / "scenes").glob("*.yaml"):
+        scene = _load_yaml(scene_path) or {}
+        values.extend(_string_values([fact.get("text") for fact in scene.get("hidden_facts", [])]))
+    for character_path in (state_dir / "characters").glob("*.yaml"):
+        character = _load_yaml(character_path) or {}
+        values.extend(_string_values(character.get("secrets", [])))
+        values.extend(_string_values(character.get("private_mind", [])))
+    return [value for value in values if value.strip() and value not in disclosed]
+
+
 def _set_mode(project_path, mode):
     project = _load_yaml(project_path)
     project["user_mode"] = mode
@@ -64,18 +92,30 @@ def test_full_gm_mode_can_access_gm_views(tmp_path):
     assert _client(tmp_path).get("/api/project/mist_station/gm/characters").status_code == 200
 
 
-def test_player_character_mode_rejects_sensitive_session_views(tmp_path):
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs"),
+    [
+        ("get", "/api/project/mist_station/settings/project.yaml", {}),
+        ("get", "/api/project/mist_station/settings/pricing.yaml", {}),
+        ("put", "/api/project/mist_station/settings/project.yaml", {"json": {"yaml": "{}"}}),
+        ("put", "/api/project/mist_station/settings/pricing.yaml", {"json": {"yaml": "{}"}}),
+        ("get", "/api/project/mist_station/review", {}),
+        ("post", "/api/project/mist_station/review", {"json": {"decision": "accept_all"}}),
+        ("get", "/api/project/mist_station/interventions", {}),
+        ("get", "/api/project/mist_station/gm/characters", {}),
+        ("get", "/api/project/mist_station/gm/world", {}),
+        ("get", "/api/project/mist_station/gm/timeline", {}),
+        ("get", "/api/project/mist_station/gm/threads", {}),
+        ("get", "/api/project/mist_station/gm/turn/1", {}),
+    ],
+)
+def test_player_character_mode_rejects_all_sensitive_and_gm_routes(tmp_path, method, path, kwargs):
     project_path = _build_mist_station(tmp_path)
     _set_mode(project_path, "player_character")
 
     client = _client(tmp_path)
-    assert client.get("/api/project/mist_station/review").status_code == 403
-    assert (
-        client.post("/api/project/mist_station/review", json={"decision": "accept_all"}).status_code
-        == 403
-    )
-    assert client.get("/api/project/mist_station/interventions").status_code == 403
-    assert client.get("/api/project/mist_station/status").status_code == 200
+    response = getattr(client, method)(path, **kwargs)
+    assert response.status_code == 403, f"{method.upper()} {path} was not denied"
 
 
 # --- gm/characters --------------------------------------------------------------------
@@ -313,19 +353,29 @@ def test_non_gm_endpoints_never_leak_secrets_private_mind_or_hidden_facts(tmp_pa
     TurnPipeline().run(project_path)
     client = _client(tmp_path)
 
-    status_text = client.get("/api/project/mist_station/status").text
-    narration_text = client.get("/api/project/mist_station/narration").text
-    turns_text = client.get("/api/project/mist_station/turns").text
-
+    # These are the reader-facing state GET APIs; the root HTML shell intentionally contains
+    # hidden GM-pane templates, while mutation responses contain only control metadata.
     endpoints = (
-        ("status", status_text),
-        ("narration", narration_text),
-        ("turns", turns_text),
+        ("projects", client.get("/api/projects")),
+        ("status", client.get("/api/project/mist_station/status")),
+        ("narration", client.get("/api/project/mist_station/narration")),
+        ("turns", client.get("/api/project/mist_station/turns")),
+        ("run_status", client.get("/api/project/mist_station/run_status")),
+        ("permissions", client.get("/api/project/mist_station/permissions")),
     )
-    for label, text in endpoints:
-        assert "secrets" not in text, f"{label} leaked the 'secrets' key"
-        assert "private_mind" not in text, f"{label} leaked the 'private_mind' key"
-        assert "hidden_facts" not in text, f"{label} leaked the 'hidden_facts' key"
-        assert CHAR_002_SECRET not in text, f"{label} leaked a character secret's content"
-        assert CHAR_002_PRIVATE_MIND not in text, f"{label} leaked a character's private_mind"
-        assert SCENE_001_HIDDEN_FACT not in text, f"{label} leaked a scene hidden fact"
+    forbidden_markers = ("gm_vault", "hidden_facts", "secrets", "private_mind")
+    forbidden_values = _disclosure_values(project_path)
+    for label, response in endpoints:
+        assert response.status_code == 200, f"{label} failed: {response.text}"
+        for marker in forbidden_markers:
+            assert marker not in response.text, f"{label} leaked disclosure marker {marker!r}"
+        # JSON endpoints are scanned by decoded string leaf (so JSON escaping can't hide a
+        # secret under an innocuous key); plain-text endpoints (narration) scan the body.
+        if response.headers.get("content-type", "").startswith("application/json"):
+            response_values = list(_string_values(response.json()))
+        else:
+            response_values = [response.text]
+        for value in forbidden_values:
+            assert all(value not in item for item in response_values), (
+                f"{label} leaked GM-only content: {value!r}"
+            )

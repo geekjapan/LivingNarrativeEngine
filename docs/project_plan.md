@@ -1714,6 +1714,10 @@ Testing:
 
 ## 18.3 ディレクトリ構成
 
+> **Stale / historical (2026-07-13)**: 以下は初期設計時のディレクトリ構成案であり、現行の
+> ファイル配置を規定しない。現行の実体はリポジトリの`src/living_narrative/`、`tests/`、
+> `docs/`を参照する。
+
 ```text
 living-narrative-engine/
   README.md
@@ -1790,6 +1794,10 @@ living-narrative-engine/
 
 # 19. GitHub運用方針
 
+> **Stale / historical (2026-07-13)**: 以下は初期計画時のGitHub運用・文書名・優先順位の
+> 記録である。現行の作業単位は`docs/issues/`、永続的な判断は`docs/adr/`、ユーザー向け
+> CLI導線は`README.md`を参照する。
+
 ## 19.1 正本
 
 GitHubリポジトリを正本とする。
@@ -1865,6 +1873,10 @@ MilestoneはPhase単位で切る。
 ---
 
 # 20. 完成までの全ロードマップ
+
+> **Historical (2026-07-13)**: 以下は初期企画のPhaseロードマップであり、現在の完成判定や
+> 実装状態を示す正本ではない。現行のリリース契約は`docs/adr/0005-v1-release-contract.md`、
+> 実装計画と判定表はIssue 052/062を参照する。
 
 ## 20.1 全体方針
 
@@ -2317,6 +2329,9 @@ TRPG/RPG的に遊べる拡張を作る。
 
 # 21. MVP詳細計画
 
+> **Historical (2026-07-13)**: 以下は初期MVPの範囲・成功条件・サンプル世界を保存した記録で
+> あり、現行実装の全提供範囲ではない。現在の起動・CLI利用方法は`README.md`を参照する。
+
 ## 21.1 MVP名
 
 **Text-based Living Story Player**
@@ -2408,6 +2423,9 @@ TRPG/RPG的に遊べる拡張を作る。
 ---
 
 # 22. 初期GitHub Issue一覧
+
+> **Historical (2026-07-13)**: 以下は初期計画時点のIssue番号スナップショットであり、現在の
+> Issue状態や担当範囲を示さない。現行の作業単位は`docs/issues/`とIssue 052/062を参照する。
 
 ## 22.1 Phase 0 Issues
 
@@ -2753,6 +2771,10 @@ primary personaと代表ジャーニー、判定原則(must/should/post-1.0)もA
 
 # 27. 初期実装優先順位
 
+> **Historical (2026-07-13)**: 以下は初期実装時の優先順位を保存した記録であり、現在の
+> 実装順序・リリース判断を規定しない。現行の判断は`docs/adr/0005-v1-release-contract.md`
+> とIssue 052/062を参照する。
+
 最初に作るべき順番は次の通りである。
 
 1. docs整備。
@@ -2835,9 +2857,8 @@ living-narrative export replay \
 ## 29.6 Web UI
 
 ```bash
-living-narrative web \
-  --project projects/mist_station/project.yaml \
-  --host 127.0.0.1 \
+living-narrative serve \
+  --project-root projects \
   --port 8765
 ```
 
@@ -2883,6 +2904,10 @@ Living Narrative Engine の価値は、次の3点にある。
 
 # Appendix A. 旧アイディアrepoから取り込む概念
 
+> **Historical (2026-07-13)**: Appendix A〜Fは初期企画・サンプル・判断案の保存記録であり、
+> 現行仕様を上書きしない。現行の契約は`README.md`、`docs/spec-foundation.md` §3〜§8、
+> `docs/adr/0005-v1-release-contract.md`を参照する。
+
 コード移植は不要。取り込むのは概念である。
 
 | 元アイディア | 取り込む概念 |
@@ -2903,23 +2928,23 @@ Living Narrative Engine の価値は、次の3点にある。
 # Appendix B. 初期サンプル `project.yaml`
 
 ```yaml
-project:
-  id: mist_station
-  title: 霧の駅
-  genre: mystery_fantasy
-  tone: quiet_ominous
-  autonomy_level: assist
-  user_mode: assistant_gm
-  random_seed: 20260703-mist-station
-  renderer: novel
-  llm:
-    provider: mock
-    model: mock-v1
-  workspace:
-    root: workspace
-    state: workspace/state
-    runs: workspace/runs
-    exports: workspace/exports
+schema_version: 1
+id: mist_station
+title: 霧の駅
+genre: mystery_fantasy
+tone: quiet_ominous
+autonomy_level: assist
+user_mode: assistant_gm
+random_seed: 20260703-mist-station
+renderer: novel
+llm:
+  provider: mock
+  model: mock-v1
+workspace:
+  root: workspace
+  state: workspace/state
+  runs: workspace/runs
+  exports: workspace/exports
 ```
 
 ---

@@ -1,12 +1,15 @@
 """``living-narrative rollback``/``branch`` (cli/spec.md; Issue 018): rewind project state
 using saved inverse diffs, and copy-then-rewind for branches."""
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
 from living_narrative.cli import app
 from living_narrative.pipeline import TurnPipeline, TurnStatus
+from living_narrative.session.rollback import execute_rollback, plan_rollback
 from living_narrative.state.store import StateStore
+from living_narrative.state.transaction import RecoveryError
 from living_narrative.workspace.loader import load_project
 
 runner = CliRunner()
@@ -70,15 +73,24 @@ def test_rollback_restores_state_and_timeline(tmp_path, build_project):
 def test_rollback_then_next_turn_renumbers_and_rng_accounting_survives(tmp_path, build_project):
     project_path = build_project(tmp_path)
     _run_turns(project_path, 5)
+    runs_dir = _runs_dir(project_path)
+    expected_rolls = {
+        turn: yaml.safe_load((runs_dir / f"turn_{turn:04d}" / "rolls.yaml").read_text())
+        for turn in (4, 5)
+    }
 
     result = runner.invoke(
         app, ["rollback", "--project", str(project_path), "--to-turn", "3", "--yes"]
     )
     assert result.exit_code == 0, result.output
 
-    next_result = TurnPipeline().run(project_path)
-    assert next_result.turn == 4
-    assert next_result.status == TurnStatus.APPLIED
+    next_results = [TurnPipeline().run(project_path), TurnPipeline().run(project_path)]
+    assert [result.turn for result in next_results] == [4, 5]
+    assert all(result.status == TurnStatus.APPLIED for result in next_results)
+    actual_rolls = [
+        yaml.safe_load((result.turn_dir / "rolls.yaml").read_text()) for result in next_results
+    ]
+    assert actual_rolls == [expected_rolls[4], expected_rolls[5]]
 
 
 def test_rollback_rejects_to_turn_at_or_above_current(tmp_path, build_project):
@@ -120,6 +132,42 @@ def test_rollback_rejects_pending_review_latest_turn(tmp_path, build_project):
 
     assert result.exit_code == 2
     assert "review" in result.output
+
+
+def test_rollback_rejects_quarantined_latest_turn(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _run_turns(project_path, 1)
+    paths = load_project(project_path).paths
+    plan = plan_rollback(paths.runs, to_turn=0)
+    (paths.runs / "turn_0001" / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+
+    with pytest.raises(RecoveryError, match="quarantine"):
+        execute_rollback(paths, plan)
+
+
+def test_rollback_cli_reports_quarantine_recovery_error(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _run_turns(project_path, 1)
+    paths = load_project(project_path).paths
+    (paths.runs / "turn_0001" / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+
+    result = runner.invoke(
+        app, ["rollback", "--project", str(project_path), "--to-turn", "0", "--yes"]
+    )
+
+    assert result.exit_code == 1
+    assert "quarantine" in result.output
+
+
+def test_rollback_rejects_blocked_rollback_journal(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _run_turns(project_path, 1)
+    paths = load_project(project_path).paths
+    plan = plan_rollback(paths.runs, to_turn=0)
+    (paths.runs / ".transactions" / "rollback_0001_to_0000").mkdir(parents=True)
+
+    with pytest.raises(RecoveryError, match="rollback journal.*blocked"):
+        execute_rollback(paths, plan)
 
 
 def test_rollback_prompts_and_aborts_without_yes(tmp_path, build_project):
@@ -196,3 +244,31 @@ def test_branch_rejects_existing_output_dir(tmp_path, build_project):
     )
 
     assert result.exit_code == 2
+
+
+def test_branch_recovery_failure_cleans_output_for_retry(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _run_turns(project_path, 1)
+    paths = load_project(project_path).paths
+    (paths.runs / "turn_0001" / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+    output = tmp_path / "branch_recovery_failure"
+    args = [
+        "branch",
+        "--project",
+        str(project_path),
+        "--from-turn",
+        "0",
+        "--output",
+        str(output),
+    ]
+
+    first = runner.invoke(app, args)
+    second = runner.invoke(app, args)
+
+    assert first.exit_code == 1, first.output
+    assert "restore a backup" in first.output
+    assert not output.exists()
+    assert second.exit_code == 1, second.output
+    assert "restore a backup" in second.output
+    assert "already exists" not in second.output
+    assert not output.exists()

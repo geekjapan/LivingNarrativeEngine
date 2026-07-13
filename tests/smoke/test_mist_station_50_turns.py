@@ -16,6 +16,7 @@ what a real LLM narrator is asked to (see ``llm_narrator.py``'s prompt), without
 anything else about the turn.
 """
 
+import os
 import time
 
 import yaml
@@ -32,7 +33,9 @@ from living_narrative.workspace.init import create_project
 FIXED_SEED = "mist-station-smoke-50-fixed-seed"
 TURN_COUNT = 50
 MEMORY_SUMMARY_INTERVAL = 10  # mist_station template's world.yaml memory_summary_interval
-WALL_CLOCK_BUDGET_SECONDS = 60
+# ``LNE_PERF_BUDGET_SCALE`` widens the budget for coverage-instrumented CI jobs (coverage
+# overhead + slower runners); local runs keep the default 60s budget.
+WALL_CLOCK_BUDGET_SECONDS = 60 * float(os.environ.get("LNE_PERF_BUDGET_SCALE", "1"))
 
 
 def _load_yaml(path):
@@ -218,9 +221,9 @@ def test_50_turn_mist_station_regression(tmp_path, monkeypatch):
     # scene_transition-bearing stage (pressure >= 100) exactly once within 50 turns: scene_001
     # ends, scene_002 becomes active, and that stage never fires again once pressure is already
     # >= 100. So exactly one scene is active at the end (confirmed by an unmonkeypatched run at
-    # this fixed seed -- never 0, never 2+). `transition_count` is 2 because a single transition
-    # is two diff changes (end scene_001 + start scene_002).
-    assert metrics.scenes.transition_count == 2
+    # this fixed seed -- never 0, never 2+). `transition_count` is 1 because a single transition
+    # is an outgoing/incoming status pair (end scene_001 + start scene_002).
+    assert metrics.scenes.transition_count == 1
     assert metrics.scenes.final_active_count == 1
     assert metrics.scenes.final_active_scene_ids == ["scene_002"]
 

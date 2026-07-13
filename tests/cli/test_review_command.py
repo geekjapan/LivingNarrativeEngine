@@ -171,3 +171,23 @@ def test_review_rerun_turn_discards_and_reruns(tmp_path, build_project):
     assert (runs_dir / "turn_0001_discarded_1").is_dir()
     assert (runs_dir / "turn_0001" / "narration.md").exists()
     assert "turn 1:" in result.output
+
+
+def test_review_cli_reports_quarantine_recovery_error(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    result = TurnPipeline().run(project_path, commit_mode="review")
+    (result.turn_dir / "commit_intent.yaml").write_text("invalid: [", encoding="utf-8")
+
+    cli_result = runner.invoke(
+        app,
+        [
+            "review",
+            "--project",
+            str(project_path),
+            "--decision",
+            "accept_all",
+        ],
+    )
+
+    assert cli_result.exit_code == 1
+    assert "quarantine" in cli_result.output

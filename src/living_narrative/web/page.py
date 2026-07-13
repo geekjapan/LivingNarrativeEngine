@@ -29,7 +29,7 @@ INDEX_HTML = """\
   .turn-block pre { white-space: pre-wrap; margin: 0; background: none; padding: 0; }
   .badge { font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 999px; color: white; }
   .badge-applied { background: #2e7d32; }
-  .badge-pending_review, .badge-stopped_for_review { background: #ef6c00; }
+  .badge-pending_review, .badge-stopped_for_review { background: #b45309; }
   .badge-failed { background: #c62828; }
   .badge-unknown { background: #757575; }
   .badge-accepted { background: #2e7d32; }
@@ -44,7 +44,7 @@ INDEX_HTML = """\
   .badge-gm_only { background: #4a148c; }
   .badge-canon { background: #01579b; }
   .badge-character { background: #00695c; }
-  .badge-scene { background: #ef6c00; }
+  .badge-scene { background: #b45309; }
   .badge-reader { background: #2e7d32; }
   #gm-panel { display: none; border: 1px solid #ddd; border-radius: 6px; padding: 0.75rem 1rem;
     margin: 0.75rem 0; }
@@ -62,7 +62,7 @@ INDEX_HTML = """\
   #gm-turn-detail pre { white-space: pre-wrap; font-size: 0.8rem; background: #f5f5f5;
     padding: 0.5rem; border-radius: 4px; }
   .badge-error { background: #c62828; }
-  .badge-warn { background: #ef6c00; }
+  .badge-warn { background: #b45309; }
   .badge-info { background: #1565c0; }
   #review-panel { display: none; border: 1px solid #ef6c00; border-radius: 6px;
     padding: 0.75rem 1rem; margin: 0.75rem 0; }
@@ -86,15 +86,24 @@ INDEX_HTML = """\
 <body>
 <h1>Living Narrative Engine</h1>
 <div>
-  <select id="project-select"></select>
+  <label for="project-select">プロジェクト</label>
+  <select id="project-select" aria-label="プロジェクトを選択"></select>
   <span id="turn-count"></span>
 </div>
+<p id="empty-state" hidden>
+  プロジェクトがありません。ターミナルで<code>living-narrative init</code>を実行してから、
+  この画面を再読み込みしてください。
+</p>
+<p id="cli-guide">
+  exportは<code>living-narrative export --help</code>、
+  backupは<code>living-narrative backup --help</code>から実行できます。
+</p>
 <div class="controls">
   <div class="group">
     <button id="turn-button" disabled>次のターン</button>
   </div>
   <div class="group">
-    <input id="auto-turns" type="number" min="1" value="5">
+    <input id="auto-turns" type="number" min="1" value="5" aria-label="auto実行するターン数">
     <button id="auto-button" disabled>auto実行</button>
     <button id="stop-button" disabled>停止</button>
   </div>
@@ -106,24 +115,26 @@ INDEX_HTML = """\
 <div id="settings-panel">
   <h2>設定</h2>
   <h3>LLM profiles / bindings (project.yaml)</h3>
-  <textarea id="project-settings-yaml" rows="14"></textarea>
+  <textarea id="project-settings-yaml" rows="14" aria-label="project.yamlのLLM設定"></textarea>
   <button id="project-settings-save">保存</button>
   <h3>モデル価格 (pricing.yaml)</h3>
-  <textarea id="pricing-settings-yaml" rows="10"></textarea>
+  <textarea id="pricing-settings-yaml" rows="10"
+    aria-label="pricing.yamlのモデル価格設定"></textarea>
   <button id="pricing-settings-save">保存</button>
   <p id="settings-message"></p>
 </div>
 <div class="intervention-panel">
   <h3>介入</h3>
   <div class="group">
-    <textarea id="intervention-freetext" rows="2" placeholder="自由文で介入を記述"></textarea>
+    <textarea id="intervention-freetext" rows="2" placeholder="自由文で介入を記述"
+      aria-label="自由文で介入"></textarea>
   </div>
   <div class="group">
     <button id="intervention-freetext-button" disabled>介入して次ターン</button>
   </div>
   <div class="group">
-    <select id="intervention-type"></select>
-    <select id="intervention-target-kind">
+    <select id="intervention-type" aria-label="介入タイプ"></select>
+    <select id="intervention-target-kind" aria-label="介入対象の種類">
       <option value="world">world</option>
       <option value="character">character</option>
       <option value="scene">scene</option>
@@ -133,9 +144,10 @@ INDEX_HTML = """\
       <option value="relationship">relationship</option>
       <option value="roll">roll</option>
     </select>
-    <input id="intervention-target-id" type="text" placeholder="target id(省略可)">
-    <input id="intervention-content" type="text" placeholder="内容">
-    <select id="intervention-visibility">
+    <input id="intervention-target-id" type="text" placeholder="target id(省略可)"
+      aria-label="介入対象ID（省略可）">
+    <input id="intervention-content" type="text" placeholder="内容" aria-label="介入内容">
+    <select id="intervention-visibility" aria-label="介入の可視性">
       <option value="gm_only">gm_only</option>
       <option value="canon">canon</option>
       <option value="character">character</option>
@@ -146,7 +158,7 @@ INDEX_HTML = """\
   </div>
   <div id="intervention-history"></div>
 </div>
-<p id="status"></p>
+<p id="status" aria-live="polite"></p>
 <div id="review-panel">
   <h3>レビュー待ち: turn <span id="review-turn"></span> [<span id="review-status"></span>]</h3>
   <div id="review-checks"></div>
@@ -180,7 +192,7 @@ INDEX_HTML = """\
   <div id="gm-timeline"></div>
   <h3>ターン詳細</h3>
   <div class="group">
-    <input id="gm-turn-input" type="number" min="1" value="1">
+    <input id="gm-turn-input" type="number" min="1" value="1" aria-label="取得するターン番号">
     <button id="gm-turn-button">取得</button>
   </div>
   <div id="gm-turn-detail"></div>
@@ -230,6 +242,7 @@ const pricingSettingsYaml = document.getElementById("pricing-settings-yaml");
 const projectSettingsSave = document.getElementById("project-settings-save");
 const pricingSettingsSave = document.getElementById("pricing-settings-save");
 const settingsMessage = document.getElementById("settings-message");
+const emptyStateEl = document.getElementById("empty-state");
 
 let pollHandle = null;
 let gmOpen = false;
@@ -240,8 +253,8 @@ function currentProject() {
 }
 
 function statusBadge(status) {
-  const cls = status ? `badge-${status}` : "badge-unknown";
-  return `<span class="badge ${cls}">${status || "unknown"}</span>`;
+  const safeStatus = escapeHtml(status || "unknown");
+  return `<span class="badge badge-${safeStatus}">${safeStatus}</span>`;
 }
 
 function renderInterventionEntry(entry, accepted) {
@@ -249,10 +262,11 @@ function renderInterventionEntry(entry, accepted) {
     ? '<span class="badge badge-accepted">accepted</span>'
     : '<span class="badge badge-rejected">rejected</span>';
   const detail = accepted
-    ? `${entry.type} → ${entry.target ? entry.target.kind : ""}` +
-      `${entry.target && entry.target.id ? ":" + entry.target.id : ""} — ${entry.content || ""}`
-    : `${entry.type} — ${entry.requested_user_mode}には未許可` +
-      ` (許可: ${(entry.allowed_user_modes || []).join(", ") || "なし"})`;
+    ? `${escapeHtml(entry.type)} → ${escapeHtml(entry.target ? entry.target.kind : "")}` +
+      `${escapeHtml(entry.target && entry.target.id ? ":" + entry.target.id : "")} — ` +
+      `${escapeHtml(entry.content || "")}`
+    : `${escapeHtml(entry.type)} — ${escapeHtml(entry.requested_user_mode)}には未許可` +
+      ` (許可: ${escapeHtml((entry.allowed_user_modes || []).join(", ") || "なし")})`;
   return `<div class="intervention-entry">${badge}${detail}</div>`;
 }
 
@@ -265,17 +279,18 @@ function renderInterventionHistory(interventionsData) {
   const accepted = (lastTurn.interventions || []).map((e) => renderInterventionEntry(e, true));
   const rejected = (lastTurn.rejections || []).map((e) => renderInterventionEntry(e, false));
   const body = accepted.concat(rejected).join("") || "<p>介入なし</p>";
-  interventionHistoryEl.innerHTML = `<h4>直近ターン(turn ${lastTurn.turn})の介入</h4>${body}`;
+  interventionHistoryEl.innerHTML =
+    `<h4>直近ターン(turn ${escapeHtml(lastTurn.turn)})の介入</h4>${body}`;
 }
 
 function visibilityBadge(visibility) {
-  const cls = visibility ? `badge-${visibility}` : "badge-unknown";
-  return `<span class="badge ${cls}">${visibility || "unknown"}</span>`;
+  const safeVisibility = escapeHtml(visibility || "unknown");
+  return `<span class="badge badge-${safeVisibility}">${safeVisibility}</span>`;
 }
 
 function severityBadge(severity) {
-  const cls = severity ? `badge-${severity}` : "badge-unknown";
-  return `<span class="badge ${cls}">${severity || "unknown"}</span>`;
+  const safeSeverity = escapeHtml(severity || "unknown");
+  return `<span class="badge badge-${safeSeverity}">${safeSeverity}</span>`;
 }
 
 function escapeHtml(value) {
@@ -300,17 +315,19 @@ function renderReview(review) {
     (review.checks || [])
       .map(
         (f) =>
-          `<div class="review-finding">${severityBadge(f.severity)} ${f.message || ""}</div>`
+          `<div class="review-finding">${severityBadge(f.severity)} ` +
+          `${escapeHtml(f.message || "")}</div>`
       )
       .join("") || "<p>チェック指摘なし</p>";
   reviewChangesBodyEl.innerHTML = (review.changes || [])
     .map(
       (c) => `<tr>
-        <td><input type="checkbox" class="review-change-checkbox" data-index="${c.index}"></td>
-        <td>${c.target}${c.id ? ":" + c.id : ""}</td>
-        <td>${c.path || ""}</td>
-        <td>${c.op}</td>
-        <td>${JSON.stringify(c.value).replace(/</g, "&lt;")}</td>
+        <td><input type="checkbox" class="review-change-checkbox"
+          data-index="${escapeHtml(c.index)}" aria-label="変更${escapeHtml(c.index)}を選択"></td>
+        <td>${escapeHtml(c.target)}${escapeHtml(c.id ? ":" + c.id : "")}</td>
+        <td>${escapeHtml(c.path || "")}</td>
+        <td>${escapeHtml(c.op)}</td>
+        <td>${escapeHtml(JSON.stringify(c.value))}</td>
         <td>${visibilityBadge(c.visibility)}</td>
       </tr>`
     )
@@ -339,7 +356,7 @@ function renderGmCharacters(characters) {
         .map((entry) => {
           const [name, value] = entry;
           const baseline = (c.emotions_baseline || {})[name];
-          const baselineNote = baseline !== undefined ? ` (baseline ${baseline})` : "";
+          const baselineNote = baseline !== undefined ? " (baseline " + baseline + ")" : "";
           return `<span class="emotion">${escapeHtml(name)}: ${escapeHtml(value)}` +
             `${escapeHtml(baselineNote)}</span>`;
         })
@@ -373,47 +390,53 @@ function renderGmCharacters(characters) {
 function renderGmLlmUsage(usage) {
   const cost = usage.cost_usd === null
     ? "価格未設定"
-    : `$${usage.cost_usd.toFixed(6)} USD`;
+    : "$" + usage.cost_usd.toFixed(6) + " USD";
   const models = (usage.by_model || [])
     .map((m) => {
-      const modelCost = m.cost_usd === null ? "価格未設定" : `$${m.cost_usd.toFixed(6)}`;
-      return `<div class="gm-thread">${escapeHtml(m.model)}: ${m.calls} calls / ` +
-        `${m.total_tokens} tokens / ${modelCost}</div>`;
+      const modelCost = m.cost_usd === null ? "価格未設定" : "$" + m.cost_usd.toFixed(6);
+      return `<div class="gm-thread">${escapeHtml(m.model)}: ${escapeHtml(m.calls)} calls / ` +
+        `${escapeHtml(m.total_tokens)} tokens / ${escapeHtml(modelCost)}</div>`;
     })
     .join("");
   const profiles = (usage.by_profile || [])
     .map((p) => {
-      const profileCost = p.cost_usd === null ? "価格未設定" : `$${p.cost_usd.toFixed(6)}`;
+      const profileCost = p.cost_usd === null ? "価格未設定" : "$" + p.cost_usd.toFixed(6);
       return `<div class="gm-thread">profile ${escapeHtml(p.profile_name || "未設定")}: ` +
-        `${p.calls} calls / ${p.total_tokens} tokens / ${profileCost}</div>`;
+        `${escapeHtml(p.calls)} calls / ${escapeHtml(p.total_tokens)} tokens / ` +
+        `${escapeHtml(profileCost)}</div>`;
     })
     .join("");
-  gmLlmUsageEl.innerHTML = `<p>${usage.calls} calls / ${usage.total_tokens} tokens / ${cost}</p>` +
-    models + profiles;
+  gmLlmUsageEl.innerHTML =
+    `<p>${escapeHtml(usage.calls)} calls / ${escapeHtml(usage.total_tokens)} tokens / ` +
+    `${escapeHtml(cost)}</p>${models}${profiles}`;
 }
 
 function renderGmWorld(world) {
   const threats = (world.threats || [])
     .map((t) => {
       const next = t.next_stage
-        ? `次の閾値: ${t.next_stage.at} — ${t.next_stage.text}`
+        ? `次の閾値: ${escapeHtml(t.next_stage.at)} — ${escapeHtml(t.next_stage.text)}`
         : "全ての閾値を超過";
       return (
-        `<div class="gm-threat"><strong>${t.name}</strong> ` +
-        `pressure=${t.pressure} — ${next}</div>`
+        `<div class="gm-threat"><strong>${escapeHtml(t.name)}</strong> ` +
+        `pressure=${escapeHtml(t.pressure)} — ${next}</div>`
       );
     })
     .join("");
-  gmWorldEl.innerHTML = `<p>${world.world.name}: ${world.world.summary}</p>${threats}`;
+  gmWorldEl.innerHTML =
+    `<p>${escapeHtml(world.world.name)}: ${escapeHtml(world.world.summary)}</p>${threats}`;
 
   gmScenesEl.innerHTML = (world.scenes || [])
     .map((s) => {
       const hidden = (s.hidden_facts || [])
-        .map((f) => `<div class="gm-secret">${visibilityBadge(f.visibility)} ${f.text}</div>`)
+        .map(
+          (f) =>
+            `<div class="gm-secret">${visibilityBadge(f.visibility)} ${escapeHtml(f.text)}</div>`
+        )
         .join("");
       return `<div class="gm-scene">
-        <strong>${s.location}</strong> [${s.status}] ${s.mood}
-        <div>${s.summary || ""}</div>
+        <strong>${escapeHtml(s.location)}</strong> [${escapeHtml(s.status)}] ${escapeHtml(s.mood)}
+        <div>${escapeHtml(s.summary || "")}</div>
         ${hidden}
       </div>`;
     })
@@ -424,16 +447,20 @@ function renderGmThreads(data) {
   const threads = (data.threads || [])
     .map(
       (t) =>
-        `<div class="gm-thread"><strong>${t.description}</strong> [${t.status}] ` +
-        `related_events=${t.related_event_count}` +
+        `<div class="gm-thread"><strong>${escapeHtml(t.description)}</strong> ` +
+        `[${escapeHtml(t.status)}] related_events=${escapeHtml(t.related_event_count)}` +
         (t.opened_turn !== null && t.opened_turn !== undefined
-          ? ` opened@turn ${t.opened_turn}`
+          ? ` opened@turn ${escapeHtml(t.opened_turn)}`
           : "") +
         `</div>`
     )
     .join("");
   const summaries = (data.memory_summaries || [])
-    .map((m) => `<div class="gm-thread">up_to_turn ${m.up_to_turn}: ${m.text}</div>`)
+    .map(
+      (m) =>
+        `<div class="gm-thread">up_to_turn ${escapeHtml(m.up_to_turn)}: ` +
+        `${escapeHtml(m.text)}</div>`
+    )
     .join("");
   gmThreadsEl.innerHTML = (threads || "<p>未解決スレッドなし</p>") + summaries;
 }
@@ -444,17 +471,18 @@ function renderGmTimeline(entries) {
       const events = (entry.events || [])
         .map(
           (e) =>
-            `<div class="gm-timeline-entry">${visibilityBadge(e.visibility)} ${e.text}</div>`
+            `<div class="gm-timeline-entry">${visibilityBadge(e.visibility)} ` +
+            `${escapeHtml(e.text)}</div>`
         )
         .join("");
-      return `<div><strong>turn ${entry.turn}</strong>${events}</div>`;
+      return `<div><strong>turn ${escapeHtml(entry.turn)}</strong>${events}</div>`;
     })
     .reverse()
     .join("");
 }
 
 function renderGmTurnDetail(detail) {
-  gmTurnDetailEl.innerHTML = `<pre>${JSON.stringify(detail, null, 2).replace(/</g, "&lt;")}</pre>`;
+  gmTurnDetailEl.innerHTML = `<pre>${escapeHtml(JSON.stringify(detail, null, 2))}</pre>`;
 }
 
 async function loadGm() {
@@ -519,6 +547,7 @@ async function loadProjects() {
     select.appendChild(opt);
   }
   const hasProjects = projects.length > 0;
+  emptyStateEl.hidden = hasProjects;
   turnButton.disabled = !hasProjects;
   autoButton.disabled = !hasProjects;
   gmToggleButton.disabled = !hasProjects;
@@ -572,8 +601,8 @@ async function refresh() {
   storyEl.innerHTML = turns
     .map(
       (t) => `<div class="turn-block">
-        <div class="head"><strong>turn ${t.turn}</strong> ${statusBadge(t.status)}</div>
-        <pre>${(t.text || "").replace(/</g, "&lt;")}</pre>
+        <div class="head"><strong>turn ${escapeHtml(t.turn)}</strong> ${statusBadge(t.status)}</div>
+        <pre>${escapeHtml(t.text || "")}</pre>
       </div>`
     )
     .reverse()
@@ -586,7 +615,7 @@ async function refresh() {
 
   const selectedType = interventionTypeSelect.value;
   interventionTypeSelect.innerHTML = permissions.allowed_types
-    .map((t) => `<option value="${t}">${t}</option>`)
+    .map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`)
     .join("");
   if (permissions.allowed_types.includes(selectedType)) {
     interventionTypeSelect.value = selectedType;
@@ -733,7 +762,7 @@ gmTurnButton.addEventListener("click", async () => {
   if (!name) return;
   const res = await fetch(`/api/project/${encodeURIComponent(name)}/gm/turn/${turn}`);
   if (res.status === 404) {
-    gmTurnDetailEl.innerHTML = `<p>turn ${turn} は見つかりません</p>`;
+    gmTurnDetailEl.innerHTML = `<p>turn ${escapeHtml(turn)} は見つかりません</p>`;
     return;
   }
   renderGmTurnDetail(await res.json());
