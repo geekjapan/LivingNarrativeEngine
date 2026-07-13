@@ -234,14 +234,20 @@ def test_inner_html_template_values_use_escape_html(tmp_path, build_project):
     build_project(tmp_path)
     page = _client(tmp_path).get("/").text
 
-    sink_blocks = re.findall(r"\.innerHTML\s*=.*?;", page, re.DOTALL)
-    sink_blocks.append(
-        page[
-            page.index("function renderInterventionEntry") : page.index(
-                "function renderInterventionHistory"
-            )
-        ]
+    function_ranges = (
+        ("function renderInterventionEntry", "function renderInterventionHistory"),
+        ("function renderInterventionHistory", "function visibilityBadge"),
+        ("function renderReview", "async function loadReview"),
+        ("function renderGmCharacters", "function renderGmLlmUsage"),
+        ("function renderGmLlmUsage", "function renderGmWorld"),
+        ("function renderGmWorld", "function renderGmThreads"),
+        ("function renderGmThreads", "function renderGmTimeline"),
+        ("function renderGmTimeline", "function renderGmTurnDetail"),
+        ("function renderGmTurnDetail", "async function loadGm"),
     )
+    sink_blocks = [page[page.index(start) : page.index(end)] for start, end in function_ranges]
+    refresh = page[page.index("async function refresh") : page.index("async function poll")]
+    sink_blocks.append(refresh[refresh.index("charactersEl.innerHTML") :])
     expressions = [
         expression.strip()
         for block in sink_blocks
@@ -249,12 +255,14 @@ def test_inner_html_template_values_use_escape_html(tmp_path, build_project):
     ]
     allowed_html_fragments = {
         "badge",
+        "baselineNote",
         "body",
         "detail",
         "events",
         "emotions",
         "hidden",
         "models",
+        "next",
         "privateMind",
         "profiles",
         "relationships",
