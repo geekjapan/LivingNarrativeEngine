@@ -296,9 +296,11 @@ web = [
 ]
 
 [package.dev-dependencies]
+browser-test = [
+    { name = "playwright" },
+]
 dev = [
     { name = "httpx" },
-    { name = "playwright" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -315,9 +317,9 @@ requires-dist = [
 provides-extras = ["web"]
 
 [package.metadata.requires-dev]
+browser-test = [{ name = "playwright", specifier = ">=1.40" }]
 dev = [
     { name = "httpx", specifier = ">=0.27" },
-    { name = "playwright", specifier = ">=1.40" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.6" },
 ]

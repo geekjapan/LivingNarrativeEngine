@@ -31,7 +31,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-      - run: uv sync --frozen --extra web
+      - run: uv sync --frozen --extra web --group browser-test
         if: matrix.dependency-set == 'web'
       - run: uv sync --frozen
         if: matrix.dependency-set == 'core'
@@ -55,7 +55,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-      - run: uv sync --frozen --extra web
+      - run: uv sync --frozen --extra web --group browser-test
       - name: install Playwright Chromium
         run: uv run playwright install --with-deps chromium
       - name: pip-audit
