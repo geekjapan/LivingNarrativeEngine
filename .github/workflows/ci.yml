@@ -6,13 +6,35 @@ on:
 
 jobs:
   test:
+    name: test-${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: py312-web
+            python-version: "3.12"
+            dependency-set: web
+          - name: py313-web
+            python-version: "3.13"
+            dependency-set: web
+          - name: py312-core
+            python-version: "3.12"
+            dependency-set: core
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-      - run: uv sync --extra web
+      - run: uv sync --frozen --extra web
+        if: matrix.dependency-set == 'web'
+      - run: uv sync --frozen
+        if: matrix.dependency-set == 'core'
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - run: uv run python -c "import fastapi, uvicorn"
+        if: matrix.dependency-set == 'web'
       - run: uv run pytest
