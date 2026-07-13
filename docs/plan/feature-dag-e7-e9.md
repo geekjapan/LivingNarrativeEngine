@@ -1,5 +1,9 @@
 # E7〜E9 実装計画DAG(2026-07-11確定)
 
+> **完了履歴 / historical (2026-07-13)**: このDAGは完了済み実装の履歴として保持する。現行の
+> ユーザー向け導線は`README.md`、規範契約は`docs/spec-foundation.md` §3〜§8、リリース判定は
+> `docs/adr/0005-v1-release-contract.md`を参照し、この文書の初期計画を優先しない。
+
 対象: `feature-dag.md` のE7(Game)/E8(Visual)/E9(Productization)エピックをissue粒度に分解。project_plan §11/§17/§20 とコード拡張点調査(2026-07-11)に基づく。進め方はG2ループ(ADR-0001)のまま: issue → coder委任(worktree並列) → verifier → detect_changes → commit。issue番号がDAGノードID(031〜050)。
 
 ---
