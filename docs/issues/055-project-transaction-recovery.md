@@ -1,7 +1,7 @@
 ---
 id: 055
 title: project更新のtransaction・排他・crash recovery契約を決定する
-status: review
+status: done
 created: 2026-07-12
 type: wayfinder:prototype
 priority: P0
@@ -39,7 +39,7 @@ turn、review、rollback、settings、migration、backup/restoreが同一project
 - `tests/pipeline/test_failure_handling.py`
 
 
-## 決定案(2026-07-13、承認待ち)
+## 決定(2026-07-13承認済)
 
 調査による事実確認: turn commitは `StateStore.save`(state前進)→`save_apply_artifacts`(inverse_diff)の順(`driver.py:302-373`)で、その間のcrashは**巻き戻し不能なstate前進**を生む(rollbackはinverse欠落で拒否 `rollback.py:82-92`、meta欠落で次turn実行不能 `turn_numbering.py:61-62`、復旧導線なし)。`StateStore.save`は個別atomic replaceのみでbundle transactionなし(`store.py:126-157`)。`save_apply_artifacts`の`_write_yaml`は非atomic(`diff.py:345-347`)。OS lockは全経路不在(threading.LockはWeb auto-run 1本ガードのみ)。turn番号とRNG offsetは都度スキャン導出のため並行実行で衝突・二重消費し得る。review/rollbackも同じ穴を共有。doctor/repair導線なし。
 

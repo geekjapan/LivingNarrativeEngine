@@ -1,7 +1,7 @@
 ---
 id: 058
 title: 1.0の日常利用UXとaccessibility合格基準を決定する
-status: review
+status: done
 created: 2026-07-12
 type: wayfinder:prototype
 priority: P1
@@ -37,7 +37,7 @@ FastAPI UIと主要APIは実装済みだが、`web/page.py`は単一の大きな
 - `docs/issues/025-diff-review-ui.md`
 
 
-## 決定案(2026-07-13、承認待ち)
+## 決定(2026-07-13承認済)
 
 事実確認: journey中核(turn/auto/介入free-text+構造化/review 3決定/停止/再開/観測+GMパネル)はWebで完結済。init・export・backup/restore・rollback/branch・review edit/rerun_turnはCLI限定(`app.py:259`で意図的)。disclosure gateはサーバー側で機能+test済。063 E2EはAPI+CLIハッピーパスのみでブラウザUI/accessibility/エラー復旧は未カバー。
 

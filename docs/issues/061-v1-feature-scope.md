@@ -1,7 +1,7 @@
 ---
 id: 061
 title: 1.0に含める機能とpost-1.0拡張を決定する
-status: review
+status: done
 created: 2026-07-12
 type: wayfinder:grilling
 priority: P1
@@ -37,7 +37,7 @@ blocked_by: [053, 057, 058, 059, 060]
 - `src/living_narrative/templates/`
 
 
-## 決定案(2026-07-13、承認待ち)
+## 決定(2026-07-13承認済)
 
 方針: **1.0へ新機能は追加しない**。1.0 scope=既存機能+054-060で確定したmust修正のみ。各候補のD3判定:
 

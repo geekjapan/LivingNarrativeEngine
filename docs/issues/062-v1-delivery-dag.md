@@ -1,7 +1,7 @@
 ---
 id: 062
 title: 1.0実装DAGとrelease checklistを確定する
-status: review
+status: done
 created: 2026-07-12
 type: wayfinder:task
 priority: P1
@@ -31,7 +31,7 @@ blocked_by: [053, 054, 055, 056, 057, 058, 059, 060, 061]
 - `AGENTS.md`
 
 
-## DAG草案(2026-07-13、承認待ち — 054〜061の決定案承認とセットで確定)
+## DAG(2026-07-13承認済)
 
 新issue採番は064から。各issueは1つの検証可能outcomeを持つ。( )内は由来。
 

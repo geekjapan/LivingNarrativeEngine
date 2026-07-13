@@ -1,7 +1,7 @@
 ---
 id: 057
 title: 実LLM長期品質ゲートと物語SLOを決定する
-status: review
+status: done
 created: 2026-07-12
 type: wayfinder:prototype
 priority: P1
@@ -40,7 +40,7 @@ blocked_by: [053, 056]
 - `src/living_narrative/session/metrics.py`
 
 
-## 決定案(2026-07-13、承認待ち)
+## 決定(2026-07-13承認済)
 
 事実確認(最重要): **rollback後RNG再現は「条件付き再現」**。RNG stateはseed+`rng_draws_consumed`のreplay方式(`random/engine.py:40-45`)、rollbackはRNGを直接触らず`turn_NNNN_rolledback_`へのrenameが集計対象から外れる副次効果で巻き戻る(`rollback.py:69-90`、`rng_state.py:11-31`)。構造上は決定論的だが**rollback→次turn実行でroll列一致をassertする結合testが存在しない**。transition_countはfield-write数計上で論理遷移の約2倍(`metrics.py:451-466`、testコメントで追認済み)。実LLM自動テストはCI上ゼロ件。
 

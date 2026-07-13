@@ -1,7 +1,7 @@
 ---
 id: 056
 title: Issue・計画・実装のcurrent truthを再同期する
-status: review
+status: done
 created: 2026-07-12
 type: wayfinder:research
 priority: P0
@@ -38,7 +38,7 @@ Issue 001〜051、完了済みDAG、凍結spec、企画書、README、現行code
 - `README.md`
 
 
-## 決定案(2026-07-13、承認待ち)
+## 決定(2026-07-13承認済)
 
 全文書をcurrent/historical/stale/unverifiedに分類済み(詳細は調査記録)。要点:
 

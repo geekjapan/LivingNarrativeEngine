@@ -1,7 +1,7 @@
 ---
 id: 059
 title: CI・package・Dockerのrelease engineering基準を決定する
-status: review
+status: done
 created: 2026-07-12
 type: wayfinder:research
 priority: P1
@@ -39,7 +39,7 @@ localでは951 testsがpassするが、CIは`uv sync`のみでoptional web extra
 - `tests/test_docker_quickstart.py`
 
 
-## 決定案(2026-07-13、承認待ち)
+## 決定(2026-07-13承認済)
 
 事実確認: 背景の一部はstale — CIは既に`uv sync --extra web`実行済(`ci.yml:15`)で84 web test+journeyはCIで走っている。実ギャップ=(1)`--frozen`不使用(lockドリフトが緑で通る)、(2)web extra破損時に84+1 testが全skipのままCI緑=α gate信号の偽装リスク(全fileがmodule-level importorskip)、(3)wheel/実Docker smoke不在(`test_docker_quickstart.py`は静的検証のみ、HEALTHCHECKなし)、(4)coverage/type/security gate皆無、(5)LICENSE/CHANGELOG/release workflow不在。SemVerはADR-0006で確定済(新規決定不要)。schema_version=1が現行βschema候補(migrations登録0件)。
 
