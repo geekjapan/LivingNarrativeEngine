@@ -37,6 +37,18 @@ def test_list_projects_empty_root(tmp_path):
     assert response.json() == []
 
 
+def test_empty_page_guides_setup_cli_and_labels_controls(tmp_path):
+    page = _client(tmp_path).get("/").text
+
+    assert "living-narrative init" in page
+    assert "living-narrative export" in page
+    assert "living-narrative backup" in page
+    assert '<p id="status" aria-live="polite">' in page
+    controls = re.findall(r"<(?:input|select|textarea)\b[^>]*>", page)
+    assert controls
+    assert all('aria-label="' in control for control in controls)
+
+
 def test_status_before_any_turn(tmp_path, build_project):
     build_project(tmp_path)
 

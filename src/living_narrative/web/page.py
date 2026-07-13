@@ -29,7 +29,7 @@ INDEX_HTML = """\
   .turn-block pre { white-space: pre-wrap; margin: 0; background: none; padding: 0; }
   .badge { font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 999px; color: white; }
   .badge-applied { background: #2e7d32; }
-  .badge-pending_review, .badge-stopped_for_review { background: #ef6c00; }
+  .badge-pending_review, .badge-stopped_for_review { background: #b45309; }
   .badge-failed { background: #c62828; }
   .badge-unknown { background: #757575; }
   .badge-accepted { background: #2e7d32; }
@@ -44,7 +44,7 @@ INDEX_HTML = """\
   .badge-gm_only { background: #4a148c; }
   .badge-canon { background: #01579b; }
   .badge-character { background: #00695c; }
-  .badge-scene { background: #ef6c00; }
+  .badge-scene { background: #b45309; }
   .badge-reader { background: #2e7d32; }
   #gm-panel { display: none; border: 1px solid #ddd; border-radius: 6px; padding: 0.75rem 1rem;
     margin: 0.75rem 0; }
@@ -62,7 +62,7 @@ INDEX_HTML = """\
   #gm-turn-detail pre { white-space: pre-wrap; font-size: 0.8rem; background: #f5f5f5;
     padding: 0.5rem; border-radius: 4px; }
   .badge-error { background: #c62828; }
-  .badge-warn { background: #ef6c00; }
+  .badge-warn { background: #b45309; }
   .badge-info { background: #1565c0; }
   #review-panel { display: none; border: 1px solid #ef6c00; border-radius: 6px;
     padding: 0.75rem 1rem; margin: 0.75rem 0; }
@@ -86,15 +86,24 @@ INDEX_HTML = """\
 <body>
 <h1>Living Narrative Engine</h1>
 <div>
-  <select id="project-select"></select>
+  <label for="project-select">プロジェクト</label>
+  <select id="project-select" aria-label="プロジェクトを選択"></select>
   <span id="turn-count"></span>
 </div>
+<p id="empty-state" hidden>
+  プロジェクトがありません。ターミナルで<code>living-narrative init</code>を実行してから、
+  この画面を再読み込みしてください。
+</p>
+<p id="cli-guide">
+  exportは<code>living-narrative export --help</code>、
+  backupは<code>living-narrative backup --help</code>から実行できます。
+</p>
 <div class="controls">
   <div class="group">
     <button id="turn-button" disabled>次のターン</button>
   </div>
   <div class="group">
-    <input id="auto-turns" type="number" min="1" value="5">
+    <input id="auto-turns" type="number" min="1" value="5" aria-label="auto実行するターン数">
     <button id="auto-button" disabled>auto実行</button>
     <button id="stop-button" disabled>停止</button>
   </div>
@@ -106,24 +115,26 @@ INDEX_HTML = """\
 <div id="settings-panel">
   <h2>設定</h2>
   <h3>LLM profiles / bindings (project.yaml)</h3>
-  <textarea id="project-settings-yaml" rows="14"></textarea>
+  <textarea id="project-settings-yaml" rows="14" aria-label="project.yamlのLLM設定"></textarea>
   <button id="project-settings-save">保存</button>
   <h3>モデル価格 (pricing.yaml)</h3>
-  <textarea id="pricing-settings-yaml" rows="10"></textarea>
+  <textarea id="pricing-settings-yaml" rows="10"
+    aria-label="pricing.yamlのモデル価格設定"></textarea>
   <button id="pricing-settings-save">保存</button>
   <p id="settings-message"></p>
 </div>
 <div class="intervention-panel">
   <h3>介入</h3>
   <div class="group">
-    <textarea id="intervention-freetext" rows="2" placeholder="自由文で介入を記述"></textarea>
+    <textarea id="intervention-freetext" rows="2" placeholder="自由文で介入を記述"
+      aria-label="自由文で介入"></textarea>
   </div>
   <div class="group">
     <button id="intervention-freetext-button" disabled>介入して次ターン</button>
   </div>
   <div class="group">
-    <select id="intervention-type"></select>
-    <select id="intervention-target-kind">
+    <select id="intervention-type" aria-label="介入タイプ"></select>
+    <select id="intervention-target-kind" aria-label="介入対象の種類">
       <option value="world">world</option>
       <option value="character">character</option>
       <option value="scene">scene</option>
@@ -133,9 +144,10 @@ INDEX_HTML = """\
       <option value="relationship">relationship</option>
       <option value="roll">roll</option>
     </select>
-    <input id="intervention-target-id" type="text" placeholder="target id(省略可)">
-    <input id="intervention-content" type="text" placeholder="内容">
-    <select id="intervention-visibility">
+    <input id="intervention-target-id" type="text" placeholder="target id(省略可)"
+      aria-label="介入対象ID（省略可）">
+    <input id="intervention-content" type="text" placeholder="内容" aria-label="介入内容">
+    <select id="intervention-visibility" aria-label="介入の可視性">
       <option value="gm_only">gm_only</option>
       <option value="canon">canon</option>
       <option value="character">character</option>
@@ -146,7 +158,7 @@ INDEX_HTML = """\
   </div>
   <div id="intervention-history"></div>
 </div>
-<p id="status"></p>
+<p id="status" aria-live="polite"></p>
 <div id="review-panel">
   <h3>レビュー待ち: turn <span id="review-turn"></span> [<span id="review-status"></span>]</h3>
   <div id="review-checks"></div>
@@ -180,7 +192,7 @@ INDEX_HTML = """\
   <div id="gm-timeline"></div>
   <h3>ターン詳細</h3>
   <div class="group">
-    <input id="gm-turn-input" type="number" min="1" value="1">
+    <input id="gm-turn-input" type="number" min="1" value="1" aria-label="取得するターン番号">
     <button id="gm-turn-button">取得</button>
   </div>
   <div id="gm-turn-detail"></div>
@@ -230,6 +242,7 @@ const pricingSettingsYaml = document.getElementById("pricing-settings-yaml");
 const projectSettingsSave = document.getElementById("project-settings-save");
 const pricingSettingsSave = document.getElementById("pricing-settings-save");
 const settingsMessage = document.getElementById("settings-message");
+const emptyStateEl = document.getElementById("empty-state");
 
 let pollHandle = null;
 let gmOpen = false;
@@ -310,7 +323,7 @@ function renderReview(review) {
     .map(
       (c) => `<tr>
         <td><input type="checkbox" class="review-change-checkbox"
-          data-index="${escapeHtml(c.index)}"></td>
+          data-index="${escapeHtml(c.index)}" aria-label="変更${escapeHtml(c.index)}を選択"></td>
         <td>${escapeHtml(c.target)}${escapeHtml(c.id ? ":" + c.id : "")}</td>
         <td>${escapeHtml(c.path || "")}</td>
         <td>${escapeHtml(c.op)}</td>
@@ -534,6 +547,7 @@ async function loadProjects() {
     select.appendChild(opt);
   }
   const hasProjects = projects.length > 0;
+  emptyStateEl.hidden = hasProjects;
   turnButton.disabled = !hasProjects;
   autoButton.disabled = !hasProjects;
   gmToggleButton.disabled = !hasProjects;

@@ -1,7 +1,7 @@
 ---
 id: 074
 title: page.pyへ最小UX/a11yパッチを当てる
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P1
@@ -24,3 +24,8 @@ Issue 058の決定(2026-07-13承認)とIssue 062のDAGに基づく実装Issue。
 
 - `src/living_narrative/web/page.py`
 - `tests/web/`
+
+## 完了記録
+
+空状態のinit案内、export/backup CLI導線、フォーム要素のアクセシブル名、statusのaria-live、
+コントラスト調整を`page.py`へ追加し、空ページの回帰testを追加した。
