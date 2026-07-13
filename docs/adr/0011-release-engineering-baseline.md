@@ -26,6 +26,21 @@ release workflowは不在。SemVerはADR-0006で確定済(Issue 059)。
    凍結はADR-0008のmeta.yamlフィールド追加の確定後に行う。
 7. **LICENSE**: 選定は人間決定(Issue 081)。depsは全て許容的で選択自由。
 
+### βschema凍結宣言（2026-07-13）
+
+`βschema=schema_version 1 @ commit b17f72a289cada0170e00a10ee9222a8057063e0`
+
+このcommitはIssue 066のmeta.yamlフィールド追加後の統合baselineである。凍結対象は、
+projectの`schema_version: 1`と、turn artifactの既存metadataに加え、066で確定した
+`state_hash_before`、`state_hash_after`、`diff_id`、`rng_start_offset`およびcommit
+intentの同一フィールドである。これらを含むβschema以降のprojectは1.0まで自動migration
+を保証し、凍結後にschemaを変更する場合はschema_versionの更新、migration、regression
+fixture、CHANGELOG entryを必須とする。α以前のprojectはbest-effortであり保証対象外である。
+
+同じcommitを指すannotated tag `beta-schema-v1`を作成し、migration regression fixtureは
+そのtagへpinする。tagの作成とpushはrelease engineering操作のため、integration後に
+Dispatcherが実施する。
+
 ## Consequences
 
 - α gate信号(mock journey E2E)はskip偽装から保護される。
