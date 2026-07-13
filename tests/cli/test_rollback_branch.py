@@ -136,6 +136,17 @@ def test_rollback_rejects_quarantined_latest_turn(tmp_path, build_project):
         execute_rollback(paths, plan)
 
 
+def test_rollback_rejects_blocked_rollback_journal(tmp_path, build_project):
+    project_path = build_project(tmp_path)
+    _run_turns(project_path, 1)
+    paths = load_project(project_path).paths
+    plan = plan_rollback(paths.runs, to_turn=0)
+    (paths.runs / ".transactions" / "rollback_0001_to_0000").mkdir(parents=True)
+
+    with pytest.raises(RecoveryError, match="rollback journal.*blocked"):
+        execute_rollback(paths, plan)
+
+
 def test_rollback_prompts_and_aborts_without_yes(tmp_path, build_project):
     project_path = build_project(tmp_path)
     _run_turns(project_path, 3)

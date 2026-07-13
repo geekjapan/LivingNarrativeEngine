@@ -140,7 +140,7 @@ def latest_turn_directory(runs_dir: Path) -> Path | None:
 
 def classify_recovery_state(turn_dir: Path | None, state_dir: Path) -> RecoveryState:
     """Classify an incomplete turn by comparing its intent hashes to live state."""
-    if turn_dir is None:
+    if turn_dir is None or not turn_dir.exists():
         return RecoveryState.CLEAN
     meta = _read_mapping(turn_dir / "meta.yaml")
     intent = read_commit_intent(turn_dir)

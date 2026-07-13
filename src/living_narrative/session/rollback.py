@@ -111,6 +111,17 @@ def execute_rollback(paths: WorkspacePaths, plan: RollbackPlan) -> RollbackResul
     (``branch``'s use case).
     """
     with project_lock(paths.root):
+        journal_dir = (
+            paths.runs
+            / ".transactions"
+            / (f"rollback_{plan.current_turn:04d}_to_{plan.to_turn:04d}")
+        )
+        journal_recovery_state = classify_recovery_state(journal_dir, paths.state)
+        if journal_recovery_state in {RecoveryState.QUARANTINE, RecoveryState.BLOCKED}:
+            raise RecoveryError(
+                "cannot mutate project while rollback journal recovery state is "
+                f"{journal_recovery_state.value}"
+            )
         recovery_state = classify_recovery_state(
             latest_turn_directory(paths.runs),
             paths.state,
@@ -124,11 +135,6 @@ def execute_rollback(paths: WorkspacePaths, plan: RollbackPlan) -> RollbackResul
             for turn in plan.rolled_back_turns
         ]
         bundle = StateStore.load(paths.state)
-        journal_dir = (
-            paths.runs
-            / ".transactions"
-            / (f"rollback_{plan.current_turn:04d}_to_{plan.to_turn:04d}")
-        )
         rollback_diff = StateDiff(
             id=f"diff_{plan.current_turn:04d}",
             turn=plan.to_turn,
