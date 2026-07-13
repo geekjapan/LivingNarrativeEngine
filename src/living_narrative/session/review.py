@@ -10,9 +10,10 @@ from typing import Any
 import yaml
 
 from living_narrative.intervention.history import append_history, build_history_entries
-from living_narrative.state.diff import StateDiff, apply_state_diff, save_apply_artifacts
+from living_narrative.state.diff import StateDiff
 from living_narrative.state.models import Event, UserMode
 from living_narrative.state.store import StateStore
+from living_narrative.state.transaction import commit_state_diff, project_lock
 
 UNRESOLVED_STATUS_VALUES = {"pending_review", "stopped_for_review"}
 APPLIED_STATUS = "applied"
@@ -49,8 +50,14 @@ class ReviewStateError(ValueError):
 def _atomic_write_yaml(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f"{path.suffix}.tmp")
-    tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        with tmp.open("w", encoding="utf-8") as stream:
+            stream.write(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def read_artifact_diff(turn_dir: Path) -> StateDiff:
@@ -141,6 +148,28 @@ def resolve_review(
     selected_change_indices: set[int] | None = None,
     edited_diff: StateDiff | dict[str, Any] | None = None,
 ) -> ReviewResult:
+    with project_lock(workspace_root):
+        return _resolve_review_locked(
+            workspace_root=workspace_root,
+            state_dir=state_dir,
+            turn_dir=turn_dir,
+            decision=decision,
+            decided_by=decided_by,
+            selected_change_indices=selected_change_indices,
+            edited_diff=edited_diff,
+        )
+
+
+def _resolve_review_locked(
+    *,
+    workspace_root: Path,
+    state_dir: Path,
+    turn_dir: Path,
+    decision: ReviewDecision | str,
+    decided_by: UserMode | str,
+    selected_change_indices: set[int] | None = None,
+    edited_diff: StateDiff | dict[str, Any] | None = None,
+) -> ReviewResult:
     from living_narrative.pipeline.turn_numbering import read_turn_status
 
     decision = ReviewDecision(decision)
@@ -189,9 +218,15 @@ def resolve_review(
 
     if decision != ReviewDecision.REJECT_ALL:
         bundle = StateStore.load(state_dir)
-        apply_result = apply_state_diff(bundle, applied_diff)
-        StateStore.save(apply_result.bundle, state_dir)
-        save_apply_artifacts(apply_result, turn_dir)
+        meta = yaml.safe_load((turn_dir / "meta.yaml").read_text(encoding="utf-8")) or {}
+        commit_state_diff(
+            bundle,
+            applied_diff,
+            state_dir,
+            turn_dir,
+            rng_start_offset=int(meta.get("rng_start_offset") or 0),
+            meta={"turn": original_diff.turn, "commit_mode": "review"},
+        )
 
     write_artifact_diff(turn_dir, applied_diff, applied=True)
     write_review_yaml(

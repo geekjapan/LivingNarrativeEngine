@@ -43,9 +43,13 @@ from living_narrative.session.mode import session_permission_table
 from living_narrative.session.player_character import apply_player_character_intervention_policy
 from living_narrative.session.review import write_review_yaml
 from living_narrative.session.stop_conditions import evaluate_stop_conditions
-from living_narrative.state.diff import apply_state_diff, save_apply_artifacts
 from living_narrative.state.models import SceneStatus, UserMode
 from living_narrative.state.store import StateLoadError, StateStore
+from living_narrative.state.transaction import (
+    commit_state_diff,
+    project_lock,
+    read_commit_intent,
+)
 from living_narrative.workspace.loader import load_project
 
 CommitMode = Literal["auto", "review"]
@@ -103,6 +107,7 @@ class TurnPipeline:
         intervention_drafts: list[dict[str, Any]] | None = None,
         permission_table: PermissionTable | None = None,
         rng_offset_override: int | None = None,
+        _lock_held: bool = False,
     ) -> TurnRunResult:
         if commit_mode not in ("auto", "review"):
             raise ValueError(f"invalid commit_mode: {commit_mode!r}")
@@ -111,6 +116,20 @@ class TurnPipeline:
         if not read.is_valid:
             raise LoadError(f"invalid project at {project_path}: {_format_issues(read.errors)}")
         paths = read.paths
+        if not _lock_held:
+            with project_lock(paths.root):
+                return self.run(
+                    project_path,
+                    commit_mode=commit_mode,
+                    renderer_style=renderer_style,
+                    mood_override=mood_override,
+                    tone_control=tone_control,
+                    intervention_text=intervention_text,
+                    intervention_drafts=intervention_drafts,
+                    permission_table=permission_table,
+                    rng_offset_override=rng_offset_override,
+                    _lock_held=True,
+                )
         project = read.config
         from living_narrative.plugins import create_plugin_runtime
 
@@ -154,6 +173,8 @@ class TurnPipeline:
         current_phase = ["intervene"]
         status = TurnStatus.FAILED
         error: ErrorReport | None = None
+        commit_intent = None
+        diff_id: str | None = None
 
         try:
             with _timed_phase("intervene", durations, current_phase):
@@ -287,6 +308,7 @@ class TurnPipeline:
                     "build_diff",
                     build_diff_output.model_dump(mode="json"),
                 )
+                diff_id = build_diff_output.diff.id
 
             with _timed_phase("check", durations, current_phase):
                 check_results = registry.get("check")(
@@ -325,12 +347,15 @@ class TurnPipeline:
                     status = TurnStatus.STOPPED_FOR_REVIEW
                     applied = False
                 elif commit_mode == "auto":
-                    apply_result = apply_state_diff(bundle, build_diff_output.diff)
-                    StateStore.save(apply_result.bundle, paths.state)
-                    # Issue 018: every auto-applied turn saves its inverse diff too, so
-                    # `rollback`/`branch` can always rewind past it (mirrors what the GM
-                    # review path and god-mode edits already do via save_apply_artifacts).
-                    save_apply_artifacts(apply_result, turn_dir)
+                    commit_state_diff(
+                        bundle,
+                        build_diff_output.diff,
+                        paths.state,
+                        turn_dir,
+                        rng_start_offset=initial_rng_offset,
+                        meta={"turn": turn, "commit_mode": commit_mode},
+                    )
+                    commit_intent = read_commit_intent(turn_dir)
                     status = TurnStatus.APPLIED
                     applied = True
                 else:
@@ -368,6 +393,14 @@ class TurnPipeline:
                     phase_durations=durations,
                     calls=gateway.calls,
                     rng_draws_consumed=engine.draws_consumed - initial_rng_offset,
+                    rng_start_offset=initial_rng_offset,
+                    diff_id=diff_id,
+                    state_hash_before=(
+                        commit_intent.state_hash_before if commit_intent is not None else None
+                    ),
+                    state_hash_after=(
+                        commit_intent.state_hash_after if commit_intent is not None else None
+                    ),
                     error=error,
                 ),
             )

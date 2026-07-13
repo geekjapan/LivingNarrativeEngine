@@ -21,9 +21,9 @@ from living_narrative.pipeline.turn_numbering import (
     rollback_turn_directory,
     turn_dir_path,
 )
-from living_narrative.state.diff import InverseStateDiff, load_inverse_diff
-from living_narrative.state.diff import rollback as apply_inverse_diffs
+from living_narrative.state.diff import InverseStateDiff, StateDiff, load_inverse_diff
 from living_narrative.state.store import StateStore
+from living_narrative.state.transaction import commit_state_diff, project_lock
 from living_narrative.workspace.copy import WorkspaceCopyError, copy_directory_atomic
 from living_narrative.workspace.loader import WorkspacePaths
 
@@ -103,23 +103,48 @@ def execute_rollback(paths: WorkspacePaths, plan: RollbackPlan) -> RollbackResul
     project's ``runs_dir`` can be replayed verbatim against a byte-identical copy
     (``branch``'s use case).
     """
-    inverse_diffs: list[InverseStateDiff] = [
-        load_inverse_diff(turn_dir_path(paths.runs, turn) / "inverse_diff.yaml")
-        for turn in plan.rolled_back_turns
-    ]
-    bundle = StateStore.load(paths.state)
-    restored = apply_inverse_diffs(bundle, inverse_diffs)
-    StateStore.save(restored, paths.state)
+    with project_lock(paths.root):
+        inverse_diffs: list[InverseStateDiff] = [
+            load_inverse_diff(turn_dir_path(paths.runs, turn) / "inverse_diff.yaml")
+            for turn in plan.rolled_back_turns
+        ]
+        bundle = StateStore.load(paths.state)
+        journal_dir = (
+            paths.runs
+            / ".transactions"
+            / (f"rollback_{plan.current_turn:04d}_to_{plan.to_turn:04d}")
+        )
+        rollback_diff = StateDiff(
+            id=f"diff_{plan.current_turn:04d}",
+            turn=plan.to_turn,
+            changes=[
+                change
+                for inverse_diff in reversed(inverse_diffs)
+                for change in inverse_diff.changes
+            ],
+        )
+        commit_state_diff(
+            bundle,
+            rollback_diff,
+            paths.state,
+            journal_dir,
+            meta={
+                "turn": plan.to_turn,
+                "commit_mode": "rollback",
+                "rollback_from_turn": plan.current_turn,
+            },
+        )
 
-    rolled_back_dirs = [
-        rollback_turn_directory(turn_dir_path(paths.runs, turn)) for turn in plan.rolled_back_turns
-    ]
-    return RollbackResult(
-        current_turn=plan.current_turn,
-        to_turn=plan.to_turn,
-        rolled_back_turns=plan.rolled_back_turns,
-        rolled_back_dirs=rolled_back_dirs,
-    )
+        rolled_back_dirs = [
+            rollback_turn_directory(turn_dir_path(paths.runs, turn))
+            for turn in plan.rolled_back_turns
+        ]
+        return RollbackResult(
+            current_turn=plan.current_turn,
+            to_turn=plan.to_turn,
+            rolled_back_turns=plan.rolled_back_turns,
+            rolled_back_dirs=rolled_back_dirs,
+        )
 
 
 def copy_project_for_branch(source_root: Path, output_dir: Path) -> Path:

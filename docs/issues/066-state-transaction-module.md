@@ -1,7 +1,7 @@
 ---
 id: 066
 title: state/transaction.pyを新設しlock+commit journal+順序反転を全state変更経路へ統合する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from copy import deepcopy
 from enum import Enum
 from pathlib import Path
@@ -343,4 +344,13 @@ def _model_for_target(target: str) -> type[BaseModel]:
 
 
 def _write_yaml(path: Path, data: Any) -> None:
-    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with tmp.open("w", encoding="utf-8") as stream:
+            stream.write(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
