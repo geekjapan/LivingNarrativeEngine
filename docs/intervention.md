@@ -1,20 +1,23 @@
 # Intervention
 
+> **Current implementation (2026-07-13)**: この文書は現行のIntervention capabilityを記述する。
+> `docs/spec-foundation.md` §4/§6を規範契約、`session-autonomy.md`を自律進行と停止条件の
+> 正本として参照する。
+
 The intervention capability turns a user's free text or structured input into typed
-`Intervention` objects (`docs/spec-foundation.md` §4/§6, `openspec/changes/add-intervention/`),
-enforces role permission, and routes each of the 15 types (project_plan.md §10.7) to the agent
-that should act on it.
+`Intervention` objects (`docs/spec-foundation.md` §4/§6), enforces role permission, and routes
+each of the 15 types (project_plan.md §10.7) to the agent that should act on it.
 
 ## The 15 types
 
-`living_narrative.intervention.schema.HANDLING_STATUS` maps every type to how this batch
-handles it:
+`living_narrative.intervention.schema.HANDLING_STATUS` maps every type to its current handling
+status:
 
 - **routed** (9): `scene_directive`, `character_directive`, `world_directive`,
   `event_injection`, `tone_control`, `reveal_control`, `dice_roll_request`, `canon_edit`,
   `hidden_truth_edit` — each has dedicated pipeline wiring (see Routing below).
-- **delegated** (1): `stop_condition` — saved to `intervention.yaml` only; consumed by the
-  future `session-autonomy` capability's stop-condition evaluation (D119).
+- **delegated** (1): `stop_condition` — saved to `intervention.yaml` and consumed by the
+  session-autonomy stop-condition evaluation (D119).
 - **unhandled** (5): `probability_bias`, `pacing_control`, `scene_pivot`, `relationship_edit`,
   `memory_edit` — accepted, persisted, and surfaced to Character Agent contexts as
   `constraints`, but have no dedicated state-mutation logic yet.
@@ -94,4 +97,4 @@ permissive unless a `permission_table: dict[InterventionType, frozenset[UserMode
 `workspace/interventions.yaml` accumulates one entry per intervention, written once a turn's
 Commit phase applies (`intervention.history.build_history_entries`/`append_history`), tracing
 `source_event_ids` and the turn's `diff_id`. Entries are never rewritten in place;
-`mark_superseded_by_rerun` only flips a flag for a future `rerun_turn` operation.
+`mark_superseded_by_rerun` flips the superseded flag when `rerun_turn` replaces a turn artifact.

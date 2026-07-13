@@ -1,5 +1,9 @@
 # 全機能スペック & 実装ワークフロー & DAG(2026-07-07確定)
 
+> **完了履歴 / historical (2026-07-13)**: このDAGは完了済み実装の履歴として保持する。現行の
+> ユーザー向け導線は`README.md`、規範契約は`docs/spec-foundation.md` §3〜§8、リリース判定は
+> `docs/adr/0005-v1-release-contract.md`を参照し、この文書の初期計画を優先しない。
+
 対象: project_plan §20 Phase 4〜9 の全企画機能。Issues 001〜012 完了時点(dynamics第1弾: 脅威・シーン遷移・感情・pacing・文体まで実装済み、469 tests)からの残り全量を、issue粒度スペック+依存DAGに落とす。
 
 進め方は G2 ループ(ADR-0001)のまま: **issue → 調査 → coder委任(ファイル素性が交差しないレーンはworktree並列) → verifier(mock+実LLM) → detect_changes → commit → memory**。OpenSpecは使わない。issue番号がDAGノードID。

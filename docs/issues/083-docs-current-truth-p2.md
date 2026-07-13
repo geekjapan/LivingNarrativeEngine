@@ -1,7 +1,7 @@
 ---
 id: 083
 title: 文書再同期P2束: 歴史banner+intervention/session-autonomy現行化
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P2
