@@ -1,7 +1,7 @@
 ---
 id: 076
 title: UX受入チェックリストと人手smoke手順を確定する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P1
@@ -23,3 +23,4 @@ Issue 058の決定(2026-07-13承認)とIssue 062のDAGに基づく実装Issue。
 
 - `docs/`
 - `docs/issues/058-v1-ux-gate.md`
+- `docs/ux-acceptance-checklist.md`
