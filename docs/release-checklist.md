@@ -52,6 +52,8 @@
 - [ ] ADR-0005 D3のmust（journey完走、データ保全、replay、disclosure、plugin trust boundary）が全てpassしている。
 - [ ] βschema→1.0 migration regressionがpassしている。
 - [ ] Issue 070–072のSLO・実LLM品質gateがpassしている。
+  - FAIL証跡: `docs/evaluations/2026-07-14-20260714-issue085-gpt56-luna-low-v2-benchmark.md`
+    （30/30完走、pacing/thread SLOとhuman rubric R1/R3/R5が不合格、Issue 085）。
 - [ ] Issue 076のUX受入と人手2セッションがpassしている。
 - [ ] `pip-audit`のrelease時blocking checkがpassしている。coverageはreport-onlyで記録する。
 - [ ] LICENSEが選定・配置済みである（Issue 081）。
