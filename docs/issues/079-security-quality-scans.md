@@ -1,7 +1,7 @@
 ---
 id: 079
 title: pip-auditとcoverage report-onlyをCIへ追加する
-status: open
+status: done
 created: 2026-07-13
 type: implementation
 priority: P1
