@@ -13,6 +13,7 @@ from living_narrative.state.models import (
     CharacterId,
     Event,
     OpenQuestInfo,
+    SceneAffordance,
     SceneStatus,
     Visibility,
     WorldStateBundle,
@@ -131,14 +132,16 @@ def _event_visible_to_character(event: Event, character_id: CharacterId) -> bool
     return False
 
 
-def _affordance_visible_to_character(affordance: Any, character_id: CharacterId) -> bool:
+def _affordance_visible_to_character(
+    affordance: SceneAffordance, character_id: CharacterId
+) -> bool:
     """Apply authored visibility and actor scope without exposing declaration details."""
-    actor_ids = getattr(affordance, "actor_ids", []) or []
+    actor_ids = affordance.actor_ids
     if actor_ids and character_id not in actor_ids:
         return False
-    visibility = getattr(affordance, "visibility", Visibility.READER)
+    visibility = affordance.visibility
     if visibility in {Visibility.READER, Visibility.SCENE, Visibility.CANON}:
         return True
     if visibility == Visibility.CHARACTER:
-        return character_id in (getattr(affordance, "known_by", []) or [])
+        return character_id in affordance.known_by
     return False

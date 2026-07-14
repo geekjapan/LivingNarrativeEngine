@@ -341,7 +341,7 @@ def test_recurrence_does_not_bypass_scene_or_threat_conditions(tmp_path):
     _write_encounter_event(tmp_path, 1, "event_0001", encounter.id)
     events = simulate_world(
         _context(
-            turn=2,
+            turn=4,
             runs_dir=tmp_path,
             timeline=[TimelineEntry(turn=1, event_ids=["event_0001"])],
             threats=[threat],

@@ -57,10 +57,23 @@ def build_state_diff(
     rejected: list[RejectedChange] = []
     synthetic_events: list[Event] = []
 
+    # Turn-wide projections (shared across every action_outcome event this turn) so a thread
+    # or quest accepted/advanced by an earlier outcome is visible to a later one in the same
+    # turn, instead of each event validating only against the turn's starting bundle.
+    accepted_thread_ids: set[str] = set()
+    projected_thread_statuses = {item.id: item.status for item in context.bundle.unresolved_threads}
+    projected_quest_statuses = {item.id: item.status for item in context.bundle.quests}
+
     for event in resolved_events:
         if event.type == "action_outcome":
             outcome_changes, outcome_rejected, outcome_events = _action_outcome_changes(
-                context, event, allocate_event_id
+                context,
+                event,
+                allocate_event_id,
+                accepted_thread_ids=accepted_thread_ids,
+                projected_thread_statuses=projected_thread_statuses,
+                projected_quest_statuses=projected_quest_statuses,
+                must_not_reveal=must_not_reveal,
             )
             changes.extend(outcome_changes)
             rejected.extend(outcome_rejected)
@@ -735,6 +748,10 @@ def _action_outcome_changes(
     context: TurnContext,
     event: Event,
     allocate_event_id: Callable[[], str],
+    accepted_thread_ids: set[str],
+    projected_thread_statuses: dict[str, str],
+    projected_quest_statuses: dict[str, str],
+    must_not_reveal: set[Any],
 ) -> tuple[list[StateDiffChange], list[RejectedChange], list[Event]]:
     """Re-validate authored outcome declarations and turn them into StateDiff changes."""
     payload = event.effects.get("action_outcome")
@@ -757,7 +774,7 @@ def _action_outcome_changes(
         (
             scene
             for scene in context.bundle.scenes
-            if scene.status.value == "active"
+            if scene.status == "active"
             and affordance in getattr(scene, "affordances", [])
             and character_id in scene.active_characters
         ),
@@ -791,8 +808,6 @@ def _action_outcome_changes(
     changes: list[StateDiffChange] = []
     rejected: list[RejectedChange] = []
     thread_events: list[Event] = []
-    accepted_thread_ids: set[str] = set()
-    projected_thread_statuses = {item.id: item.status for item in context.bundle.unresolved_threads}
     for raw in declarations:
         try:
             from living_narrative.state.models import AffordanceOutcome
@@ -814,6 +829,13 @@ def _action_outcome_changes(
             continue
         if change.target == "scene" and change.id is None:
             change = change.model_copy(update={"id": _active_scene_id(context)})
+        if _blocked_reveal(change, must_not_reveal):
+            rejected.append(_reject(change, "blocked by reveal_control must-not-reveal"))
+            continue
+        transition_reason = _invalid_scene_transition_reason(context, change)
+        if transition_reason is not None:
+            rejected.append(_reject(change, transition_reason))
+            continue
         reason = _authored_outcome_rejection_reason(context, change)
         if change.target == "threads" and change.path == "status":
             current_status = projected_thread_statuses.get(change.id or "")
@@ -825,6 +847,18 @@ def _action_outcome_changes(
                 reason = "no_op"
             elif change.value not in {"advanced", "resolved"}:
                 reason = f"invalid_thread_transition:{current_status}->{change.value}"
+            else:
+                reason = None
+        elif change.target == "quests" and change.path == "status":
+            current_status = projected_quest_statuses.get(change.id or "")
+            if current_status is None:
+                reason = "unknown_quest_id"
+            elif current_status in {"resolved", "failed"}:
+                reason = "quest_already_terminal"
+            elif change.value == current_status:
+                reason = "no_op"
+            elif change.value not in {"advanced", "resolved"}:
+                reason = f"invalid_quest_transition:{current_status}->{change.value}"
             else:
                 reason = None
         if reason is not None:
@@ -881,6 +915,8 @@ def _action_outcome_changes(
                 )
             )
             projected_thread_statuses[thread.id] = change.value
+        elif change.target == "quests" and change.path == "status":
+            projected_quest_statuses[change.id or ""] = change.value
         changes.append(change)
 
     if affordance.recurrence == "once" and changes:

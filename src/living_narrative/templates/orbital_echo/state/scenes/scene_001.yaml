@@ -32,6 +32,7 @@ affordances:
     recurrence: once
     used_event_ids: []
     exclusive: true
+    fallback_only: true
     outcomes:
       - target: scene
         op: set

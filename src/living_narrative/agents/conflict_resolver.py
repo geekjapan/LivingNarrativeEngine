@@ -152,6 +152,8 @@ def _prepare_combat(
     context: TurnContext, candidate: Candidate
 ) -> tuple[CombatPayload, dict[str, int]]:
     combat = CombatPayload.model_validate(candidate.effects["combat"])
+    if isinstance(candidate, ActionCandidate) and candidate.intent is not None:
+        raise ValueError("candidate cannot declare both combat and a structured intent")
     characters = {character.id: character for character in context.bundle.characters}
     attacker = characters.get(combat.attacker)
     defender = characters.get(combat.defender)
@@ -585,6 +587,45 @@ def _is_successful_outcome_event(event: Event) -> bool:
     return event.type == "combat" and isinstance(combat, dict) and combat.get("result") == "success"
 
 
+def _resolve_fallback_for_actors(
+    context: TurnContext,
+    affordance: Any,
+    actor_ids: list[str],
+    allocate_event_id: Callable[[], str],
+    record_roll: Callable[[Roll], None],
+    used_affordances: set[str],
+) -> list[Event] | None:
+    """Try each actor eligible for ``affordance`` in turn; an actor-specific visibility/scope
+    rejection moves on to the next actor instead of stalling the whole fallback search."""
+    for actor_id in actor_ids:
+        candidate = ActionCandidate(
+            character_id=actor_id,
+            action_text=affordance.text,
+            visibility=affordance.visibility,
+            intent={"affordance_id": affordance.id},
+        )
+        base = _event_from_candidate(context, candidate, allocate_event_id())
+        events = _resolve_action_intent(
+            context,
+            candidate,
+            base,
+            allocate_event_id,
+            record_roll,
+            used_affordances,
+            allow_fallback=True,
+        )
+        rejection = next(
+            (event for event in events if event.type == "action_intent_rejected"), None
+        )
+        if rejection is not None and rejection.effects.get("reason") in {
+            "not_visible",
+            "actor_not_allowed",
+        }:
+            continue
+        return events
+    return None
+
+
 def _resolve_fallback(
     context: TurnContext,
     allocate_event_id: Callable[[], str],
@@ -614,22 +655,16 @@ def _resolve_fallback(
                 for item in affordance.outcomes
             ):
                 continue
-            candidate = ActionCandidate(
-                character_id=actor_ids[0],
-                action_text=affordance.text,
-                visibility=affordance.visibility,
-                intent={"affordance_id": affordance.id},
-            )
-            base = _event_from_candidate(context, candidate, allocate_event_id())
-            return _resolve_action_intent(
+            result = _resolve_fallback_for_actors(
                 context,
-                candidate,
-                base,
+                affordance,
+                actor_ids,
                 allocate_event_id,
                 record_roll,
                 used_affordances,
-                allow_fallback=True,
             )
+            if result is not None:
+                return result
     if any(
         (scene.status.value if hasattr(scene.status, "value") else scene.status) == "active"
         and scene.pacing_terminal

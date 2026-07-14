@@ -40,10 +40,10 @@ def _context(tmp_path: Path, turn: int, *, stall_window: int = 3) -> TurnContext
     )
 
 
-def _event(event_type: str, **effects) -> Event:
+def _event(event_type: str, *, turn: int = 1, **effects) -> Event:
     return Event(
         id="event_0001",
-        turn=1,
+        turn=turn,
         type=event_type,
         text="x",
         visibility=Visibility.GM_ONLY,
@@ -108,7 +108,7 @@ def test_pacing_exhausted_is_an_error_finding(tmp_path):
     findings = pacing_checker(
         context,
         "",
-        [_event("pacing_exhausted")],
+        [_event("pacing_exhausted", turn=context.turn)],
         StateDiff(id="diff_0004", turn=4),
     )
 

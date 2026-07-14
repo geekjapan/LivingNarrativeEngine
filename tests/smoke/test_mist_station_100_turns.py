@@ -293,6 +293,9 @@ def _run_journey(tmp_path: Path, name: str):
         policy = encounter_policies[encounter_id]
         if policy.recurrence == "once":
             assert len(turns) == 1
+        elif policy.recurrence == "cooldown":
+            min_gap = policy.cooldown_turns or 1
+            assert all(right - left > min_gap for left, right in zip(turns, turns[1:]))
         else:
             assert all(right - left > 1 for left, right in zip(turns, turns[1:]))
     for character in metrics.emotions:

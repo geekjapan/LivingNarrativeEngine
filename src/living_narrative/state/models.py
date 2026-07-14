@@ -537,6 +537,11 @@ class AffordanceOutcome(StateBaseModel):
             raise ValueError(f"{self.target} outcome requires id")
         if self.id is not None and not _AFFORDANCE_ID_PATTERNS[self.target].fullmatch(self.id):
             raise ValueError(f"invalid {self.target} outcome id {self.id!r}")
+        if self.op == "delta" and not isinstance(self.value, (int, dict)):
+            raise ValueError(
+                f"delta outcome requires an integer (or per-key dict) value, "
+                f"got {type(self.value).__name__}"
+            )
         reader_ledger_visibility = {
             "reader_state": {Visibility.READER},
             "canon": {Visibility.CANON},
@@ -755,7 +760,9 @@ class WorldStateBundle(StateBaseModel):
                         f"scenes[{scene.id}].affordances[{affordance_id}] fallback "
                         "must have success_chance=100"
                     )
-                if not any(_is_advancement_outcome(outcome) for outcome in affordance.outcomes):
+                if not any(
+                    _is_advancement_outcome(outcome, scene) for outcome in affordance.outcomes
+                ):
                     raise ValueError(
                         f"scenes[{scene.id}].affordances[{affordance_id}] fallback must "
                         "declare an advancement outcome"
@@ -763,11 +770,11 @@ class WorldStateBundle(StateBaseModel):
         return self
 
 
-def _is_advancement_outcome(outcome: AffordanceOutcome) -> bool:
+def _is_advancement_outcome(outcome: AffordanceOutcome, scene: "SceneState | None" = None) -> bool:
     if outcome.visibility not in {Visibility.READER, Visibility.CANON}:
         return False
     if outcome.target == "scene":
-        return (
+        if not (
             outcome.path == "status"
             and outcome.op == "set"
             and outcome.value
@@ -777,7 +784,19 @@ def _is_advancement_outcome(outcome: AffordanceOutcome) -> bool:
                 "active",
                 "ended",
             }
-        )
+        ):
+            return False
+        # A scene declaring itself already-active as its own "advancement" is a no-op at
+        # runtime (target_not_found/no_op rejection), defeating the fallback guarantee this
+        # validator exists to enforce.
+        if (
+            scene is not None
+            and outcome.id == scene.id
+            and outcome.value in {SceneStatus.ACTIVE, "active"}
+            and scene.status == SceneStatus.ACTIVE
+        ):
+            return False
+        return True
     if outcome.target in {"canon", "reader_state"}:
         return outcome.op == "add" and outcome.path == ""
     if outcome.target == "quests":

@@ -242,6 +242,10 @@ def test_50_turn_mist_station_regression(tmp_path, monkeypatch):
         1,
     )
     assert metrics.game.applied_pc_action_count == TURN_COUNT
-    assert metrics.game.encounter_count == TURN_COUNT
+    # Issue 086: encounters are now recurrence-gated (encounter_001 is scene_001-only and
+    # fires at most once; encounter_002 sits on a 3-turn cooldown once threat_001 crosses
+    # pressure 50), so they no longer fire every turn the way they did before authored
+    # recurrence policies existed. 12 is this fixed-seed run's deterministic count.
+    assert metrics.game.encounter_count == 12
     assert (metrics.game.skill_check_successes, metrics.game.skill_check_total) == (1, 1)
     assert metrics.game.skill_check_success_rate == 1.0

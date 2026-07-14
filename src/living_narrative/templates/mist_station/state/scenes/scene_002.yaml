@@ -333,4 +333,4 @@ fallback_affordance_ids:
   - affordance_007
   - affordance_008
   - affordance_009
-pacing_terminal: false
+pacing_terminal: true
