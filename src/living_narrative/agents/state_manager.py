@@ -1025,6 +1025,8 @@ def _authored_outcome_rejection_reason(context: TurnContext, change: StateDiffCh
             return "no_op"
     if change.op == "add" and isinstance(current, list) and change.value in current:
         return "no_op"
+    if change.op == "remove" and not isinstance(current, list):
+        return "invalid_remove_target"
     return None
 
 
@@ -1173,8 +1175,13 @@ def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChan
 def _blocked_reveal(change: StateDiffChange, must_not_reveal: set[Any]) -> bool:
     if change.target != "reader_state":
         return False
-    value = change.value if isinstance(change.value, dict) else {}
-    return bool({value.get("id"), value.get("fact_id"), value.get("text")} & must_not_reveal)
+    if isinstance(change.value, dict):
+        value = change.value
+        return bool({value.get("id"), value.get("fact_id"), value.get("text")} & must_not_reveal)
+    # A scalar edit (e.g. op=set path=text on an existing entry) carries no dict to
+    # inspect -- check the new text/id directly so a reveal_control block can't be
+    # bypassed by rewriting an entry's text instead of adding a new one.
+    return change.value in must_not_reveal or change.id in must_not_reveal
 
 
 def _valid_target(context: TurnContext, change: StateDiffChange) -> bool:
