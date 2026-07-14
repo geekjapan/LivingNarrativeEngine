@@ -63,6 +63,11 @@ def build_state_diff(
     accepted_thread_ids: set[str] = set()
     projected_thread_statuses = {item.id: item.status for item in context.bundle.unresolved_threads}
     projected_quest_statuses = {item.id: item.status for item in context.bundle.quests}
+    accepted_root_ids: dict[str, set[str]] = {
+        "canon": set(),
+        "reader_state": set(),
+        "quests": set(),
+    }
 
     for event in resolved_events:
         if event.type == "action_outcome":
@@ -73,6 +78,7 @@ def build_state_diff(
                 accepted_thread_ids=accepted_thread_ids,
                 projected_thread_statuses=projected_thread_statuses,
                 projected_quest_statuses=projected_quest_statuses,
+                accepted_root_ids=accepted_root_ids,
                 must_not_reveal=must_not_reveal,
             )
             changes.extend(outcome_changes)
@@ -751,6 +757,7 @@ def _action_outcome_changes(
     accepted_thread_ids: set[str],
     projected_thread_statuses: dict[str, str],
     projected_quest_statuses: dict[str, str],
+    accepted_root_ids: dict[str, set[str]],
     must_not_reveal: set[Any],
 ) -> tuple[list[StateDiffChange], list[RejectedChange], list[Event]]:
     """Re-validate authored outcome declarations and turn them into StateDiff changes."""
@@ -861,6 +868,15 @@ def _action_outcome_changes(
                 reason = f"invalid_quest_transition:{current_status}->{change.value}"
             else:
                 reason = None
+        elif (
+            reason is None
+            and change.target in {"canon", "reader_state", "quests"}
+            and change.path == ""
+            and change.op == "add"
+            and isinstance(change.value, dict)
+            and change.value.get("id") in accepted_root_ids[change.target]
+        ):
+            reason = "duplicate_target"
         if reason is not None:
             rejected.append(_reject(change, reason))
             continue
@@ -917,6 +933,14 @@ def _action_outcome_changes(
             projected_thread_statuses[thread.id] = change.value
         elif change.target == "quests" and change.path == "status":
             projected_quest_statuses[change.id or ""] = change.value
+        elif (
+            change.target in {"canon", "reader_state", "quests"}
+            and change.path == ""
+            and change.op == "add"
+            and isinstance(change.value, dict)
+            and change.value.get("id")
+        ):
+            accepted_root_ids[change.target].add(change.value["id"])
         changes.append(change)
 
     if affordance.recurrence == "once" and changes:

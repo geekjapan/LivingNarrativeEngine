@@ -482,8 +482,8 @@ _AFFORDANCE_PATHS = {
         "reader_visible_facts",
         "hidden_facts",
     },
-    "canon": {"", "text", "established_turn", "source_event"},
-    "reader_state": {"", "text", "established_turn", "source_event", "disclosed_turn"},
+    "canon": {"", "text"},
+    "reader_state": {"", "text"},
     "quests": {"", "title", "status", "objectives", "related_event_ids"},
     "threads": {"", "description", "status", "related_event_ids", "notes", "opened_turn"},
     "character": {
@@ -537,10 +537,9 @@ class AffordanceOutcome(StateBaseModel):
             raise ValueError(f"{self.target} outcome requires id")
         if self.id is not None and not _AFFORDANCE_ID_PATTERNS[self.target].fullmatch(self.id):
             raise ValueError(f"invalid {self.target} outcome id {self.id!r}")
-        if self.op == "delta" and not isinstance(self.value, (int, dict)):
+        if self.op == "delta" and not isinstance(self.value, int):
             raise ValueError(
-                f"delta outcome requires an integer (or per-key dict) value, "
-                f"got {type(self.value).__name__}"
+                f"delta outcome requires an integer value, got {type(self.value).__name__}"
             )
         reader_ledger_visibility = {
             "reader_state": {Visibility.READER},

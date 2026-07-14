@@ -383,7 +383,7 @@ def test_pacing_bundle_requires_a_valid_fallback_before_runtime():
                             op="delta",
                             path="emotions",
                             id="char_001",
-                            value={"fear": 1},
+                            value=1,
                             visibility="gm_only",
                         )
                     )
