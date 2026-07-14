@@ -1009,10 +1009,17 @@ def _authored_outcome_rejection_reason(context: TurnContext, change: StateDiffCh
             "canon": context.bundle.canon,
             "reader_state": context.bundle.reader_state,
         }[change.target]
-        if change.op == "add" and isinstance(change.value, dict):
-            if any(getattr(item, "id", None) == change.value.get("id") for item in collection):
+        if change.op == "add":
+            if isinstance(change.value, dict) and any(
+                getattr(item, "id", None) == change.value.get("id") for item in collection
+            ):
                 return "duplicate_target"
-        return None
+            return None
+        if change.op == "remove":
+            if not _remove_target_present(collection, change):
+                return "invalid_remove_target"
+            return None
+        return "invalid_root_op"
     current = _authored_current_value(context, change)
     if current is None and change.op in {"set", "delta", "remove"}:
         return "target_not_found"
@@ -1028,9 +1035,29 @@ def _authored_outcome_rejection_reason(context: TurnContext, change: StateDiffCh
             return "invalid_add_target"
         if change.value in current:
             return "no_op"
-    if change.op == "remove" and not isinstance(current, list):
-        return "invalid_remove_target"
+    if change.op == "remove":
+        if not isinstance(current, list):
+            return "invalid_remove_target"
+        if not _remove_target_present(current, change):
+            return "invalid_remove_target"
     return None
+
+
+def _remove_target_present(current: list, change: StateDiffChange) -> bool:
+    """Mirror ``state.diff._remove_value``'s matching rules (read-only) so an authored
+    remove that would raise "remove target not found" at apply time is rejected here
+    instead of failing the whole turn."""
+    value = change.value
+    if value is None and change.id is not None:
+        return any(getattr(item, "id", None) == change.id for item in current)
+    if isinstance(value, dict) and "id" in value:
+        return any(getattr(item, "id", None) == value["id"] for item in current)
+    if isinstance(value, dict):
+        return any(
+            hasattr(item, "model_dump") and item.model_dump(mode="json") == value
+            for item in current
+        )
+    return value in current
 
 
 def _authored_current_value(context: TurnContext, change: StateDiffChange) -> Any:

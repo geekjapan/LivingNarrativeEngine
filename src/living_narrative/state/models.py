@@ -485,7 +485,7 @@ _AFFORDANCE_PATHS = {
     "canon": {"", "text"},
     "reader_state": {"", "text"},
     "quests": {"", "title", "status", "objectives", "related_event_ids"},
-    "threads": {"", "description", "status", "related_event_ids", "notes", "opened_turn"},
+    "threads": {"", "description", "status", "related_event_ids", "notes"},
     "character": {
         "status",
         "stats",
