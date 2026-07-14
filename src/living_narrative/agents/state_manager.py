@@ -886,7 +886,7 @@ def _action_outcome_changes(
             if change.visibility not in {Visibility.READER, Visibility.CANON}:
                 rejected.append(_reject(change, "reader_invisible_thread"))
                 continue
-            if not thread_id or not value.get("description"):
+            if not thread_id or not value.get("description") or value.get("status") != "open":
                 rejected.append(_reject(change, "invalid_authored_thread"))
                 continue
             if (
@@ -1023,8 +1023,11 @@ def _authored_outcome_rejection_reason(context: TurnContext, change: StateDiffCh
             return "invalid_delta"
         if max(0, min(100, current + change.value)) == current:
             return "no_op"
-    if change.op == "add" and isinstance(current, list) and change.value in current:
-        return "no_op"
+    if change.op == "add":
+        if not isinstance(current, list):
+            return "invalid_add_target"
+        if change.value in current:
+            return "no_op"
     if change.op == "remove" and not isinstance(current, list):
         return "invalid_remove_target"
     return None

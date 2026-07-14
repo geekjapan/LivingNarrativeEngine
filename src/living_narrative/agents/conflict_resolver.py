@@ -502,11 +502,27 @@ def _outcome_is_advancement(context: TurnContext, outcome: dict[str, Any]) -> bo
     if target in {"canon", "reader_state"}:
         return op == "add" and path == ""
     if target == "threads":
-        return path == "status" and op == "set" and value in {"advanced", "resolved"}
+        if not (path == "status" and op == "set" and value in {"advanced", "resolved"}):
+            return False
+        thread = next(
+            (item for item in context.bundle.unresolved_threads if item.id == outcome.get("id")),
+            None,
+        )
+        return thread is not None and thread.status != "resolved"
     if target == "quests":
-        return path == "status" and op == "set" and value in {"advanced", "resolved"}
+        if not (path == "status" and op == "set" and value in {"advanced", "resolved"}):
+            return False
+        quest = next((item for item in context.bundle.quests if item.id == outcome.get("id")), None)
+        return quest is not None and quest.status not in {"resolved", "failed"}
     if target == "scene":
-        return path == "status" and op == "set" and value in {"active", "ended"}
+        if not (path == "status" and op == "set" and value in {"active", "ended"}):
+            return False
+        if value == "active":
+            scene = next(
+                (item for item in context.bundle.scenes if item.id == outcome.get("id")), None
+            )
+            return scene is not None and scene.status == "pending"
+        return True
     if target == "character":
         return path == "status" and op == "set" and value in {"dead", "missing"}
     return False
