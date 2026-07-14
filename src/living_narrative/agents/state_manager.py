@@ -4,6 +4,10 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from living_narrative.agents.affordance_policy import (
+    affordance_prerequisites_met,
+    affordance_visible_to_character,
+)
 from living_narrative.agents.models import CharacterAgentOutput, CharacterQuestUpdateCandidate
 from living_narrative.intervention.reveal import must_not_reveal_texts, reveal_now_sources
 from living_narrative.narration.models import NarratorQuestUpdateCandidate, ThreadUpdateCandidate
@@ -54,7 +58,17 @@ def build_state_diff(
     synthetic_events: list[Event] = []
 
     for event in resolved_events:
-        for candidate in _changes_for_event(context, event):
+        if event.type == "action_outcome":
+            outcome_changes, outcome_rejected, outcome_events = _action_outcome_changes(
+                context, event, allocate_event_id
+            )
+            changes.extend(outcome_changes)
+            rejected.extend(outcome_rejected)
+            synthetic_events.extend(outcome_events)
+            candidates = []
+        else:
+            candidates = _changes_for_event(context, event)
+        for candidate in candidates:
             transition_reason = _invalid_scene_transition_reason(context, candidate)
             faction_reason = _invalid_faction_move_reason(context, candidate)
             if candidate.source_event is None:
@@ -130,8 +144,17 @@ def build_state_diff(
 
     # 014: ナレーターのthread_updatesをthreadsコレクションへの変換(leak-safe by construction:
     # 007と同型 — ナレーターはreader可視情報しか見ていないので起票内容も漏洩しない)。
+    authored_thread_events = [
+        event
+        for event in synthetic_events
+        if event.type == "thread_update" and event.cause and event.cause.startswith("authored:")
+    ]
     thread_changes, thread_rejected, thread_events = _thread_update_changes(
-        context, thread_updates or [], resolved_events, allocate_event_id
+        context,
+        thread_updates or [],
+        resolved_events,
+        allocate_event_id,
+        authored_thread_events=authored_thread_events,
     )
     changes.extend(thread_changes)
     rejected.extend(thread_rejected)
@@ -539,6 +562,7 @@ def _thread_update_changes(
     thread_updates: list[ThreadUpdateCandidate],
     resolved_events: list[Event],
     allocate_event_id: Callable[[], str],
+    authored_thread_events: list[Event] | None = None,
 ) -> tuple[list[StateDiffChange], list[RejectedChange], list[Event]]:
     """Issue 014: convert narrator ``thread_updates`` into ``threads``-target diff changes.
 
@@ -549,6 +573,12 @@ def _thread_update_changes(
     and an ``open`` missing ``description`` are all declined without side effects.
     """
     known_threads = {thread.id: thread for thread in context.bundle.unresolved_threads}
+    authored_thread_events = authored_thread_events or []
+    authored_thread_ids = {
+        event.effects.get("thread_id")
+        for event in authored_thread_events
+        if event.effects.get("thread_id")
+    }
     this_turn_event_ids = [event.id for event in resolved_events]
     changes: list[StateDiffChange] = []
     rejected: list[RejectedChange] = []
@@ -557,6 +587,14 @@ def _thread_update_changes(
 
     for update in thread_updates:
         if update.action == "open":
+            if authored_thread_ids:
+                stub = StateDiffChange(
+                    target="threads", op="add", path="", value={}, visibility=Visibility.GM_ONLY
+                )
+                rejected.append(
+                    _reject(stub, "narrator thread open conflicts with authored thread")
+                )
+                continue
             if not update.description:
                 stub = StateDiffChange(
                     target="threads", op="add", path="", value={}, visibility=Visibility.GM_ONLY
@@ -595,6 +633,20 @@ def _thread_update_changes(
             continue
 
         thread = known_threads.get(update.thread_id or "")
+        if update.thread_id in authored_thread_ids:
+            # Authored thread declarations are applied before narrator proposals. The
+            # synthetic event carries the safe description/status transition, so a narrator
+            # proposal cannot reopen or contradict it in this turn.
+            stub = StateDiffChange(
+                target="threads",
+                id=update.thread_id,
+                op="set" if update.action == "resolve" else "add",
+                path="status" if update.action == "resolve" else "notes",
+                value="resolved" if update.action == "resolve" else update.note,
+                visibility=Visibility.GM_ONLY,
+            )
+            rejected.append(_reject(stub, "narrator thread update conflicts with authored thread"))
+            continue
         if thread is None:
             stub = StateDiffChange(
                 target="threads",
@@ -679,7 +731,283 @@ def _thread_update_changes(
     return changes, rejected, events
 
 
+def _action_outcome_changes(
+    context: TurnContext,
+    event: Event,
+    allocate_event_id: Callable[[], str],
+) -> tuple[list[StateDiffChange], list[RejectedChange], list[Event]]:
+    """Re-validate authored outcome declarations and turn them into StateDiff changes."""
+    payload = event.effects.get("action_outcome")
+    if not isinstance(payload, dict) or not event.effects.get("accepted"):
+        return [], [], []
+    affordance_id = payload.get("affordance_id")
+    affordance = next(
+        (
+            affordance
+            for scene in context.bundle.scenes
+            for affordance in getattr(scene, "affordances", [])
+            if affordance.id == affordance_id
+        ),
+        None,
+    )
+    if affordance is None:
+        return [], [_outcome_rejection(event, "unknown_affordance")], []
+    character_id = payload.get("character_id")
+    active_scene = next(
+        (
+            scene
+            for scene in context.bundle.scenes
+            if scene.status.value == "active"
+            and affordance in getattr(scene, "affordances", [])
+            and character_id in scene.active_characters
+        ),
+        None,
+    )
+    if active_scene is None:
+        return [], [_outcome_rejection(event, "affordance_not_active")], []
+    if not affordance_visible_to_character(affordance, character_id):
+        return [], [_outcome_rejection(event, "not_visible")], []
+    if not affordance_prerequisites_met(context.bundle, affordance.prerequisites):
+        return [], [_outcome_rejection(event, "prerequisites_unmet")], []
+    if payload.get("character_id") not in (affordance.actor_ids or [payload.get("character_id")]):
+        return [], [_outcome_rejection(event, "actor_not_allowed")], []
+    if affordance.recurrence == "once" and affordance.used_event_ids:
+        return [], [_outcome_rejection(event, "already_used")], []
+    if getattr(affordance, "fallback_only", False) and not (
+        isinstance(payload.get("consumption"), dict)
+        and payload["consumption"].get("fallback") is True
+    ):
+        return [], [_outcome_rejection(event, "fallback_only")], []
+    declarations = payload.get("outcomes")
+    if not isinstance(declarations, list):
+        return [], [_outcome_rejection(event, "invalid_outcome")], []
+    authored_declarations = [
+        item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item)
+        for item in affordance.outcomes
+    ]
+    if declarations != authored_declarations:
+        return [], [_outcome_rejection(event, "invalid_outcome")], []
+
+    changes: list[StateDiffChange] = []
+    rejected: list[RejectedChange] = []
+    thread_events: list[Event] = []
+    accepted_thread_ids: set[str] = set()
+    projected_thread_statuses = {item.id: item.status for item in context.bundle.unresolved_threads}
+    for raw in declarations:
+        try:
+            from living_narrative.state.models import AffordanceOutcome
+
+            outcome = AffordanceOutcome.model_validate(raw)
+            declaration = outcome.model_dump(mode="json")
+            value = _runtime_outcome_value(outcome.target, declaration["value"], context, event)
+            change = StateDiffChange(
+                target=outcome.target,
+                op=outcome.op,
+                path=outcome.path,
+                id=outcome.id,
+                value=value,
+                visibility=outcome.visibility,
+                source_event=event.id,
+            )
+        except Exception:
+            rejected.append(_outcome_rejection(event, "invalid_outcome"))
+            continue
+        if change.target == "scene" and change.id is None:
+            change = change.model_copy(update={"id": _active_scene_id(context)})
+        reason = _authored_outcome_rejection_reason(context, change)
+        if change.target == "threads" and change.path == "status":
+            current_status = projected_thread_statuses.get(change.id or "")
+            if current_status is None:
+                reason = "unknown_thread_id"
+            elif current_status == "resolved":
+                reason = "resolved_thread_is_terminal"
+            elif change.value == current_status:
+                reason = "no_op"
+            elif change.value not in {"advanced", "resolved"}:
+                reason = f"invalid_thread_transition:{current_status}->{change.value}"
+            else:
+                reason = None
+        if reason is not None:
+            rejected.append(_reject(change, reason))
+            continue
+        if change.target == "threads" and change.path == "" and change.op == "add":
+            value = change.value if isinstance(change.value, dict) else {}
+            thread_id = value.get("id")
+            if change.visibility not in {Visibility.READER, Visibility.CANON}:
+                rejected.append(_reject(change, "reader_invisible_thread"))
+                continue
+            if not thread_id or not value.get("description"):
+                rejected.append(_reject(change, "invalid_authored_thread"))
+                continue
+            if (
+                thread_id in {item.id for item in context.bundle.unresolved_threads}
+                or thread_id in accepted_thread_ids
+            ):
+                rejected.append(_reject(change, "duplicate_authored_thread"))
+                continue
+            accepted_thread_ids.add(thread_id)
+            projected_thread_statuses[thread_id] = "open"
+            thread_events.append(
+                Event(
+                    id=allocate_event_id(),
+                    turn=context.turn,
+                    type="thread_update",
+                    cause=f"authored:{affordance.id}",
+                    text=value["description"],
+                    visibility=Visibility.READER,
+                    effects={"action": "open", "thread_id": thread_id, "authored": True},
+                )
+            )
+        elif change.target == "threads" and change.path == "status":
+            thread = next(
+                (item for item in context.bundle.unresolved_threads if item.id == change.id), None
+            )
+            if thread is None:
+                rejected.append(_reject(change, "unknown_thread_id"))
+                continue
+            action = "resolve" if change.value == "resolved" else "advance"
+            if change.visibility not in {Visibility.READER, Visibility.CANON}:
+                rejected.append(_reject(change, "reader_invisible_thread"))
+                continue
+            thread_events.append(
+                Event(
+                    id=allocate_event_id(),
+                    turn=context.turn,
+                    type="thread_update",
+                    cause=f"authored:{affordance.id}",
+                    text=thread.description,
+                    visibility=Visibility.READER,
+                    effects={"action": action, "thread_id": thread.id, "authored": True},
+                )
+            )
+            projected_thread_statuses[thread.id] = change.value
+        changes.append(change)
+
+    if affordance.recurrence == "once" and changes:
+        scene = next(
+            (
+                scene
+                for scene in context.bundle.scenes
+                if any(item.id == affordance.id for item in scene.affordances)
+            ),
+            None,
+        )
+        if scene is not None:
+            changes.append(
+                StateDiffChange(
+                    target="scene",
+                    id=scene.id,
+                    op="add",
+                    path=f"affordances.{affordance.id}.used_event_ids",
+                    value=event.id,
+                    visibility=Visibility.GM_ONLY,
+                    source_event=event.id,
+                )
+            )
+    return changes, rejected, thread_events
+
+
+def _outcome_rejection(event: Event, reason: str) -> RejectedChange:
+    stub = StateDiffChange(
+        target="scene",
+        id=_event_scene_id(event),
+        op="set",
+        path="summary",
+        value="",
+        visibility=Visibility.GM_ONLY,
+        source_event=event.id,
+    )
+    return _reject(stub, reason)
+
+
+def _runtime_outcome_value(target: str, value: Any, context: TurnContext, event: Event) -> Any:
+    """Authored YAML cannot forge provenance or stale turn markers."""
+    if not isinstance(value, dict):
+        return value
+    value = dict(value)
+    if target in {"canon", "reader_state"}:
+        value["established_turn"] = context.turn
+        value["source_event"] = event.id
+        if target == "reader_state":
+            value["disclosed_turn"] = context.turn
+    elif target == "threads":
+        value["opened_turn"] = context.turn
+    return value
+
+
+def _event_scene_id(event: Event) -> str:
+    return event.effects.get("scene_id") or event.effects.get("target_id") or "scene_000"
+
+
+def _authored_outcome_rejection_reason(context: TurnContext, change: StateDiffChange) -> str | None:
+    if not _valid_target(context, change):
+        return "target_not_found"
+    if change.target in {"threads", "quests", "canon", "reader_state"} and change.path == "":
+        collection = {
+            "threads": context.bundle.unresolved_threads,
+            "quests": context.bundle.quests,
+            "canon": context.bundle.canon,
+            "reader_state": context.bundle.reader_state,
+        }[change.target]
+        if change.op == "add" and isinstance(change.value, dict):
+            if any(getattr(item, "id", None) == change.value.get("id") for item in collection):
+                return "duplicate_target"
+        return None
+    current = _authored_current_value(context, change)
+    if current is None and change.op in {"set", "delta", "remove"}:
+        return "target_not_found"
+    if change.op == "set" and current == change.value:
+        return "no_op"
+    if change.op == "delta":
+        if not isinstance(current, int):
+            return "invalid_delta"
+        if max(0, min(100, current + change.value)) == current:
+            return "no_op"
+    if change.op == "add" and isinstance(current, list) and change.value in current:
+        return "no_op"
+    return None
+
+
+def _authored_current_value(context: TurnContext, change: StateDiffChange) -> Any:
+    target: Any
+    if change.target == "world":
+        target = context.bundle.world
+    elif change.target == "character":
+        target = next((item for item in context.bundle.characters if item.id == change.id), None)
+    elif change.target == "scene":
+        target = next((item for item in context.bundle.scenes if item.id == change.id), None)
+    elif change.target == "threads":
+        target = next(
+            (item for item in context.bundle.unresolved_threads if item.id == change.id), None
+        )
+    elif change.target == "quests":
+        target = next((item for item in context.bundle.quests if item.id == change.id), None)
+    elif change.target == "canon":
+        target = next((item for item in context.bundle.canon if item.id == change.id), None)
+    elif change.target == "reader_state":
+        target = next((item for item in context.bundle.reader_state if item.id == change.id), None)
+    else:
+        target = None
+    if target is None or not change.path:
+        return target
+    current = target
+    for part in change.path.split("."):
+        if isinstance(current, list):
+            current = next((item for item in current if getattr(item, "id", None) == part), None)
+        elif isinstance(current, dict):
+            current = current.get(part)
+        else:
+            current = getattr(current, part, None)
+        if current is None:
+            return None
+    return current
+
+
 def _changes_for_event(context: TurnContext, event: Event) -> list[StateDiffChange]:
+    # Structured action outcomes are the only action-driven mutation path. Arbitrary
+    # character effects are stripped by Resolve and intentionally ignored here as well.
+    if event.type in {"character_action", "character_dialogue", "character_inner_reaction"}:
+        return []
     changes = []
     character_id = event.effects.get("character_id") or event.effects.get("target_id")
     scene_id = event.effects.get("scene_id") or event.effects.get("target_id")
@@ -796,6 +1124,18 @@ def _valid_target(context: TurnContext, change: StateDiffChange) -> bool:
         return any(scene.id == change.id for scene in context.bundle.scenes)
     if change.target == "faction":
         return any(faction.id == change.id for faction in context.bundle.factions)
+    if change.target == "threads":
+        return change.id is None or any(
+            item.id == change.id for item in context.bundle.unresolved_threads
+        )
+    if change.target == "quests":
+        return change.id is None or any(item.id == change.id for item in context.bundle.quests)
+    if change.target == "canon":
+        return change.id is None or any(item.id == change.id for item in context.bundle.canon)
+    if change.target == "reader_state":
+        return change.id is None or any(
+            item.id == change.id for item in context.bundle.reader_state
+        )
     return True
 
 

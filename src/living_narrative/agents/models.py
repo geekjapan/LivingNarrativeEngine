@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from living_narrative.pipeline.models import RejectedChange
+from living_narrative.pipeline.models import ActionIntentCandidate, RejectedChange
 from living_narrative.state.diff import StateDiff
 from living_narrative.state.models import (
     CharacterId,
@@ -25,6 +25,7 @@ class CharacterAgentInput(BaseModel):
     directives: list[dict[str, Any]] = Field(default_factory=list)
     open_quests: list[OpenQuestInfo] = Field(default_factory=list)
     eligible_combat_targets: list["EligibleCombatTarget"] = Field(default_factory=list)
+    visible_affordances: list["VisibleAffordance"] = Field(default_factory=list)
 
 
 class EligibleCombatTarget(BaseModel):
@@ -33,12 +34,20 @@ class EligibleCombatTarget(BaseModel):
     id: CharacterId
 
 
+class VisibleAffordance(BaseModel):
+    """Reader/character-safe projection of an authored scene affordance."""
+
+    id: str
+    text: str
+
+
 class ActionCandidate(BaseModel):
     kind: Literal["action", "dialogue", "inner_reaction"]
     content: str = Field(min_length=1)
     visibility: Visibility | None = None
     target_id: str | None = None
     effects: dict[str, Any] = Field(default_factory=dict)
+    intent: ActionIntentCandidate | None = None
 
     @model_validator(mode="after")
     def _scope_visibility(self) -> "ActionCandidate":

@@ -194,6 +194,11 @@ class EncounterEntry(StateBaseModel):
     visibility: Visibility
     scene_id: SceneId | None = None
     threat: EncounterThreatCondition | None = None
+    # Issue 086: authored encounter repetition policy.  ``cooldown`` keeps the
+    # legacy behavior; a missing cooldown is resolved from the world's pacing
+    # stall window at runtime.
+    recurrence: Literal["once", "cooldown", "unlimited"] = "cooldown"
+    cooldown_turns: Annotated[int, Field(strict=True, gt=0)] | None = None
 
     @field_validator("text")
     @classmethod
@@ -442,6 +447,137 @@ class HiddenFact(StateBaseModel):
     known_by: list[CharacterId] = Field(default_factory=list)
 
 
+class AffordancePrerequisites(StateBaseModel):
+    """Deterministic, authored checks used before an affordance can resolve."""
+
+    model_config = {"extra": "forbid"}
+
+    required_fact_ids: list[str] = Field(default_factory=list)
+    quest_statuses: dict[QuestId, Literal["open", "advanced", "resolved", "failed"]] = Field(
+        default_factory=dict
+    )
+    thread_statuses: dict[ThreadId, Literal["open", "advanced", "resolved"]] = Field(
+        default_factory=dict
+    )
+
+
+_AFFORDANCE_TARGETS = Literal[
+    "scene",
+    "canon",
+    "reader_state",
+    "quests",
+    "threads",
+    "character",
+]
+_AFFORDANCE_OPS = Literal["add", "remove", "set", "delta"]
+_AFFORDANCE_PATHS = {
+    "scene": {
+        "status",
+        "location",
+        "time",
+        "active_characters",
+        "mood",
+        "stakes",
+        "summary",
+        "reader_visible_facts",
+        "hidden_facts",
+    },
+    "canon": {"", "text", "established_turn", "source_event"},
+    "reader_state": {"", "text", "established_turn", "source_event", "disclosed_turn"},
+    "quests": {"", "title", "status", "objectives", "related_event_ids"},
+    "threads": {"", "description", "status", "related_event_ids", "notes", "opened_turn"},
+    "character": {
+        "status",
+        "stats",
+        "skills",
+        "traits",
+        "emotions",
+        "emotions_baseline",
+        "goals",
+        "knowledge",
+        "inventory",
+        "constraints",
+    },
+}
+_AFFORDANCE_ID_PATTERNS = {
+    "scene": re.compile(r"^scene_\d+$"),
+    "canon": re.compile(r"^canon_\d+$"),
+    "reader_state": re.compile(r"^reader_state_\d+$"),
+    "quests": re.compile(r"^quest_\d+$"),
+    "threads": re.compile(r"^thread_\d+$"),
+    "character": re.compile(r"^char_\d+$"),
+}
+
+
+class AffordanceOutcome(StateBaseModel):
+    """A restricted declaration of one authored state effect.
+
+    This deliberately mirrors the serializable part of ``StateDiffChange`` and
+    excludes ``source_event``: runtime owns event provenance and adds it when the
+    outcome is accepted.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    target: _AFFORDANCE_TARGETS
+    op: _AFFORDANCE_OPS
+    path: str = ""
+    id: str | None = None
+    value: Any = None
+    visibility: Visibility
+
+    @model_validator(mode="after")
+    def _validate_declaration(self) -> "AffordanceOutcome":
+        paths = _AFFORDANCE_PATHS[self.target]
+        if self.path not in paths:
+            raise ValueError(f"unsupported affordance outcome path {self.target}.{self.path}")
+        if self.path and self.id is None:
+            raise ValueError(f"{self.target} outcome at {self.path!r} requires id")
+        if self.target in {"scene", "character"} and self.id is None:
+            raise ValueError(f"{self.target} outcome requires id")
+        if self.id is not None and not _AFFORDANCE_ID_PATTERNS[self.target].fullmatch(self.id):
+            raise ValueError(f"invalid {self.target} outcome id {self.id!r}")
+        reader_ledger_visibility = {
+            "reader_state": {Visibility.READER},
+            "canon": {Visibility.CANON},
+            "quests": {Visibility.READER, Visibility.CANON},
+            "threads": {Visibility.READER, Visibility.CANON},
+        }
+        allowed_visibility = reader_ledger_visibility.get(self.target)
+        if allowed_visibility is not None and self.visibility not in allowed_visibility:
+            raise ValueError(
+                f"{self.target} outcome requires reader-safe visibility; "
+                f"got {self.visibility.value}"
+            )
+        return self
+
+
+class SceneAffordance(StateBaseModel):
+    """One reader/character-visible action authored for a scene."""
+
+    model_config = {"extra": "forbid"}
+
+    id: str = Field(pattern=r"^affordance_\d+$")
+    text: str = Field(min_length=1)
+    visibility: Visibility
+    known_by: list[CharacterId] = Field(default_factory=list)
+    actor_ids: list[CharacterId] = Field(default_factory=list)
+    prerequisites: AffordancePrerequisites = Field(default_factory=AffordancePrerequisites)
+    success_chance: Percent = 100
+    recurrence: Literal["once", "unlimited"] = "once"
+    used_event_ids: list[EventId] = Field(default_factory=list)
+    exclusive: bool = False
+    fallback_only: bool = False
+    outcomes: list[AffordanceOutcome] = Field(min_length=1)
+
+    @field_validator("text")
+    @classmethod
+    def _reject_blank_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("text must not be blank")
+        return value
+
+
 class SceneState(StateBaseModel):
     id: SceneId
     location: str
@@ -453,6 +589,9 @@ class SceneState(StateBaseModel):
     reader_visible_facts: list[str] = Field(default_factory=list)
     hidden_facts: list[HiddenFact] = Field(default_factory=list)
     status: SceneStatus = SceneStatus.ACTIVE
+    affordances: list[SceneAffordance] = Field(default_factory=list)
+    fallback_affordance_ids: list[str] = Field(default_factory=list)
+    pacing_terminal: bool = False
 
 
 class CanonEntry(StateBaseModel):
@@ -567,3 +706,100 @@ class WorldStateBundle(StateBaseModel):
     visual_profiles: VisualProfilesState = Field(default_factory=VisualProfilesState)
     encounters: list[EncounterEntry] = Field(default_factory=list)
     voice_profiles: VoiceProfilesState = Field(default_factory=VoiceProfilesState)
+
+    @model_validator(mode="after")
+    def _validate_authored_affordances_and_pacing(self) -> "WorldStateBundle":
+        pacing_enabled = self.world.pacing.stall_window > 0
+        affordance_scene_ids: dict[str, str] = {}
+        for scene in self.scenes:
+            affordances_by_id: dict[str, SceneAffordance] = {}
+            for affordance in scene.affordances:
+                if affordance.id in affordances_by_id:
+                    raise ValueError(
+                        f"scenes[{scene.id}].affordances has duplicate id {affordance.id!r}"
+                    )
+                affordances_by_id[affordance.id] = affordance
+                prior_scene_id = affordance_scene_ids.get(affordance.id)
+                if prior_scene_id is not None:
+                    raise ValueError(
+                        f"affordance id {affordance.id!r} is shared by scenes "
+                        f"{prior_scene_id!r} and {scene.id!r}"
+                    )
+                affordance_scene_ids[affordance.id] = scene.id
+
+            missing = [
+                affordance_id
+                for affordance_id in scene.fallback_affordance_ids
+                if affordance_id not in affordances_by_id
+            ]
+            if missing:
+                raise ValueError(
+                    f"scenes[{scene.id}].fallback_affordance_ids references missing "
+                    f"affordances: {missing}"
+                )
+
+            if (
+                pacing_enabled
+                and scene.status != SceneStatus.ENDED
+                and not scene.pacing_terminal
+                and not scene.fallback_affordance_ids
+            ):
+                raise ValueError(
+                    f"scenes[{scene.id}] requires pacing_terminal=true or a fallback affordance"
+                )
+
+            for affordance_id in scene.fallback_affordance_ids:
+                affordance = affordances_by_id[affordance_id]
+                if affordance.success_chance != 100:
+                    raise ValueError(
+                        f"scenes[{scene.id}].affordances[{affordance_id}] fallback "
+                        "must have success_chance=100"
+                    )
+                if not any(_is_advancement_outcome(outcome) for outcome in affordance.outcomes):
+                    raise ValueError(
+                        f"scenes[{scene.id}].affordances[{affordance_id}] fallback must "
+                        "declare an advancement outcome"
+                    )
+        return self
+
+
+def _is_advancement_outcome(outcome: AffordanceOutcome) -> bool:
+    if outcome.visibility not in {Visibility.READER, Visibility.CANON}:
+        return False
+    if outcome.target == "scene":
+        return (
+            outcome.path == "status"
+            and outcome.op == "set"
+            and outcome.value
+            in {
+                SceneStatus.ACTIVE,
+                SceneStatus.ENDED,
+                "active",
+                "ended",
+            }
+        )
+    if outcome.target in {"canon", "reader_state"}:
+        return outcome.op == "add" and outcome.path == ""
+    if outcome.target == "quests":
+        return (
+            outcome.path == "status"
+            and outcome.op == "set"
+            and outcome.value
+            in {
+                "advanced",
+                "resolved",
+            }
+        )
+    if outcome.target == "threads":
+        return (
+            outcome.path == "status"
+            and outcome.op == "set"
+            and outcome.value in {"advanced", "resolved"}
+        )
+    if outcome.target == "character":
+        return (
+            outcome.path == "status"
+            and outcome.op == "set"
+            and outcome.value in {CharacterStatus.DEAD, CharacterStatus.MISSING, "dead", "missing"}
+        )
+    return False

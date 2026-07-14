@@ -104,23 +104,27 @@ class StateStore:
         if issues:
             raise StateLoadError(issues)
 
-        bundle = WorldStateBundle(
-            world=world,
-            factions=factions,
-            characters=characters,
-            relationships=relationships,
-            scenes=scenes,
-            canon=canon,
-            reader_state=reader_state,
-            gm_vault=gm_vault,
-            timeline=timeline,
-            unresolved_threads=unresolved_threads,
-            quests=quests,
-            memory_summaries=memory_summaries,
-            visual_profiles=visual_profiles,
-            encounters=encounters,
-            voice_profiles=voice_profiles,
-        )
+        try:
+            bundle = WorldStateBundle(
+                world=world,
+                factions=factions,
+                characters=characters,
+                relationships=relationships,
+                scenes=scenes,
+                canon=canon,
+                reader_state=reader_state,
+                gm_vault=gm_vault,
+                timeline=timeline,
+                unresolved_threads=unresolved_threads,
+                quests=quests,
+                memory_summaries=memory_summaries,
+                visual_profiles=visual_profiles,
+                encounters=encounters,
+                voice_profiles=voice_profiles,
+            )
+        except ValidationError as exc:
+            _collect_validation_errors(state_dir, exc, issues)
+            raise StateLoadError(issues) from exc
         _warn_unknowns(bundle, state_dir)
         return bundle
 

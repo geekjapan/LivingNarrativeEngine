@@ -19,3 +19,318 @@ hidden_facts:
     known_by:
       - char_003
 status: pending
+affordances:
+  - id: affordance_002
+    text: 追跡者の真実を確かめ、封印の行方を決める
+    visibility: scene
+    known_by: [char_001, char_002]
+    actor_ids: [char_001, char_002]
+    prerequisites:
+      required_fact_ids: []
+      quest_statuses: {}
+      thread_statuses: {thread_001: open}
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    fallback_only: true
+    outcomes:
+      - target: threads
+        op: set
+        path: status
+        id: thread_001
+        value: resolved
+        visibility: reader
+      - target: threads
+        op: add
+        path: ""
+        value:
+          id: thread_002
+          description: 追跡者は誰の命令で封印施設を探しているのか
+          status: open
+          related_event_ids: []
+          notes: []
+          opened_turn: 0
+        visibility: reader
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: advanced
+        visibility: reader
+  - id: affordance_003
+    text: 追跡者の命令系統を問いただす
+    visibility: scene
+    known_by: [char_001, char_002]
+    actor_ids: [char_001, char_002]
+    prerequisites:
+      required_fact_ids: []
+      quest_statuses: {}
+      thread_statuses: {thread_002: open}
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    fallback_only: true
+    outcomes:
+      - target: threads
+        op: set
+        path: status
+        id: thread_002
+        value: resolved
+        visibility: reader
+      - target: threads
+        op: add
+        path: ""
+        value:
+          id: thread_003
+          description: 封印施設の鍵を握る人物は誰なのか
+          status: open
+          related_event_ids: []
+          notes: []
+          opened_turn: 0
+        visibility: reader
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: advanced
+        visibility: reader
+  - id: affordance_004
+    text: 封印施設の鍵の手がかりを探る
+    visibility: scene
+    known_by: [char_001, char_002]
+    actor_ids: [char_001, char_002]
+    prerequisites:
+      required_fact_ids: []
+      quest_statuses: {}
+      thread_statuses: {thread_003: open}
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    fallback_only: true
+    outcomes:
+      - target: threads
+        op: set
+        path: status
+        id: thread_003
+        value: resolved
+        visibility: reader
+      - target: threads
+        op: add
+        path: ""
+        value:
+          id: thread_004
+          description: 駅の最深部に残された封印の意味
+          status: open
+          related_event_ids: []
+          notes: []
+          opened_turn: 0
+        visibility: reader
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: advanced
+        visibility: reader
+  - id: affordance_005
+    text: 封印の意味を追跡者に問い返す
+    visibility: scene
+    known_by: [char_001, char_002]
+    actor_ids: [char_001, char_002]
+    prerequisites:
+      required_fact_ids: []
+      quest_statuses: {}
+      thread_statuses: {thread_004: open}
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    fallback_only: true
+    outcomes:
+      - target: threads
+        op: set
+        path: status
+        id: thread_004
+        value: resolved
+        visibility: reader
+      - target: threads
+        op: add
+        path: ""
+        value:
+          id: thread_005
+          description: 霧の夜に足音が響く理由
+          status: open
+          related_event_ids: []
+          notes: []
+          opened_turn: 0
+        visibility: reader
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: advanced
+        visibility: reader
+  - id: affordance_006
+    text: 足音の噂が生まれた夜を聞き出す
+    visibility: scene
+    known_by: [char_001, char_002]
+    actor_ids: [char_001, char_002]
+    prerequisites:
+      required_fact_ids: []
+      quest_statuses: {}
+      thread_statuses: {thread_005: open}
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    fallback_only: true
+    outcomes:
+      - target: threads
+        op: set
+        path: status
+        id: thread_005
+        value: resolved
+        visibility: reader
+      - target: threads
+        op: add
+        path: ""
+        value:
+          id: thread_006
+          description: 霧守りが隠してきた駅の秘密
+          status: open
+          related_event_ids: []
+          notes: []
+          opened_turn: 0
+        visibility: reader
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: advanced
+        visibility: reader
+  - id: affordance_007
+    text: 霧守りの秘密を確かめる
+    visibility: scene
+    known_by: [char_001, char_002]
+    actor_ids: [char_001, char_002]
+    prerequisites:
+      required_fact_ids: []
+      quest_statuses: {}
+      thread_statuses: {thread_006: open}
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    fallback_only: true
+    outcomes:
+      - target: threads
+        op: set
+        path: status
+        id: thread_006
+        value: resolved
+        visibility: reader
+      - target: threads
+        op: add
+        path: ""
+        value:
+          id: thread_007
+          description: ミラが守ろうとする封印の正体
+          status: open
+          related_event_ids: []
+          notes: []
+          opened_turn: 0
+        visibility: reader
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: advanced
+        visibility: reader
+  - id: affordance_008
+    text: ミラの役目を問いただす
+    visibility: scene
+    known_by: [char_001, char_002]
+    actor_ids: [char_001, char_002]
+    prerequisites:
+      required_fact_ids: []
+      quest_statuses: {}
+      thread_statuses: {thread_007: open}
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    fallback_only: true
+    outcomes:
+      - target: threads
+        op: set
+        path: status
+        id: thread_007
+        value: resolved
+        visibility: reader
+      - target: threads
+        op: add
+        path: ""
+        value:
+          id: thread_008
+          description: 封印を維持するために必要な最後の選択
+          status: open
+          related_event_ids: []
+          notes: []
+          opened_turn: 0
+        visibility: reader
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: advanced
+        visibility: reader
+  - id: affordance_009
+    text: 封印を維持する最後の選択をする
+    visibility: scene
+    known_by: [char_001, char_002]
+    actor_ids: [char_001, char_002]
+    prerequisites:
+      required_fact_ids: []
+      quest_statuses: {}
+      thread_statuses: {thread_008: open}
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    fallback_only: true
+    outcomes:
+      - target: threads
+        op: set
+        path: status
+        id: thread_008
+        value: resolved
+        visibility: reader
+      - target: threads
+        op: add
+        path: ""
+        value:
+          id: thread_009
+          description: 駅の外へ出た後も残る封印の余波
+          status: open
+          related_event_ids: []
+          notes: []
+          opened_turn: 0
+        visibility: reader
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: resolved
+        visibility: reader
+fallback_affordance_ids:
+  - affordance_002
+  - affordance_003
+  - affordance_004
+  - affordance_005
+  - affordance_006
+  - affordance_007
+  - affordance_008
+  - affordance_009
+pacing_terminal: false

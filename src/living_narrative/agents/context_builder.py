@@ -4,7 +4,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from living_narrative.agents.models import CharacterAgentInput, EligibleCombatTarget
+from living_narrative.agents.models import (
+    CharacterAgentInput,
+    EligibleCombatTarget,
+    VisibleAffordance,
+)
 from living_narrative.state.models import (
     CharacterId,
     Event,
@@ -34,6 +38,7 @@ def build_character_context(
     character = _find_character(bundle, character_id)
     scene_facts = []
     eligible_combat_targets: list[EligibleCombatTarget] = []
+    visible_affordances: list[VisibleAffordance] = []
     for scene in bundle.scenes:
         if scene.status != SceneStatus.ACTIVE:
             continue
@@ -53,6 +58,14 @@ def build_character_context(
             for fact in scene.hidden_facts
             if fact.visibility == Visibility.READER or character_id in fact.known_by
         )
+        for affordance in getattr(scene, "affordances", []):
+            if getattr(affordance, "fallback_only", False):
+                continue
+            if not _affordance_visible_to_character(affordance, character_id):
+                continue
+            text = getattr(affordance, "text", None) or getattr(affordance, "display_text", None)
+            if text:
+                visible_affordances.append(VisibleAffordance(id=affordance.id, text=text))
 
     scoped_events = [
         event for event in events or [] if _event_visible_to_character(event, character_id)
@@ -93,6 +106,7 @@ def build_character_context(
             if quest.status in {"open", "advanced"}
         ],
         eligible_combat_targets=eligible_combat_targets,
+        visible_affordances=visible_affordances,
     )
 
 
@@ -114,4 +128,17 @@ def _event_visible_to_character(event: Event, character_id: CharacterId) -> bool
         return True
     if event.visibility == Visibility.CHARACTER:
         return character_id in event.known_by
+    return False
+
+
+def _affordance_visible_to_character(affordance: Any, character_id: CharacterId) -> bool:
+    """Apply authored visibility and actor scope without exposing declaration details."""
+    actor_ids = getattr(affordance, "actor_ids", []) or []
+    if actor_ids and character_id not in actor_ids:
+        return False
+    visibility = getattr(affordance, "visibility", Visibility.READER)
+    if visibility in {Visibility.READER, Visibility.SCENE, Visibility.CANON}:
+        return True
+    if visibility == Visibility.CHARACTER:
+        return character_id in (getattr(affordance, "known_by", []) or [])
     return False

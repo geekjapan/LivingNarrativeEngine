@@ -1,5 +1,7 @@
 from living_narrative.agents import build_character_context, build_world_context
 from living_narrative.state.models import (
+    AffordanceOutcome,
+    AffordancePrerequisites,
     CharacterState,
     Event,
     GmVaultEntry,
@@ -7,6 +9,7 @@ from living_narrative.state.models import (
     MemorySummary,
     Quest,
     RelationshipState,
+    SceneAffordance,
     SceneState,
     SceneStatus,
     SpeechProfile,
@@ -113,6 +116,70 @@ def test_character_context_exposes_only_reader_safe_combat_target_eligibility():
     serialized = context.model_dump_json()
     assert "Ren plans betrayal" not in serialized
     assert "Ren secret debt" not in serialized
+
+
+def test_character_context_projects_only_visible_affordance_id_and_text():
+    bundle = _bundle()
+    bundle.scenes[0].affordances = [
+        SceneAffordance(
+            id="affordance_001",
+            text="扉を開ける",
+            visibility=Visibility.READER,
+            prerequisites=AffordancePrerequisites(required_fact_ids=["fact_required"]),
+            outcomes=[
+                AffordanceOutcome(
+                    target="scene",
+                    op="set",
+                    path="status",
+                    id="scene_001",
+                    value="ended",
+                    visibility=Visibility.READER,
+                )
+            ],
+        ),
+        SceneAffordance(
+            id="affordance_002",
+            text="GMだけの行動",
+            visibility=Visibility.GM_ONLY,
+            outcomes=[
+                AffordanceOutcome(
+                    target="scene",
+                    op="set",
+                    path="status",
+                    id="scene_001",
+                    value="ended",
+                    visibility=Visibility.GM_ONLY,
+                )
+            ],
+        ),
+        SceneAffordance(
+            id="affordance_003",
+            text="自動進展",
+            visibility=Visibility.READER,
+            fallback_only=True,
+            outcomes=[
+                AffordanceOutcome(
+                    target="scene",
+                    op="set",
+                    path="status",
+                    id="scene_001",
+                    value="ended",
+                    visibility=Visibility.READER,
+                )
+            ],
+        ),
+    ]
+
+    context = build_character_context(bundle, "char_001")
+
+    assert [item.model_dump(mode="json") for item in context.visible_affordances] == [
+        {"id": "affordance_001", "text": "扉を開ける"}
+    ]
+    serialized = context.model_dump_json()
+    assert "affordance_002" not in serialized
+    assert "affordance_003" not in serialized
+    assert "fact_required" not in serialized
+    assert "ended" not in serialized
 
 
 def test_character_context_includes_own_speech_profile():

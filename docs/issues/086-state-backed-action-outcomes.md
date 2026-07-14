@@ -1,7 +1,7 @@
 ---
 id: 086
 title: Action Outcomeをstate化して物語進展を保証する
-status: todo
+status: in_progress
 created: 2026-07-14
 type: implementation
 priority: P1
@@ -192,3 +192,16 @@ ADR-0010の機械SLOとR1–R8をすべてPASSすることとする。
 - Issue 085の実行証跡とADR-0010を正本とする。
 - binding-only baselineが機械SLOを通っても、encounter反復とAction/state分離は独立した構造欠陥
   であるため、本Issueのロジック変更範囲は維持する。
+
+## Binding-only Baseline
+
+- run ID: `20260715-issue086-binding-baseline`
+- model: `cx/gpt-5.6-luna-low`
+- binding: `character_default`と`narrator`の両方を同一profileへ明示bind
+- seed: `issue-085-mist-station-v1`
+- result: `FAIL`（30/30 applied、15→16 resume成功）
+- machine evidence: stall最大13、thread opened/advanced/resolved=`1/9/0`、max open turns=29、
+  encounter 30、scene transition 1、replay match 1.0
+- narrator: 30 calls、LLM 29 turns、turn 20でstructured output不正によるrenderer fallback 1件
+- evidence: `sandbox/20260715-issue086-binding-baseline/metrics.json`、
+  `docs/evaluations/2026-07-15-20260715-issue086-binding-baseline.md`

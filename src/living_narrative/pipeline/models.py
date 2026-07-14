@@ -31,6 +31,10 @@ class WorldEventCandidate(BaseModel):
     target_id: str | None = None
 
 
+class ActionIntentCandidate(BaseModel):
+    affordance_id: str = Field(min_length=1)
+
+
 class ActionCandidate(BaseModel):
     """A single character's proposed action, produced by the Act slot."""
 
@@ -41,6 +45,7 @@ class ActionCandidate(BaseModel):
     target_id: str | None = None
     effects: dict[str, Any] = Field(default_factory=dict)
     source_index: int | None = None
+    intent: ActionIntentCandidate | None = None
 
 
 class ActRecord(BaseModel):

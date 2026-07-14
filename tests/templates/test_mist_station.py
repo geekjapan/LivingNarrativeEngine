@@ -148,6 +148,67 @@ def test_world_has_pacing_config(tmp_path):
     assert bundle.world.pacing.pressure_boost == 4
 
 
+def test_authored_affordances_and_encounter_policies_are_explicit(tmp_path):
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    for scene in bundle.scenes:
+        assert scene.pacing_terminal or scene.fallback_affordance_ids
+        affordances = {affordance.id: affordance for affordance in scene.affordances}
+        for affordance_id in scene.fallback_affordance_ids:
+            affordance = affordances[affordance_id]
+            assert affordance.success_chance == 100
+            assert affordance.fallback_only
+            assert affordance.outcomes
+    assert {encounter.recurrence for encounter in bundle.encounters} == {"once", "cooldown"}
+    assert next(e for e in bundle.encounters if e.recurrence == "cooldown").cooldown_turns == 3
+
+
+def test_mist_scene_002_fallbacks_form_an_ordered_thread_chain(tmp_path):
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    scene = next(scene for scene in bundle.scenes if scene.id == "scene_002")
+    assert scene.fallback_affordance_ids == [f"affordance_{index:03d}" for index in range(2, 10)]
+    for index, affordance in enumerate(scene.affordances, start=1):
+        previous = f"thread_{index:03d}"
+        next_thread = f"thread_{index + 1:03d}"
+        assert affordance.id == f"affordance_{index + 1:03d}"
+        assert affordance.fallback_only
+        assert affordance.prerequisites.thread_statuses == {previous: "open"}
+        assert {outcome.visibility.value for outcome in affordance.outcomes} == {"reader"}
+        assert any(
+            outcome.target == "threads"
+            and outcome.path == "status"
+            and outcome.id == previous
+            and outcome.value == "resolved"
+            for outcome in affordance.outcomes
+        )
+        assert any(
+            outcome.target == "threads"
+            and outcome.path == ""
+            and outcome.op == "add"
+            and outcome.value["id"] == next_thread
+            for outcome in affordance.outcomes
+        )
+
+
+def test_mist_authored_outcomes_cover_scene_fact_quest_and_thread_lifecycle(tmp_path):
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    targets = {
+        outcome.target
+        for scene in bundle.scenes
+        for affordance in scene.affordances
+        for outcome in affordance.outcomes
+    }
+    assert {"scene", "canon", "reader_state", "quests", "threads"} <= targets
+
+
 def test_every_character_has_a_speech_profile_with_a_first_person_pronoun(tmp_path):
     """Issue 012: mist_station defines each character's first-person pronoun and the
     other pronouns forbidden to them, so the speech-register checker has real targets."""

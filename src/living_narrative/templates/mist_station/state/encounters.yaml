@@ -3,10 +3,13 @@
   weight: 3
   visibility: reader
   scene_id: scene_001
+  recurrence: once
 - id: encounter_002
   text: 追跡者の影がホームの柱を横切り、すぐに霧へ溶けた。
   weight: 1
   visibility: scene
+  recurrence: cooldown
+  cooldown_turns: 3
   threat:
     threat_id: threat_001
     min_pressure: 50

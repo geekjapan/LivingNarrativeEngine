@@ -13,6 +13,14 @@ def pacing_checker(
     resolved_events: list[Event],
     diff_candidate: StateDiff,
 ) -> list[Finding]:
+    if any(event.type == "pacing_exhausted" for event in resolved_events):
+        return [
+            Finding(
+                checker="pacing_check",
+                severity="error",
+                message="作者定義の進展手段が尽きた(pacing_exhausted)",
+            )
+        ]
     # The stall is already being broken this turn (a new stage/scene-transition just
     # resolved) -- no need to warn about it.
     if any(is_advancement_event(event) for event in resolved_events):

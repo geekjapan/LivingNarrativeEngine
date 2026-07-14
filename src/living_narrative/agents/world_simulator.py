@@ -2,12 +2,19 @@
 
 from typing import Any
 
+from living_narrative.agents.event_history import load_recent_events
 from living_narrative.agents.models import BackgroundEventCandidate, WorldSimulatorOutput
 from living_narrative.agents.pacing import detect_stall
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import WorldEventCandidate
 from living_narrative.random.tables import WeightedEntry
-from living_narrative.state.models import EncounterEntry, FactionState, ThreatTrack, Visibility
+from living_narrative.state.models import (
+    EncounterEntry,
+    Event,
+    FactionState,
+    ThreatTrack,
+    Visibility,
+)
 
 # world_directive/event_injection become world event candidates verbatim (spec.md Requirement
 # "Type別ルーティング"): they *are* what the World Simulator should propose this turn.
@@ -86,8 +93,11 @@ def simulate_world(
 
 
 def _encounter_events(context: TurnContext) -> list[WorldEventCandidate]:
+    history = _encounter_history(context)
     eligible = [
-        entry for entry in context.bundle.encounters if _encounter_is_eligible(context, entry)
+        entry
+        for entry in context.bundle.encounters
+        if _encounter_is_eligible(context, entry, history)
     ]
     if not eligible:
         return []
@@ -114,22 +124,70 @@ def _encounter_events(context: TurnContext) -> list[WorldEventCandidate]:
     ]
 
 
-def _encounter_is_eligible(context: TurnContext, entry: EncounterEntry) -> bool:
+def _encounter_history(context: TurnContext) -> list[Event]:
+    """Load append-only encounter events, preserving fail-soft history semantics."""
+    if context.paths is None:
+        return []
+    return load_recent_events(
+        context.paths.runs,
+        context.bundle.timeline,
+        max_turns=len(context.bundle.timeline),
+    )
+
+
+def _encounter_is_eligible(
+    context: TurnContext, entry: EncounterEntry, history: list[Event] | None = None
+) -> bool:
     if entry.scene_id is not None and not any(
         scene.id == entry.scene_id and scene.status == "active" for scene in context.bundle.scenes
     ):
         return False
     if entry.threat is None:
-        return True
-    threat = next(
-        (item for item in context.bundle.world.threats if item.id == entry.threat.threat_id), None
+        threat_eligible = True
+    else:
+        threat = next(
+            (item for item in context.bundle.world.threats if item.id == entry.threat.threat_id),
+            None,
+        )
+        if threat is None:
+            return False
+        if entry.threat.min_pressure is not None and threat.pressure < entry.threat.min_pressure:
+            return False
+        reached_stages = sum(stage.at <= threat.pressure for stage in threat.stages)
+        threat_eligible = entry.threat.min_stage is None or reached_stages >= entry.threat.min_stage
+
+    if not threat_eligible:
+        return False
+    return _recurrence_is_eligible(
+        context, entry, history if history is not None else _encounter_history(context)
     )
-    if threat is None:
+
+
+def _recurrence_is_eligible(
+    context: TurnContext, entry: EncounterEntry, history: list[Event]
+) -> bool:
+    prior = [
+        event
+        for event in history
+        if event.turn < context.turn
+        and event.type == "encounter"
+        and event.effects.get("encounter_id") == entry.id
+    ]
+    if not prior:
+        return True
+
+    recurrence = getattr(entry, "recurrence", "cooldown")
+    recurrence = getattr(recurrence, "value", recurrence)
+    last = max(prior, key=lambda event: event.turn)
+    if recurrence == "once":
         return False
-    if entry.threat.min_pressure is not None and threat.pressure < entry.threat.min_pressure:
-        return False
-    reached_stages = sum(stage.at <= threat.pressure for stage in threat.stages)
-    return entry.threat.min_stage is None or reached_stages >= entry.threat.min_stage
+    if recurrence == "unlimited":
+        return last.turn != context.turn - 1
+
+    cooldown_turns = getattr(entry, "cooldown_turns", None)
+    if cooldown_turns is None:
+        cooldown_turns = max(1, context.bundle.world.pacing.stall_window)
+    return context.turn - last.turn > cooldown_turns
 
 
 def _threat_events(

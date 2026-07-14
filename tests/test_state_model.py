@@ -13,6 +13,7 @@ from living_narrative.state.diff import (
     rollback,
 )
 from living_narrative.state.models import (
+    AffordanceOutcome,
     BackgroundVisualProfile,
     CanonEntry,
     CharacterState,
@@ -27,8 +28,10 @@ from living_narrative.state.models import (
     HiddenFact,
     InventoryItem,
     MemorySummary,
+    PacingConfig,
     Quest,
     RelationshipState,
+    SceneAffordance,
     SceneState,
     SceneStatus,
     SpeechProfile,
@@ -219,6 +222,243 @@ def test_encounter_schema_validation_and_store_roundtrip(tmp_path):
     ]
 
 
+def test_encounter_recurrence_defaults_to_cooldown_and_cooldown_is_positive():
+    encounter = EncounterEntry(id="encounter_001", text="遭遇", weight=1, visibility="reader")
+
+    assert encounter.recurrence == "cooldown"
+    assert encounter.cooldown_turns is None
+    for value in (0, -1, 1.5, True):
+        with pytest.raises(ValidationError):
+            EncounterEntry(
+                id="encounter_001",
+                text="遭遇",
+                weight=1,
+                visibility="reader",
+                cooldown_turns=value,
+            )
+
+
+def test_affordance_outcome_is_restricted_to_state_diff_fields():
+    outcome = AffordanceOutcome(
+        target="scene",
+        op="set",
+        path="status",
+        id="scene_001",
+        value="ended",
+        visibility="reader",
+    )
+
+    assert outcome.model_dump(mode="json") == {
+        "target": "scene",
+        "op": "set",
+        "path": "status",
+        "id": "scene_001",
+        "value": "ended",
+        "visibility": "reader",
+    }
+    with pytest.raises(ValidationError):
+        AffordanceOutcome(
+            target="scene",
+            op="set",
+            path="status",
+            id="scene_001",
+            value="ended",
+            visibility="reader",
+            source_event="event_0001",
+        )
+    with pytest.raises(ValidationError):
+        AffordanceOutcome(
+            target="scene",
+            op="set",
+            path="private_mind",
+            id="scene_001",
+            value="secret",
+            visibility="gm_only",
+        )
+
+    with pytest.raises(ValidationError, match="reader-safe visibility"):
+        AffordanceOutcome(
+            target="reader_state",
+            op="add",
+            value={"id": "reader_state_001", "text": "secret"},
+            visibility="gm_only",
+        )
+
+    with pytest.raises(ValidationError, match="reader-safe visibility"):
+        AffordanceOutcome(
+            target="threads",
+            op="add",
+            value={"id": "thread_001", "description": "secret"},
+            visibility="character",
+        )
+
+
+def _pacing_bundle(*scenes: SceneState) -> WorldStateBundle:
+    return WorldStateBundle(
+        world=WorldState(
+            id="world_001",
+            name="World",
+            summary="",
+            pacing=PacingConfig(stall_window=3),
+        ),
+        scenes=list(scenes),
+    )
+
+
+def _advancing_affordance(*, outcome: AffordanceOutcome | None = None, success_chance: int = 100):
+    return SceneAffordance(
+        id="affordance_001",
+        text="進む",
+        visibility="reader",
+        outcomes=[
+            outcome
+            or AffordanceOutcome(
+                target="scene",
+                op="set",
+                path="status",
+                id="scene_001",
+                value="ended",
+                visibility="reader",
+            )
+        ],
+        success_chance=success_chance,
+    )
+
+
+def test_pacing_bundle_requires_a_valid_fallback_before_runtime():
+    with pytest.raises(ValidationError, match="fallback affordance"):
+        _pacing_bundle(SceneState(id="scene_001", location="x", time="y"))
+
+    with pytest.raises(ValidationError, match="references missing"):
+        _pacing_bundle(
+            SceneState(
+                id="scene_001",
+                location="x",
+                time="y",
+                fallback_affordance_ids=["affordance_001"],
+            )
+        )
+
+    with pytest.raises(ValidationError, match="success_chance=100"):
+        _pacing_bundle(
+            SceneState(
+                id="scene_001",
+                location="x",
+                time="y",
+                affordances=[_advancing_affordance(success_chance=50)],
+                fallback_affordance_ids=["affordance_001"],
+            )
+        )
+
+    with pytest.raises(ValidationError, match="advancement outcome"):
+        _pacing_bundle(
+            SceneState(
+                id="scene_001",
+                location="x",
+                time="y",
+                affordances=[
+                    _advancing_affordance(
+                        outcome=AffordanceOutcome(
+                            target="threads",
+                            op="add",
+                            value={"id": "thread_001", "description": "new mystery"},
+                            visibility="reader",
+                        )
+                    )
+                ],
+                fallback_affordance_ids=["affordance_001"],
+            )
+        )
+
+    with pytest.raises(ValidationError, match="advancement outcome"):
+        _pacing_bundle(
+            SceneState(
+                id="scene_001",
+                location="x",
+                time="y",
+                affordances=[
+                    _advancing_affordance(
+                        outcome=AffordanceOutcome(
+                            target="character",
+                            op="delta",
+                            path="emotions",
+                            id="char_001",
+                            value={"fear": 1},
+                            visibility="gm_only",
+                        )
+                    )
+                ],
+                fallback_affordance_ids=["affordance_001"],
+            )
+        )
+
+
+def test_affordance_ids_are_unique_across_scenes():
+    first = SceneState(
+        id="scene_001",
+        location="x",
+        time="y",
+        pacing_terminal=True,
+        affordances=[_advancing_affordance()],
+    )
+    second = SceneState(
+        id="scene_002",
+        location="z",
+        time="y",
+        pacing_terminal=True,
+        affordances=[_advancing_affordance()],
+    )
+
+    with pytest.raises(ValidationError, match="shared by scenes"):
+        _pacing_bundle(first, second)
+
+
+def test_terminal_scene_satisfies_pacing_contract_and_round_trips(tmp_path):
+    terminal = SceneState(id="scene_001", location="x", time="y", pacing_terminal=True)
+    assert _pacing_bundle(terminal).scenes == [terminal]
+
+    affordance = _advancing_affordance()
+    valid = _pacing_bundle(
+        SceneState(
+            id="scene_001",
+            location="x",
+            time="y",
+            affordances=[affordance],
+            fallback_affordance_ids=[affordance.id],
+        )
+    )
+    StateStore.save(valid, tmp_path / "state")
+    assert StateStore.load(tmp_path / "state") == valid
+
+
+def test_affordance_can_be_reserved_for_runtime_fallback():
+    affordance = _advancing_affordance().model_copy(update={"fallback_only": True})
+
+    assert affordance.fallback_only is True
+    assert SceneAffordance.model_validate(affordance.model_dump()).fallback_only is True
+
+
+def test_state_store_reports_pacing_validation_as_state_load_error(tmp_path):
+    state_dir = tmp_path / "state"
+    StateStore.save(
+        WorldStateBundle(
+            world=WorldState(id="world_001", name="World", summary=""),
+            scenes=[SceneState(id="scene_001", location="x", time="y")],
+        ),
+        state_dir,
+    )
+    (state_dir / "world.yaml").write_text(
+        "id: world_001\nname: World\nsummary: ''\npacing:\n  stall_window: 3\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(StateLoadError) as invalid:
+        StateStore.load(state_dir)
+
+    assert invalid.value.issues[0].file_path == state_dir
+    assert "scene_001" in invalid.value.issues[0].message
+
+
 def test_missing_encounters_file_loads_empty_for_backward_compatibility(tmp_path):
     StateStore.save(bundle(), tmp_path / "state")
     (tmp_path / "state" / "encounters.yaml").unlink()
@@ -248,6 +488,14 @@ def test_schema_export_includes_encounter_models(tmp_path):
     )
     assert entry_schema["required"] == ["id", "text", "weight", "visibility"]
     assert condition_schema["required"] == ["threat_id"]
+
+
+def test_schema_export_includes_affordance_models(tmp_path):
+    export_state_schemas(tmp_path / "schemas")
+
+    assert (tmp_path / "schemas" / "AffordancePrerequisites.schema.yaml").is_file()
+    assert (tmp_path / "schemas" / "AffordanceOutcome.schema.yaml").is_file()
+    assert (tmp_path / "schemas" / "SceneAffordance.schema.yaml").is_file()
 
 
 def test_voice_profiles_roundtrip_and_missing_file_is_backward_compatible(tmp_path):

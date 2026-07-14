@@ -12,3 +12,33 @@ hidden_facts:
     visibility: gm_only
     known_by: []
 status: pending
+affordances:
+  - id: affordance_002
+    text: 装置の誘導記録を復号し、救難音声の謎を解く
+    visibility: scene
+    known_by: [char_001, char_002, char_003]
+    actor_ids: [char_001, char_002, char_003]
+    prerequisites:
+      required_fact_ids: []
+      quest_statuses: {}
+      thread_statuses:
+        thread_001: open
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    outcomes:
+      - target: threads
+        op: set
+        path: status
+        id: thread_001
+        value: resolved
+        visibility: reader
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: resolved
+        visibility: reader
+fallback_affordance_ids: [affordance_002]
+pacing_terminal: true
