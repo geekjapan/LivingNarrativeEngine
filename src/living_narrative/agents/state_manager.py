@@ -13,7 +13,7 @@ from living_narrative.intervention.reveal import must_not_reveal_texts, reveal_n
 from living_narrative.narration.models import NarratorQuestUpdateCandidate, ThreadUpdateCandidate
 from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import BuildDiffOutput, RejectedChange
-from living_narrative.state.diff import StateDiff, StateDiffChange
+from living_narrative.state.diff import StateDiff, StateDiffChange, StateDiffError, apply_state_diff
 from living_narrative.state.models import (
     CanonEntry,
     CharacterId,
@@ -1029,12 +1029,12 @@ def _authored_outcome_rejection_reason(context: TurnContext, change: StateDiffCh
                 _ROOT_ENTRY_MODELS[change.target].model_validate(change.value)
             except Exception:
                 return "invalid_root_add_payload"
-            return None
-        if change.op == "remove":
+        elif change.op == "remove":
             if not _remove_target_present(collection, change):
                 return "invalid_remove_target"
-            return None
-        return "invalid_root_op"
+        else:
+            return "invalid_root_op"
+        return _authored_dry_run_rejection(context, change)
     current = _authored_current_value(context, change)
     if current is None and change.op in {"set", "delta", "remove"}:
         return "target_not_found"
@@ -1055,6 +1055,19 @@ def _authored_outcome_rejection_reason(context: TurnContext, change: StateDiffCh
             return "invalid_remove_target"
         if not _remove_target_present(current, change):
             return "invalid_remove_target"
+    return _authored_dry_run_rejection(context, change)
+
+
+def _authored_dry_run_rejection(context: TurnContext, change: StateDiffChange) -> str | None:
+    """Catch-all: dry-run ``apply_state_diff`` (on a deep-copied bundle, no side effects) so
+    an authored change that would raise at commit time -- an invalid enum value, a
+    malformed list element, anything the structural checks above don't specifically name --
+    is rejected here instead of aborting the whole turn or persisting invalid state."""
+    trial = StateDiff(id="diff_000", turn=context.turn, changes=[change])
+    try:
+        apply_state_diff(context.bundle, trial)
+    except StateDiffError:
+        return "invalid_authored_change"
     return None
 
 
