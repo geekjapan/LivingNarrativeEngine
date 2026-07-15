@@ -1028,6 +1028,8 @@ def _authored_outcome_rejection_reason(context: TurnContext, change: StateDiffCh
                 return "invalid_root_add_payload"
             if any(getattr(item, "id", None) == change.value.get("id") for item in collection):
                 return "duplicate_target"
+            if change.target in {"threads", "quests"} and change.value.get("status") != "open":
+                return "invalid_root_add_payload"
             try:
                 _ROOT_ENTRY_MODELS[change.target].model_validate(change.value)
             except Exception:
