@@ -125,7 +125,6 @@ def test_character_context_projects_only_visible_affordance_id_and_text():
             id="affordance_001",
             text="扉を開ける",
             visibility=Visibility.READER,
-            prerequisites=AffordancePrerequisites(required_fact_ids=["fact_required"]),
             outcomes=[
                 AffordanceOutcome(
                     target="scene",
@@ -168,6 +167,22 @@ def test_character_context_projects_only_visible_affordance_id_and_text():
                 )
             ],
         ),
+        SceneAffordance(
+            id="affordance_004",
+            text="鍵のかかった扉を開ける",
+            visibility=Visibility.READER,
+            prerequisites=AffordancePrerequisites(required_fact_ids=["fact_required"]),
+            outcomes=[
+                AffordanceOutcome(
+                    target="scene",
+                    op="set",
+                    path="status",
+                    id="scene_001",
+                    value="ended",
+                    visibility=Visibility.READER,
+                )
+            ],
+        ),
     ]
 
     context = build_character_context(bundle, "char_001")
@@ -178,6 +193,7 @@ def test_character_context_projects_only_visible_affordance_id_and_text():
     serialized = context.model_dump_json()
     assert "affordance_002" not in serialized
     assert "affordance_003" not in serialized
+    assert "affordance_004" not in serialized
     assert "fact_required" not in serialized
     assert "ended" not in serialized
 

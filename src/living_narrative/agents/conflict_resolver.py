@@ -375,7 +375,7 @@ def _resolve_action_intent(
     ):
         return [base_event, _intent_rejected_event(context, allocate_event_id(), "fallback_only")]
     affordance, reason = _find_eligible_affordance(
-        context, candidate.character_id, intent.affordance_id
+        context, candidate.character_id, intent.affordance_id, allow_fallback=allow_fallback
     )
     if reason is not None or affordance is None:
         return [
@@ -442,7 +442,11 @@ def _resolve_action_intent(
 
 
 def _find_eligible_affordance(
-    context: TurnContext, character_id: str, affordance_id: str
+    context: TurnContext,
+    character_id: str,
+    affordance_id: str,
+    *,
+    allow_fallback: bool = False,
 ) -> tuple[Any | None, str | None]:
     for scene in context.bundle.scenes:
         status = scene.status.value if hasattr(scene.status, "value") else scene.status
@@ -453,7 +457,9 @@ def _find_eligible_affordance(
         for affordance in getattr(scene, "affordances", []):
             if affordance.id != affordance_id:
                 continue
-            if not affordance_visible_to_character(affordance, character_id):
+            # A fallback is engine-forced, not a character choice from a prompt list, so
+            # prompt-visibility (e.g. a gm_only fallback affordance) must not block it.
+            if not allow_fallback and not affordance_visible_to_character(affordance, character_id):
                 return None, "not_visible"
             if affordance.actor_ids and character_id not in affordance.actor_ids:
                 return None, "actor_not_allowed"

@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from living_narrative.agents.affordance_policy import affordance_prerequisites_met
 from living_narrative.agents.models import (
     CharacterAgentInput,
     EligibleCombatTarget,
@@ -63,6 +64,8 @@ def build_character_context(
             if getattr(affordance, "fallback_only", False):
                 continue
             if affordance.recurrence == "once" and affordance.used_event_ids:
+                continue
+            if not affordance_prerequisites_met(bundle, affordance.prerequisites):
                 continue
             if not _affordance_visible_to_character(affordance, character_id):
                 continue

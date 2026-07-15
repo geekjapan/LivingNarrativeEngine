@@ -800,7 +800,13 @@ def _action_outcome_changes(
     )
     if active_scene is None:
         return [], [_outcome_rejection(event, "affordance_not_active")], []
-    if not affordance_visible_to_character(affordance, character_id):
+    is_fallback = (
+        isinstance(payload.get("consumption"), dict)
+        and payload["consumption"].get("fallback") is True
+    )
+    # A fallback is engine-forced, not a character choice from a prompt list, so
+    # prompt-visibility (e.g. a gm_only fallback affordance) must not block it.
+    if not is_fallback and not affordance_visible_to_character(affordance, character_id):
         return [], [_outcome_rejection(event, "not_visible")], []
     if not affordance_prerequisites_met(context.bundle, affordance.prerequisites):
         return [], [_outcome_rejection(event, "prerequisites_unmet")], []
@@ -808,10 +814,7 @@ def _action_outcome_changes(
         return [], [_outcome_rejection(event, "actor_not_allowed")], []
     if affordance.recurrence == "once" and affordance.used_event_ids:
         return [], [_outcome_rejection(event, "already_used")], []
-    if getattr(affordance, "fallback_only", False) and not (
-        isinstance(payload.get("consumption"), dict)
-        and payload["consumption"].get("fallback") is True
-    ):
+    if getattr(affordance, "fallback_only", False) and not is_fallback:
         return [], [_outcome_rejection(event, "fallback_only")], []
     declarations = payload.get("outcomes")
     if not isinstance(declarations, list):
