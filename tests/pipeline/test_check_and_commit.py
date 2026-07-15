@@ -44,7 +44,11 @@ def test_commit_mode_auto_applies_and_review_defers(tmp_path, build_project):
 def test_pacing_stall_warn_does_not_block_auto_apply(tmp_path, build_project):
     """Issue 011: with no threats/scene-transitions ever firing, a story with pacing turned
     on stalls quickly; the pacing checker's warn must not stop auto-apply."""
-    project_path = build_project(tmp_path, pacing={"stall_window": 1, "pressure_boost": 4})
+    project_path = build_project(
+        tmp_path,
+        pacing={"stall_window": 1, "pressure_boost": 4},
+        pacing_terminal=True,
+    )
     pipeline = TurnPipeline()
 
     pipeline.run(project_path, commit_mode="auto")  # turn 1: too early to judge (turn <= window)

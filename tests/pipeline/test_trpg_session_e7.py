@@ -140,7 +140,8 @@ def test_player_character_game_features_coexist_in_one_mock_session(tmp_path, mo
     assert metrics.combat_count == 1
     assert (metrics.quest_opened, metrics.quest_advanced, metrics.quest_resolved) == (1, 1, 1)
     assert metrics.applied_pc_action_count == 3
-    assert metrics.encounter_count == 3
+    # Template recurrence prevents the same encounter from firing every turn.
+    assert metrics.encounter_count == 1
     assert (metrics.skill_check_successes, metrics.skill_check_total) == (1, 1)
     assert metrics.skill_check_success_rate == 1.0
 

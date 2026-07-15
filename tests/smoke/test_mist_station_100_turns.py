@@ -7,9 +7,7 @@ import yaml
 
 from living_narrative.agents.character import run_character_agent
 from living_narrative.export_replay import assemble_replay
-from living_narrative.narration.models import NarratorQuestUpdateCandidate, ThreadUpdateCandidate
 from living_narrative.pipeline import TurnPipeline, TurnStatus, default_registry
-from living_narrative.pipeline import driver as driver_module
 from living_narrative.pipeline.models import ActionCandidate
 from living_narrative.session.metrics import collect_metrics
 from living_narrative.session.resume import restore_resume_state
@@ -19,6 +17,7 @@ from living_narrative.session.rollback import (
     execute_rollback,
     plan_rollback,
 )
+from living_narrative.state.store import StateStore
 from living_narrative.workspace.backup import create_backup, restore_backup
 from living_narrative.workspace.init import create_project
 from living_narrative.workspace.loader import load_project
@@ -52,50 +51,64 @@ def _prepare_project(project_dir: Path) -> Path:
         character_path.write_text(
             yaml.safe_dump(character, allow_unicode=True, sort_keys=False), encoding="utf-8"
         )
-    return project_path
 
-
-def _make_narrate_backfill(real_run_narrate_phase):
-    def _run_narrate(*, gateway, project, context, style, mood, tone_control):
-        result, meta = real_run_narrate_phase(
-            gateway=gateway,
-            project=project,
-            context=context,
-            style=style,
-            mood=mood,
-            tone_control=tone_control,
+    # Exercise the shipped Mist Station affordances first, then extend scene 2's authored
+    # chain only far enough for this deliberately longer-than-product 100-turn soak.
+    fallback_count = (TURN_COUNT - 1) // 3
+    scene_path = state_dir / "scenes" / "scene_002.yaml"
+    scene = _load_yaml(scene_path)
+    for index in range(fallback_count):
+        previous_thread = f"thread_{index + 9:03d}"
+        next_thread = f"thread_{index + 10:03d}"
+        affordance_id = f"affordance_{index + 1000:04d}"
+        scene["fallback_affordance_ids"].append(affordance_id)
+        scene["affordances"].append(
+            {
+                "id": affordance_id,
+                "text": f"手掛かり{index + 10}を確かめ、次の糸口へ進む",
+                "visibility": "scene",
+                "known_by": ["char_001", "char_002"],
+                "actor_ids": ["char_001"],
+                "prerequisites": {
+                    "required_fact_ids": [],
+                    "quest_statuses": {},
+                    "thread_statuses": {previous_thread: "open"},
+                },
+                "success_chance": 100,
+                "recurrence": "once",
+                "used_event_ids": [],
+                "exclusive": True,
+                "fallback_only": True,
+                "outcomes": [
+                    {
+                        "target": "threads",
+                        "op": "set",
+                        "path": "status",
+                        "id": previous_thread,
+                        "value": "resolved",
+                        "visibility": "reader",
+                    },
+                    {
+                        "target": "threads",
+                        "op": "add",
+                        "path": "",
+                        "value": {
+                            "id": next_thread,
+                            "description": f"手掛かり{index + 10}の先にある安定した糸口",
+                            "status": "open",
+                            "related_event_ids": [],
+                            "notes": [],
+                            "opened_turn": 0,
+                        },
+                        "visibility": "reader",
+                    },
+                ],
+            }
         )
-        if context.memory_summary_due and not result.memory_summary_update:
-            result = result.model_copy(
-                update={
-                    "memory_summary_update": f"turn {context.turn}までの通史要約(smoke synthetic)。"
-                }
-            )
-        quest_updates = {
-            1: [NarratorQuestUpdateCandidate(action="advance", quest_id="quest_001")],
-            2: [NarratorQuestUpdateCandidate(action="resolve", quest_id="quest_001")],
-            3: [
-                NarratorQuestUpdateCandidate(
-                    action="open", quest_id="quest_002", title="子どもの切符を調べる"
-                )
-            ],
-        }.get(context.turn)
-        if quest_updates:
-            result = result.model_copy(update={"quest_updates": quest_updates})
-        if context.turn == 4:
-            thread_updates = [ThreadUpdateCandidate(action="open", description="出口の手掛かり")]
-            result = result.model_copy(update={"thread_updates": thread_updates})
-        elif context.turn == 5:
-            result = result.model_copy(
-                update={
-                    "thread_updates": [
-                        ThreadUpdateCandidate(action="resolve", thread_id="thread_000401")
-                    ]
-                }
-            )
-        return result, meta
-
-    return _run_narrate
+    scene_path.write_text(
+        yaml.safe_dump(scene, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    return project_path
 
 
 def _make_registry():
@@ -155,8 +168,8 @@ def _run_turn(pipeline, project_path: Path, turn: int, branch_label: str | None 
             {
                 "type": "world_directive",
                 "target": {"kind": "world"},
-                "content": f"ターン{turn}の読者向け手掛かり",
-                "constraints": {"reveal_text": f"ターン{turn}の手掛かりが残る"},
+                "content": f"ターン{turn}の周囲を見渡す",
+                "constraints": {},
                 "visibility": "reader",
             }
         )
@@ -193,6 +206,14 @@ def _artifact_fingerprint(project_path: Path) -> dict[str, str]:
             if path.exists():
                 files[str(path.relative_to(runs))] = path.read_text(encoding="utf-8")
     return files
+
+
+def _live_events(project_path: Path) -> list[dict]:
+    runs = project_path.parent / "workspace" / "runs"
+    events = []
+    for turn_dir in sorted(runs.glob("turn_[0-9][0-9][0-9][0-9]")):
+        events.extend(_load_yaml(turn_dir / "events.yaml") or [])
+    return events
 
 
 def _run_journey(tmp_path: Path, name: str):
@@ -241,6 +262,8 @@ def _run_journey(tmp_path: Path, name: str):
     assert metrics.turns.total == TURN_COUNT
     assert metrics.turns.by_status == {"applied": TURN_COUNT}
     assert metrics.turns.rolledback == 1
+    live_events = _live_events(project_path)
+    assert not any(event.get("type") == "pacing_exhausted" for event in live_events)
     assert metrics.pacing.max_consecutive_stall_turns <= 3
     assert metrics.threads.opened > 0
     assert metrics.threads.resolved / metrics.threads.opened >= 0.5
@@ -248,6 +271,33 @@ def _run_journey(tmp_path: Path, name: str):
     assert metrics.checks.by_severity.get("critical", 0) == 0
     assert metrics.checks.by_severity.get("high", 0) == 0
     assert metrics.checks.by_source.get("leak", 0) == 0
+    assert metrics.scenes.transition_count > 0 or any(
+        event.get("type") == "action_outcome"
+        and (event.get("effects") or {}).get("accepted")
+        and (event.get("effects") or {}).get("advancement")
+        for event in live_events
+    )
+
+    encounter_policies = {
+        encounter.id: encounter
+        for encounter in StateStore.load(load_project(project_path).paths.state).encounters
+    }
+    encounter_turns: dict[str, list[int]] = {}
+    for event in live_events:
+        if event.get("type") != "encounter":
+            continue
+        encounter_id = (event.get("effects") or {}).get("encounter_id")
+        encounter_turns.setdefault(encounter_id, []).append(event.get("turn"))
+    assert encounter_turns
+    for encounter_id, turns in encounter_turns.items():
+        policy = encounter_policies[encounter_id]
+        if policy.recurrence == "once":
+            assert len(turns) == 1
+        elif policy.recurrence == "cooldown":
+            min_gap = policy.cooldown_turns or 1
+            assert all(right - left > min_gap for left, right in zip(turns, turns[1:]))
+        else:
+            assert all(right - left > 1 for left, right in zip(turns, turns[1:]))
     for character in metrics.emotions:
         for emotion in character.emotions:
             assert (
@@ -282,12 +332,7 @@ def _run_journey(tmp_path: Path, name: str):
     return final_replay, _artifact_fingerprint(project_path)
 
 
-def test_100_turn_mist_station_adr_0010_gate(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        driver_module,
-        "run_narrate_phase",
-        _make_narrate_backfill(driver_module.run_narrate_phase),
-    )
+def test_100_turn_mist_station_adr_0010_gate(tmp_path):
     replay_a, artifacts_a = _run_journey(tmp_path, "journey-a")
     replay_b, artifacts_b = _run_journey(tmp_path, "journey-b")
 

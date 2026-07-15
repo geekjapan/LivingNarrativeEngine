@@ -1,5 +1,6 @@
 import pytest
 
+from living_narrative.agents.conflict_resolver import resolve_conflicts
 from living_narrative.agents.models import (
     CharacterAgentOutput,
     CharacterQuestUpdateCandidate,
@@ -11,9 +12,11 @@ from living_narrative.agents.models import (
 from living_narrative.agents.state_manager import build_state_diff
 from living_narrative.narration.models import NarratorQuestUpdateCandidate, ThreadUpdateCandidate
 from living_narrative.pipeline.context import TurnContext
+from living_narrative.pipeline.models import ActionCandidate
 from living_narrative.random.engine import RandomEngine
 from living_narrative.state.diff import apply_state_diff
 from living_narrative.state.models import (
+    AffordanceOutcome,
     CharacterState,
     Event,
     FactionState,
@@ -23,6 +26,7 @@ from living_narrative.state.models import (
     Quest,
     ReaderStateEntry,
     RelationshipState,
+    SceneAffordance,
     SceneState,
     SceneStatus,
     ThreatTrack,
@@ -1432,6 +1436,180 @@ def test_multiple_open_thread_updates_get_distinct_ids():
 
     thread_changes = [c for c in result.diff.changes if c.target == "threads"]
     assert [c.value["id"] for c in thread_changes] == ["thread_000101", "thread_000102"]
+
+
+def _authored_action_event(context, outcome, *, affordance_id="affordance_001"):
+    context.bundle.scenes[0].active_characters = ["char_001"]
+    context.bundle.scenes[0].affordances = [
+        SceneAffordance(
+            id=affordance_id,
+            text="作者定義の行動",
+            visibility=Visibility.READER,
+            outcomes=outcome if isinstance(outcome, list) else [outcome],
+        )
+    ]
+    allocator = _ids()
+    events = resolve_conflicts(
+        context,
+        [],
+        [
+            ActionCandidate(
+                character_id="char_001",
+                action_text="行動する",
+                intent={"affordance_id": affordance_id},
+            )
+        ],
+        allocator,
+        lambda roll: None,
+    )
+    return events, allocator
+
+
+def test_authored_thread_open_sets_runtime_turn_provenance_and_wins_over_narrator():
+    context = _context()
+    outcome = AffordanceOutcome(
+        target="threads",
+        op="add",
+        value={
+            "id": "thread_000101",
+            "description": "公開された謎",
+            "status": "open",
+            "related_event_ids": [],
+            "notes": [],
+        },
+        visibility=Visibility.READER,
+    )
+    events, allocator = _authored_action_event(context, outcome)
+
+    result = build_state_diff(
+        context,
+        events,
+        [],
+        allocator,
+        thread_updates=[ThreadUpdateCandidate(action="open", description="Narrator duplicate")],
+    )
+
+    change = next(c for c in result.diff.changes if c.target == "threads" and c.op == "add")
+    assert change.value["opened_turn"] == context.turn
+    assert change.source_event == events[-1].id
+    authored_event = next(e for e in result.synthetic_events if e.type == "thread_update")
+    assert authored_event.cause == "authored:affordance_001"
+    assert authored_event.visibility == Visibility.READER
+    assert any("conflicts with authored thread" in item.reason for item in result.rejected_changes)
+    applied = apply_state_diff(context.bundle, result.diff).bundle
+    assert applied.unresolved_threads[0].description == "公開された謎"
+    assert applied.unresolved_threads[0].opened_turn == context.turn
+
+
+def test_authored_thread_resolve_wins_over_narrator_conflict():
+    thread = UnresolvedThread(
+        id="thread_000101", description="公開された謎", status="open", opened_turn=2
+    )
+    context = _context(unresolved_threads=[thread])
+    outcome = AffordanceOutcome(
+        target="threads",
+        op="set",
+        path="status",
+        id="thread_000101",
+        value="resolved",
+        visibility=Visibility.READER,
+    )
+    events, allocator = _authored_action_event(context, outcome)
+
+    result = build_state_diff(
+        context,
+        events,
+        [],
+        allocator,
+        thread_updates=[ThreadUpdateCandidate(action="resolve", thread_id="thread_000101")],
+    )
+
+    status_change = next(
+        c for c in result.diff.changes if c.target == "threads" and c.path == "status"
+    )
+    assert status_change.value == "resolved"
+    assert status_change.source_event == events[-1].id
+    authored_event = next(e for e in result.synthetic_events if e.type == "thread_update")
+    assert authored_event.effects == {
+        "action": "resolve",
+        "thread_id": "thread_000101",
+        "authored": True,
+    }
+    assert any("conflicts with authored thread" in item.reason for item in result.rejected_changes)
+    assert apply_state_diff(context.bundle, result.diff).bundle.unresolved_threads[0].status == (
+        "resolved"
+    )
+
+
+def test_authored_thread_cannot_advance_after_resolve_in_same_outcome():
+    thread = UnresolvedThread(
+        id="thread_000101", description="公開された謎", status="open", opened_turn=2
+    )
+    context = _context(unresolved_threads=[thread])
+    outcomes = [
+        AffordanceOutcome(
+            target="threads",
+            op="set",
+            path="status",
+            id=thread.id,
+            value=value,
+            visibility=Visibility.READER,
+        )
+        for value in ("resolved", "advanced")
+    ]
+    events, allocator = _authored_action_event(context, outcomes)
+
+    result = build_state_diff(context, events, [], allocator)
+
+    status_changes = [
+        change
+        for change in result.diff.changes
+        if change.target == "threads" and change.path == "status"
+    ]
+    assert [change.value for change in status_changes] == ["resolved"]
+    assert any(item.reason == "resolved_thread_is_terminal" for item in result.rejected_changes)
+
+
+def test_authored_thread_cannot_reopen_resolved_state():
+    thread = UnresolvedThread(
+        id="thread_000101", description="回収済み", status="resolved", opened_turn=2
+    )
+    context = _context(unresolved_threads=[thread])
+    outcome = AffordanceOutcome(
+        target="threads",
+        op="set",
+        path="status",
+        id=thread.id,
+        value="advanced",
+        visibility=Visibility.READER,
+    )
+    events, allocator = _authored_action_event(context, outcome)
+
+    result = build_state_diff(context, events, [], allocator)
+
+    assert [change for change in result.diff.changes if change.target == "threads"] == []
+    assert any(item.reason == "resolved_thread_is_terminal" for item in result.rejected_changes)
+
+
+def test_reader_invisible_authored_thread_outcome_is_rejected():
+    outcome = AffordanceOutcome.model_construct(
+        target="threads",
+        op="add",
+        value={
+            "id": "thread_000101",
+            "description": "GM secret thread",
+            "status": "open",
+        },
+        visibility=Visibility.GM_ONLY,
+    )
+
+    with pytest.raises(ValueError, match="reader-safe visibility"):
+        SceneAffordance(
+            id="affordance_001",
+            text="secret",
+            visibility=Visibility.GM_ONLY,
+            outcomes=[outcome],
+        )
 
 
 # --- Issue 015: memory_summary_update -----------------------------------------------------

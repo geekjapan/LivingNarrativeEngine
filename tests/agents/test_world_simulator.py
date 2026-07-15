@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from living_narrative.agents.models import BackgroundEventCandidate
@@ -77,6 +78,27 @@ def _context(
             timeline=timeline or [],
         ),
         random_engine=RandomEngine(seed),
+    )
+
+
+def _write_encounter_event(runs_dir: Path, turn: int, event_id: str, encounter_id: str) -> None:
+    turn_dir = runs_dir / f"turn_{turn:04d}"
+    turn_dir.mkdir(parents=True, exist_ok=True)
+    (turn_dir / "events.yaml").write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "id": event_id,
+                    "turn": turn,
+                    "type": "encounter",
+                    "text": encounter_id,
+                    "visibility": "reader",
+                    "effects": {"encounter_id": encounter_id},
+                }
+            ],
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
     )
 
 
@@ -165,6 +187,225 @@ def test_threat_condition_requires_pressure_and_stage_thresholds():
 
     assert any(event.type == "encounter" for event in events)
     assert context.random_engine.draws_consumed == 3
+
+
+def test_legacy_encounter_defaults_to_pacing_window_cooldown(tmp_path):
+    encounter = EncounterEntry(id="encounter_001", text="再訪", weight=1, visibility="reader")
+    _write_encounter_event(tmp_path, 1, "event_0001", encounter.id)
+    timeline = [TimelineEntry(turn=1, event_ids=["event_0001"])]
+
+    within_window = simulate_world(
+        _context(
+            turn=4,
+            runs_dir=tmp_path,
+            timeline=timeline,
+            pacing=PacingConfig(stall_window=3),
+            encounters=[encounter],
+        ),
+        [],
+    )
+    after_window = simulate_world(
+        _context(
+            turn=5,
+            runs_dir=tmp_path,
+            timeline=timeline,
+            pacing=PacingConfig(stall_window=3),
+            encounters=[encounter],
+        ),
+        [],
+    )
+
+    assert all(event.type != "encounter" for event in within_window)
+    assert any(event.type == "encounter" for event in after_window)
+
+
+def test_explicit_cooldown_blocks_boundary_then_allows_next_turn(tmp_path):
+    encounter = EncounterEntry.model_validate(
+        {
+            "id": "encounter_001",
+            "text": "再訪",
+            "weight": 1,
+            "visibility": "reader",
+            "recurrence": "cooldown",
+            "cooldown_turns": 2,
+        }
+    )
+    _write_encounter_event(tmp_path, 1, "event_0001", encounter.id)
+    timeline = [TimelineEntry(turn=1, event_ids=["event_0001"])]
+
+    at_boundary = simulate_world(
+        _context(turn=3, runs_dir=tmp_path, timeline=timeline, encounters=[encounter]), []
+    )
+    after_boundary = simulate_world(
+        _context(turn=4, runs_dir=tmp_path, timeline=timeline, encounters=[encounter]), []
+    )
+
+    assert all(event.type != "encounter" for event in at_boundary)
+    assert any(event.type == "encounter" for event in after_boundary)
+
+
+def test_once_encounter_never_repeats_from_event_history(tmp_path):
+    encounter = EncounterEntry.model_validate(
+        {
+            "id": "encounter_001",
+            "text": "一度だけ",
+            "weight": 1,
+            "visibility": "reader",
+            "recurrence": "once",
+        }
+    )
+    _write_encounter_event(tmp_path, 1, "event_0001", encounter.id)
+    events = simulate_world(
+        _context(
+            turn=10,
+            runs_dir=tmp_path,
+            timeline=[TimelineEntry(turn=1, event_ids=["event_0001"])],
+            encounters=[encounter],
+        ),
+        [],
+    )
+
+    assert all(event.type != "encounter" for event in events)
+
+
+def test_unlimited_encounter_never_repeats_on_consecutive_turn(tmp_path):
+    encounter = EncounterEntry.model_validate(
+        {
+            "id": "encounter_001",
+            "text": "連続しない",
+            "weight": 1,
+            "visibility": "reader",
+            "recurrence": "unlimited",
+        }
+    )
+    _write_encounter_event(tmp_path, 1, "event_0001", encounter.id)
+    events = simulate_world(
+        _context(
+            turn=2,
+            runs_dir=tmp_path,
+            timeline=[TimelineEntry(turn=1, event_ids=["event_0001"])],
+            encounters=[encounter],
+        ),
+        [],
+    )
+
+    assert all(event.type != "encounter" for event in events)
+
+
+def test_unlimited_encounter_uses_alternative_when_previous_id_is_blocked(tmp_path):
+    repeated = EncounterEntry.model_validate(
+        {
+            "id": "encounter_001",
+            "text": "繰り返し候補",
+            "weight": 1,
+            "visibility": "reader",
+            "recurrence": "unlimited",
+        }
+    )
+    alternative = EncounterEntry.model_validate(
+        {
+            "id": "encounter_002",
+            "text": "代替候補",
+            "weight": 1,
+            "visibility": "reader",
+            "recurrence": "unlimited",
+        }
+    )
+    _write_encounter_event(tmp_path, 1, "event_0001", repeated.id)
+    events = simulate_world(
+        _context(
+            turn=2,
+            runs_dir=tmp_path,
+            timeline=[TimelineEntry(turn=1, event_ids=["event_0001"])],
+            encounters=[repeated, alternative],
+        ),
+        [],
+    )
+
+    encounter_event = next(event for event in events if event.type == "encounter")
+    assert encounter_event.effects["encounter_id"] == alternative.id
+
+
+def test_recurrence_does_not_bypass_scene_or_threat_conditions(tmp_path):
+    threat = ThreatTrack(id="threat_001", name="追跡者", pressure=0, pressure_per_turn="1d1")
+    encounter = EncounterEntry.model_validate(
+        {
+            "id": "encounter_001",
+            "text": "条件付き",
+            "weight": 1,
+            "visibility": "reader",
+            "recurrence": "unlimited",
+            "threat": {"threat_id": "threat_001", "min_pressure": 1},
+        }
+    )
+    _write_encounter_event(tmp_path, 1, "event_0001", encounter.id)
+    events = simulate_world(
+        _context(
+            turn=4,
+            runs_dir=tmp_path,
+            timeline=[TimelineEntry(turn=1, event_ids=["event_0001"])],
+            threats=[threat],
+            encounters=[encounter],
+        ),
+        [],
+    )
+
+    assert all(event.type != "encounter" for event in events)
+
+
+def test_encounter_recurrence_is_deterministic_for_same_seed_and_history(tmp_path):
+    encounters = [
+        EncounterEntry.model_validate(
+            {
+                "id": "encounter_001",
+                "text": "候補一",
+                "weight": 1,
+                "visibility": "reader",
+                "recurrence": "cooldown",
+                "cooldown_turns": 1,
+            }
+        ),
+        EncounterEntry.model_validate(
+            {
+                "id": "encounter_002",
+                "text": "候補二",
+                "weight": 2,
+                "visibility": "reader",
+                "recurrence": "unlimited",
+            }
+        ),
+    ]
+    timeline = [TimelineEntry(turn=1, event_ids=["event_0001"])]
+    first_runs = tmp_path / "first"
+    second_runs = tmp_path / "second"
+    _write_encounter_event(first_runs, 1, "event_0001", encounters[0].id)
+    _write_encounter_event(second_runs, 1, "event_0001", encounters[0].id)
+
+    first = simulate_world(
+        _context(
+            "same-history-seed",
+            turn=3,
+            runs_dir=first_runs,
+            timeline=timeline,
+            encounters=encounters,
+        ),
+        [],
+    )
+    second = simulate_world(
+        _context(
+            "same-history-seed",
+            turn=3,
+            runs_dir=second_runs,
+            timeline=timeline,
+            encounters=encounters,
+        ),
+        [],
+    )
+
+    first_encounter = next(event for event in first if event.type == "encounter")
+    second_encounter = next(event for event in second if event.type == "encounter")
+    assert first_encounter == second_encounter
+    assert first_encounter.effects["_roll"] == second_encounter.effects["_roll"]
 
 
 def test_background_event_visibility_is_required():

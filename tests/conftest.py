@@ -18,6 +18,7 @@ def _build_project(
     character_status: str = "alive",
     scene_status: str = "active",
     scene_summary: str = "",
+    pacing_terminal: bool = False,
     threats: list[dict[str, Any]] | None = None,
     emotions: dict[str, int] | None = None,
     emotions_baseline: dict[str, int] | None = None,
@@ -56,6 +57,7 @@ def _build_project(
         "mood": "静寂",
         "status": scene_status,
         "summary": scene_summary,
+        "pacing_terminal": pacing_terminal,
         "reader_visible_facts": reader_visible_facts or [],
         "hidden_facts": hidden_facts or [],
     }

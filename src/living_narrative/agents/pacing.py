@@ -26,6 +26,11 @@ def is_advancement_event(event: Event) -> bool:
         return True
     if event.type == "thread_update":
         return event.effects.get("action") in _THREAD_ADVANCEMENT_ACTIONS
+    if event.type == "action_outcome":
+        return bool(event.effects.get("accepted") and event.effects.get("advancement"))
+    if event.type == "combat":
+        combat = event.effects.get("combat")
+        return isinstance(combat, dict) and combat.get("result") == "success"
     return False
 
 

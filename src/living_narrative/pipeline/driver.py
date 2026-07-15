@@ -79,7 +79,11 @@ def _active_scene_mood(bundle) -> str:
 
 
 def _format_issues(issues) -> str:
-    return "; ".join(f"{issue.path}[{issue.field}]: {issue.message}" for issue in issues)
+    return "; ".join(
+        f"{getattr(issue, 'path', getattr(issue, 'file_path', '?'))}"
+        f"[{getattr(issue, 'field', getattr(issue, 'field_path', '?'))}]: {issue.message}"
+        for issue in issues
+    )
 
 
 @contextmanager

@@ -21,3 +21,75 @@ hidden_facts:
     known_by:
       - char_002
 status: active
+affordances:
+  - id: affordance_001
+    text: 階段へ進み、足音の正体を確かめる
+    visibility: scene
+    known_by: [char_001, char_002]
+    actor_ids: [char_001, char_002]
+    prerequisites:
+      required_fact_ids: [fact_001]
+      quest_statuses: {}
+      thread_statuses: {}
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    fallback_only: true
+    outcomes:
+      - target: scene
+        op: set
+        path: status
+        id: scene_001
+        value: ended
+        visibility: reader
+      - target: scene
+        op: set
+        path: status
+        id: scene_002
+        value: active
+        visibility: reader
+      - target: scene
+        op: set
+        path: active_characters
+        id: scene_002
+        value: [char_001, char_002]
+        visibility: scene
+      - target: canon
+        op: add
+        path: ""
+        value:
+          id: canon_003
+          text: 二人は地下ホームの階段へ進み、追跡者の気配を確かめた。
+          established_turn: 0
+          source_event: null
+        visibility: canon
+      - target: reader_state
+        op: add
+        path: ""
+        value:
+          id: reader_state_001
+          text: 二人は足音を追って、駅の奥へ進んだ。
+          established_turn: 0
+          source_event: null
+          disclosed_turn: 0
+        visibility: reader
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: advanced
+        visibility: reader
+      - target: threads
+        op: add
+        path: ""
+        value:
+          id: thread_001
+          description: 地下ホームに響く足音の正体
+          status: open
+          related_event_ids: []
+          notes: []
+          opened_turn: 0
+        visibility: reader
+fallback_affordance_ids: [affordance_001]
+pacing_terminal: false

@@ -18,3 +18,56 @@ hidden_facts:
     visibility: character
     known_by: [char_003]
 status: active
+affordances:
+  - id: affordance_001
+    text: 認証カードで閉鎖区画を開き、予備循環系へ向かう
+    visibility: scene
+    known_by: [char_001, char_002, char_003]
+    actor_ids: [char_001, char_003]
+    prerequisites:
+      required_fact_ids: [fact_002]
+      quest_statuses: {}
+      thread_statuses: {}
+    success_chance: 100
+    recurrence: once
+    used_event_ids: []
+    exclusive: true
+    fallback_only: true
+    outcomes:
+      - target: scene
+        op: set
+        path: status
+        id: scene_001
+        value: ended
+        visibility: reader
+      - target: scene
+        op: set
+        path: status
+        id: scene_002
+        value: active
+        visibility: reader
+      - target: scene
+        op: set
+        path: active_characters
+        id: scene_002
+        value: [char_001, char_002, char_003]
+        visibility: scene
+      - target: quests
+        op: set
+        path: status
+        id: quest_001
+        value: advanced
+        visibility: reader
+      - target: threads
+        op: add
+        path: ""
+        value:
+          id: thread_001
+          description: 十八時間後の救難音声は誰が作ったのか
+          status: open
+          related_event_ids: []
+          notes: []
+          opened_turn: 0
+        visibility: reader
+fallback_affordance_ids: [affordance_001]
+pacing_terminal: false

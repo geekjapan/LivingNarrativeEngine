@@ -60,6 +60,22 @@ def test_orbital_echo_references_are_consistent(tmp_path):
     assert {transition["end"], transition["start"]} <= scene_ids
 
 
+def test_orbital_echo_has_explicit_encounter_and_pacing_contracts(tmp_path):
+    _, bundle = _load_template(tmp_path)
+
+    assert all(scene.pacing_terminal or scene.fallback_affordance_ids for scene in bundle.scenes)
+    for scene in bundle.scenes:
+        affordances = {affordance.id: affordance for affordance in scene.affordances}
+        for affordance_id in scene.fallback_affordance_ids:
+            assert affordances[affordance_id].fallback_only
+    assert {encounter.recurrence for encounter in bundle.encounters} == {"once", "cooldown"}
+    assert all(
+        encounter.cooldown_turns == 3
+        for encounter in bundle.encounters
+        if encounter.recurrence == "cooldown"
+    )
+
+
 def test_orbital_echo_secrets_are_meaningful_leak_targets(tmp_path):
     _, bundle = _load_template(tmp_path)
     context = _LeakContext(bundle)
