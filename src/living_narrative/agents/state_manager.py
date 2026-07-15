@@ -808,7 +808,12 @@ def _action_outcome_changes(
     # prompt-visibility (e.g. a gm_only fallback affordance) must not block it.
     if not is_fallback and not affordance_visible_to_character(affordance, character_id):
         return [], [_outcome_rejection(event, "not_visible")], []
-    if not affordance_prerequisites_met(context.bundle, affordance.prerequisites):
+    if not affordance_prerequisites_met(
+        context.bundle,
+        affordance.prerequisites,
+        quest_status_overrides=projected_quest_statuses,
+        thread_status_overrides=projected_thread_statuses,
+    ):
         return [], [_outcome_rejection(event, "prerequisites_unmet")], []
     if payload.get("character_id") not in (affordance.actor_ids or [payload.get("character_id")]):
         return [], [_outcome_rejection(event, "actor_not_allowed")], []

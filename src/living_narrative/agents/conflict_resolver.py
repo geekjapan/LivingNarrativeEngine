@@ -603,8 +603,11 @@ def _intent_rejected_event(
 
 
 def _is_successful_outcome_event(event: Event) -> bool:
+    """Whether this turn already produced real narrative progress -- used to decide if the
+    stall fallback should fire. An accepted but non-advancing action_outcome (e.g. a minor
+    emotion/fact change) must not suppress fallback on an otherwise-stalled turn."""
     if event.type == "action_outcome":
-        return bool(event.effects.get("accepted"))
+        return bool(event.effects.get("accepted")) and bool(event.effects.get("advancement"))
     combat = event.effects.get("combat")
     return event.type == "combat" and isinstance(combat, dict) and combat.get("result") == "success"
 
