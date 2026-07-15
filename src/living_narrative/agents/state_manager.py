@@ -15,14 +15,25 @@ from living_narrative.pipeline.context import TurnContext
 from living_narrative.pipeline.models import BuildDiffOutput, RejectedChange
 from living_narrative.state.diff import StateDiff, StateDiffChange
 from living_narrative.state.models import (
+    CanonEntry,
     CharacterId,
     CharacterStatus,
     Event,
     InventoryItem,
+    Quest,
+    ReaderStateEntry,
     SceneStatus,
     TimelineEntry,
+    UnresolvedThread,
     Visibility,
 )
+
+_ROOT_ENTRY_MODELS: dict[str, type] = {
+    "threads": UnresolvedThread,
+    "quests": Quest,
+    "canon": CanonEntry,
+    "reader_state": ReaderStateEntry,
+}
 
 # canon_edit/hidden_truth_edit (spec.md Requirement "Type別ルーティング"): a state diff target
 # per type, keyed by the collection this intervention type adds to.
@@ -1010,10 +1021,14 @@ def _authored_outcome_rejection_reason(context: TurnContext, change: StateDiffCh
             "reader_state": context.bundle.reader_state,
         }[change.target]
         if change.op == "add":
-            if isinstance(change.value, dict) and any(
-                getattr(item, "id", None) == change.value.get("id") for item in collection
-            ):
+            if not isinstance(change.value, dict):
+                return "invalid_root_add_payload"
+            if any(getattr(item, "id", None) == change.value.get("id") for item in collection):
                 return "duplicate_target"
+            try:
+                _ROOT_ENTRY_MODELS[change.target].model_validate(change.value)
+            except Exception:
+                return "invalid_root_add_payload"
             return None
         if change.op == "remove":
             if not _remove_target_present(collection, change):

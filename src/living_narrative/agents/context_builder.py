@@ -62,6 +62,8 @@ def build_character_context(
         for affordance in getattr(scene, "affordances", []):
             if getattr(affordance, "fallback_only", False):
                 continue
+            if affordance.recurrence == "once" and affordance.used_event_ids:
+                continue
             if not _affordance_visible_to_character(affordance, character_id):
                 continue
             text = getattr(affordance, "text", None) or getattr(affordance, "display_text", None)
