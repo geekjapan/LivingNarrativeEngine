@@ -1652,3 +1652,109 @@ def test_none_memory_summary_update_is_a_no_op():
     result = build_state_diff(_context(), [], [], _ids(), memory_summary_update=None)
 
     assert [c for c in result.diff.changes if c.target == "memory"] == []
+
+
+def test_action_outcome_prerequisites_see_earlier_same_turn_outcome_projection():
+    # affordance_001 advances thread_001; affordance_002 requires thread_001 == "advanced"
+    # as a prerequisite. Both fire in the same turn (char_001 then char_002), so
+    # affordance_002's prerequisite must be checked against the turn's projected status,
+    # not only the turn's starting bundle (where thread_001 is still "open").
+    from living_narrative.state.models import AffordancePrerequisites
+
+    advance_thread = SceneAffordance(
+        id="affordance_001",
+        text="手がかりを掴む",
+        visibility=Visibility.READER,
+        outcomes=[
+            AffordanceOutcome(
+                target="threads",
+                op="set",
+                path="status",
+                id="thread_001",
+                value="advanced",
+                visibility=Visibility.READER,
+            )
+        ],
+    )
+    gated = SceneAffordance(
+        id="affordance_002",
+        text="手がかりを元に扉を開ける",
+        visibility=Visibility.READER,
+        prerequisites=AffordancePrerequisites(thread_statuses={"thread_001": "advanced"}),
+        outcomes=[
+            AffordanceOutcome(
+                target="scene",
+                op="set",
+                path="status",
+                id="scene_001",
+                value="ended",
+                visibility=Visibility.READER,
+            )
+        ],
+    )
+    context = _context(
+        characters=[
+            CharacterState(id="char_001", name="A", role="r"),
+            CharacterState(id="char_002", name="B", role="r"),
+        ],
+        scenes=[
+            SceneState(
+                id="scene_001",
+                location="loc",
+                time="now",
+                active_characters=["char_001", "char_002"],
+                affordances=[advance_thread, gated],
+            )
+        ],
+        unresolved_threads=[UnresolvedThread(id="thread_001", description="謎", status="open")],
+    )
+    # Construct the two action_outcome events directly (as conflict_resolver would have
+    # authored them across the turn) so this test isolates build_state_diff's
+    # re-validation gate rather than conflict_resolver's own (separate) prerequisite check.
+    allocator = _ids()
+    outcome_1 = Event(
+        id=allocator(),
+        turn=1,
+        type="action_outcome",
+        cause="action:char_001:affordance_001",
+        text=advance_thread.text,
+        visibility=Visibility.READER,
+        effects={
+            "action_outcome": {
+                "affordance_id": "affordance_001",
+                "character_id": "char_001",
+                "outcomes": [item.model_dump(mode="json") for item in advance_thread.outcomes],
+                "consumption": {"recurrence": "once", "exclusive": False, "fallback": False},
+            },
+            "accepted": True,
+            "advancement": True,
+        },
+    )
+    outcome_2 = Event(
+        id=allocator(),
+        turn=1,
+        type="action_outcome",
+        cause="action:char_002:affordance_002",
+        text=gated.text,
+        visibility=Visibility.READER,
+        effects={
+            "action_outcome": {
+                "affordance_id": "affordance_002",
+                "character_id": "char_002",
+                "outcomes": [item.model_dump(mode="json") for item in gated.outcomes],
+                "consumption": {"recurrence": "once", "exclusive": False, "fallback": False},
+            },
+            "accepted": True,
+            "advancement": True,
+        },
+    )
+
+    result = build_state_diff(context, [outcome_1, outcome_2], [], allocator)
+
+    assert result.rejected_changes == []
+    scene_status = next(
+        change
+        for change in result.diff.changes
+        if change.target == "scene" and change.path == "status"
+    )
+    assert scene_status.value == "ended"

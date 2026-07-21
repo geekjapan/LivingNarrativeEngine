@@ -271,6 +271,45 @@ def test_accepted_action_outcome_prevents_stall_fallback_double_fire(tmp_path):
     assert events[-1].effects["accepted"] is True
 
 
+def test_accepted_non_advancing_action_outcome_does_not_suppress_stall_fallback(tmp_path):
+    # accepted=True but effects.advancement=False (a stat delta, not a scene/thread/quest
+    # transition) must not be treated as a "successful outcome" for stall-fallback suppression.
+    non_advancing = SceneAffordance(
+        id="affordance_001",
+        text="肩をすくめる",
+        visibility=Visibility.READER,
+        outcomes=[
+            AffordanceOutcome(
+                target="character",
+                op="set",
+                path="stats",
+                id="char_001",
+                value={"tension": 1},
+                visibility=Visibility.READER,
+            )
+        ],
+    )
+    fallback = _advancing_affordance("affordance_002", fallback_only=True)
+    context = _stall_context(tmp_path, fallback=[non_advancing, fallback])
+    action = ActionCandidate(
+        character_id="char_001",
+        action_text="肩をすくめる",
+        intent={"affordance_id": non_advancing.id},
+    )
+
+    events = resolve_conflicts(context, [], [action], _ids(), lambda roll: None)
+
+    assert events[1].effects["accepted"] is True
+    assert events[1].effects["advancement"] is False
+    assert [event.type for event in events] == [
+        "character_action",
+        "action_outcome",
+        "character_action",
+        "action_outcome",
+    ]
+    assert events[-1].effects["action_outcome"]["affordance_id"] == fallback.id
+
+
 def test_no_effect_intent_is_rejected_and_does_not_suppress_fallback(tmp_path):
     no_effect = _advancing_affordance("affordance_001")
     no_effect.outcomes[0].value = "active"
