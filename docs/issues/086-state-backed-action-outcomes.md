@@ -238,3 +238,9 @@ ADR-0010の機械SLOとR1–R8をすべてPASSすることとする。
 - evidence: `sandbox/20260722-issue086-fallback-fix/benchmark.json`、
   `docs/evaluations/2026-07-22-20260722-issue086-fallback-fix-benchmark.md`、
   `docs/evaluations/2026-07-22-20260722-issue086-fallback-fix-human-rubric.md`
+
+## Issue 087 R1 Follow-up
+
+- narrator由来threadの25ターン上限、structured output再実行、authored Action Outcomeのnarration入力を
+  regression test付きで実装した。
+- Issue 086のstatusは、実LLM再実行と人手rubricが未実施のため`in_progress`を維持する。

@@ -1,7 +1,7 @@
 ---
 id: 087
 title: T9再実行で残ったthread寿命・narrator fallback・反復を解消する
-status: proposed
+status: in_progress
 created: 2026-07-22
 type: implementation
 priority: P1
@@ -47,3 +47,10 @@ Issue 086のfallback開始条件修正後、T9を`20260722-issue086-fallback-fix
 - `src/living_narrative/narration/`
 - `tests/agents/`
 - `tests/narration/`
+
+## R1実装
+
+- narrator由来のthreadは25ターン経過時に未更新ならresolveし、作者定義threadには適用しない。
+- narratorのstructured output失敗時はrendererへ落とす前に同じreader-safe入力で1回再実行する。
+- mist_stationのauthored fallback actionをreader-visibleにし、Action Outcomeをnarrationへ渡す。
+- 実LLM 30ターンrunと人手rubric R5はR4のhuman-only gateで実施する。
