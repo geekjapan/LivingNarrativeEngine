@@ -51,6 +51,7 @@ Issue 086のfallback開始条件修正後、T9を`20260722-issue086-fallback-fix
 ## R1実装
 
 - narrator由来のthreadは25ターン経過時に未更新ならresolveし、作者定義threadには適用しない。
+- thread originはID形式ではなく、append-onlyなopening `thread_update` Eventの`cause`から判定する。
 - narratorのstructured output失敗時はrendererへ落とす前に同じreader-safe入力で1回再実行する。
 - mist_stationのauthored fallback actionをreader-visibleにし、Action Outcomeをnarrationへ渡す。
 - 実LLM 30ターンrunと人手rubric R5はR4のhuman-only gateで実施する。

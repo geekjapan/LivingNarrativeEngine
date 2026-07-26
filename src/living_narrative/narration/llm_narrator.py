@@ -127,9 +127,7 @@ def _close_overdue_emergent_threads(
     overdue = [
         ThreadUpdateCandidate(action="resolve", thread_id=thread.id)
         for thread in context.open_threads
-        if thread.id.startswith("thread_")
-        and len(thread.id.removeprefix("thread_")) == 6
-        and thread.id.removeprefix("thread_").isdigit()
+        if thread.origin == "narrator"
         and thread.opened_turn is not None
         and context.turn - thread.opened_turn >= MAX_EMERGENT_THREAD_OPEN_TURNS
         and thread.id not in resolved_ids

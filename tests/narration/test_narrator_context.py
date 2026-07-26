@@ -182,12 +182,25 @@ def test_open_threads_are_supplied_and_resolved_ones_are_excluded(tmp_path, buil
             },
         ],
     )
+    opening_event = Event(
+        id="event_0001",
+        turn=1,
+        type="thread_update",
+        cause="authored:affordance_001",
+        text="お守りの由来は謎のままだ。",
+        visibility=Visibility.READER,
+        effects={"action": "open", "thread_id": "thread_000101", "authored": True},
+    )
+    context = _context(project_path, [])
+    _write_turn_events(context.paths, 1, [opening_event.model_dump(mode="json")])
+    _write_timeline(project_path, [{"turn": 1, "event_ids": [opening_event.id]}])
 
     narrator_context = build_narrator_context(_context(project_path, []), [])
 
     assert [thread.id for thread in narrator_context.open_threads] == ["thread_000101"]
     assert narrator_context.open_threads[0].description == "お守りの由来は謎のままだ。"
     assert narrator_context.open_threads[0].opened_turn == 1
+    assert narrator_context.open_threads[0].origin == "authored"
 
 
 def test_no_unresolved_threads_yields_empty_open_threads(tmp_path, build_project):

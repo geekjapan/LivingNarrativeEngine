@@ -249,8 +249,12 @@ def test_overdue_emergent_thread_is_resolved_when_narrator_only_advances_it():
     context = _context()
     context.turn = 26
     context.open_threads = [
-        OpenThreadInfo(id="thread_000101", description="語り手が開いた糸", opened_turn=1),
-        OpenThreadInfo(id="thread_001", description="作者が開いた糸", opened_turn=1),
+        OpenThreadInfo(
+            id="thread_000101",
+            description="語り手が開いた糸",
+            opened_turn=1,
+            origin="narrator",
+        ),
     ]
 
     result, _record = run_narrate_phase(
@@ -270,6 +274,31 @@ def test_overdue_emergent_thread_is_resolved_when_narrator_only_advances_it():
         },
         {"action": "resolve", "thread_id": "thread_000101"},
     ]
+
+
+def test_overdue_authored_thread_with_emergent_shaped_id_is_not_resolved():
+    gateway = FakeGateway(result=LLMNarratorOutput(prose="物語は先へ進んだ。"))
+    context = _context()
+    context.turn = 26
+    context.open_threads = [
+        OpenThreadInfo(
+            id="thread_000101",
+            description="作者が開いた糸",
+            opened_turn=1,
+            origin="authored",
+        )
+    ]
+
+    result, _record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=context,
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert result.thread_updates == []
 
 
 def test_llm_narrator_payload_always_includes_current_memory_summary():

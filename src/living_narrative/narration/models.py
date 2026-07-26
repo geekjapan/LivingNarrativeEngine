@@ -37,6 +37,7 @@ class OpenThreadInfo(BaseModel):
     id: str
     description: str
     opened_turn: int | None = None
+    origin: Literal["authored", "narrator"] | None = None
 
 
 class NarratorContext(BaseModel):
