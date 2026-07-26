@@ -205,3 +205,36 @@ ADR-0010の機械SLOとR1–R8をすべてPASSすることとする。
 - narrator: 30 calls、LLM 29 turns、turn 20でstructured output不正によるrenderer fallback 1件
 - evidence: `sandbox/20260715-issue086-binding-baseline/metrics.json`、
   `docs/evaluations/2026-07-15-20260715-issue086-binding-baseline.md`
+
+## Post-implementation Acceptance Run
+
+- run ID: `20260721-issue086-post-implementation`
+- model / binding: `cx/gpt-5.6-luna-low`を`character_default`と`narrator`へ明示bind
+- seed: `issue-085-mist-station-v1`
+- result: `FAIL`（30/30 applied、15→16 resume成功、narrator 30 calls / fallback 0）
+- machine evidence: stall最大5（上限3）、thread opened/advanced/resolved=`1/11/0`、
+  max open turns=29、encounter 7、scene transition 1、replay match 1.0
+- human rubric: R3、R5がNO
+- diagnosis: scene 1のauthored fallbackはnarratorのemergent thread advanceとthreat stageでstallが
+  解除されるため発火せず、`thread_001`を作らないままscene 2へ遷移した。scene 2のfallback列は
+  `thread_001: open`を前提とするため全候補が不成立となり、作者定義thread chainを開始できない。
+- evidence: `sandbox/20260721-issue086-post-implementation/benchmark.json`、
+  `docs/evaluations/2026-07-22-20260721-issue086-post-implementation-benchmark.md`、
+  `docs/evaluations/2026-07-22-20260721-issue086-post-implementation-human-rubric.md`
+
+## Fallback Fix Acceptance Rerun
+
+- fix: authored fallback判定時だけnarrator由来`thread_update`をstall進展から除外。一般のpacing
+  checkerとpressure boostは従来のsemanticsを維持する。
+- regression: `test_narrator_thread_advances_do_not_suppress_authored_fallback`
+- run ID: `20260722-issue086-fallback-fix`
+- model / binding / seed: 前回と同一
+- result: `FAIL`（30/30 applied、15→16 resume成功、replay match 1.0）
+- improved: stall最大`5 → 1`、authored action outcomesがturn 7/17/21/25/29に発火、
+  thread resolved ratio `0.0 → 0.667`
+- remaining machine failures: narratorがturn 1で開いたemergent threadが未回収のまま
+  `max_open_turns=29`（上限25）、turn 21で`StructuredOutputError`によるrenderer fallback 1件
+- human rubric: R3はYESへ改善、R5は同義反復が残りNO
+- evidence: `sandbox/20260722-issue086-fallback-fix/benchmark.json`、
+  `docs/evaluations/2026-07-22-20260722-issue086-fallback-fix-benchmark.md`、
+  `docs/evaluations/2026-07-22-20260722-issue086-fallback-fix-human-rubric.md`

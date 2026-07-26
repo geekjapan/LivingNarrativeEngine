@@ -46,12 +46,18 @@ import yaml
 project_path = Path(sys.argv[1])
 data = yaml.safe_load(project_path.read_text(encoding="utf-8"))
 data["random_seed"] = sys.argv[2]
-data["llm"] = {
+profile = {
     "provider": "openai-compatible",
     "model": sys.argv[4],
     "base_url": sys.argv[3],
     "timeout_seconds": 60,
     "prompt_recording": "hash_only",
+}
+data["llm"] = profile
+data["llm_profiles"] = {"quality_gate": profile}
+data["llm_bindings"] = {
+    "character_default": "quality_gate",
+    "narrator": "quality_gate",
 }
 project_path.write_text(
     yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
@@ -134,12 +140,18 @@ run metadata、30個のturn entry、`metrics.json`の内容、resume結果を埋
 | `run.provider_failures[]` | `turn`、`phase`、`exception_type`、秘密を含まない`reason`。なければ空配列 |
 | `turns[]` | `turn`、`status`、narration、reader-visible event/state。失敗turnも含める |
 | `mechanical.metrics` | `metrics --json`のオブジェクトをそのまま格納 |
+| `mechanical.narrator` | binding、call数、LLM turn、fallback turnと秘密を含まない理由 |
 | `mechanical.resume` | checkpoint turn、再開turn、成功/失敗。今回の手順は15→16 |
 | `sources` | sandbox run、metrics、転記Markdownの相対パス |
 
 `completed_turns`は`status: applied`の数であり、review後に`applied`となったturnだけを
 数える。provider failureが1件でもある、`completed_turns != 30`、またはturn番号が
 `1..30`でない場合、`run.status`は`FAIL`である。
+
+各turnの`meta.yaml`にある`llm_calls[]`から`binding_key: narrator`を数え、
+`agent_io/narrate.yaml`の`mode`を確認する。`mechanical.narrator`にはnarrator binding、
+call数、`mode: llm`だったturn、`mode: renderer_fallback`だったturnと秘密を含まない理由を記録する。
+call数が0またはrenderer fallbackが1件以上ならrunを`FAIL`とする。
 
 ## 4. Markdownへ転記する
 

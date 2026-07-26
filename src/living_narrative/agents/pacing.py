@@ -34,10 +34,14 @@ def is_advancement_event(event: Event) -> bool:
     return False
 
 
-def detect_stall(context: TurnContext) -> int | None:
+def detect_stall(
+    context: TurnContext, *, include_narrator_thread_updates: bool = True
+) -> int | None:
     """Number of stalled turns (``pacing.stall_window``) if the last window of turns had no
     advancement signal, else ``None`` (also ``None`` when the feature is off, i.e.
     ``stall_window <= 0``, or when there aren't yet ``stall_window`` prior turns to judge).
+    Authored fallback resolution excludes narrator-proposed thread updates because they must
+    not defer the primary authored progression path.
     """
     window = context.bundle.world.pacing.stall_window
     if window <= 0 or context.turn <= window:
@@ -47,7 +51,15 @@ def detect_stall(context: TurnContext) -> int | None:
     upper = context.turn - 1
 
     past_events = load_recent_events(context.paths.runs, context.bundle.timeline, max_turns=window)
-    if any(is_advancement_event(event) for event in past_events):
+    if any(
+        is_advancement_event(event)
+        and (
+            include_narrator_thread_updates
+            or event.type != "thread_update"
+            or event.cause != "narrator"
+        )
+        for event in past_events
+    ):
         return None
     if any(lower <= entry.established_turn <= upper for entry in context.bundle.reader_state):
         return None

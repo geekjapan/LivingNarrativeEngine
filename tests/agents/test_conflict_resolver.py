@@ -1,4 +1,5 @@
 import pytest
+import yaml
 
 from living_narrative.agents.conflict_resolver import resolve_conflicts
 from living_narrative.agents.state_manager import build_state_diff
@@ -16,6 +17,7 @@ from living_narrative.state.models import (
     ProjectConfig,
     SceneAffordance,
     SceneState,
+    TimelineEntry,
     Visibility,
     WorkspaceConfig,
     WorldState,
@@ -370,6 +372,38 @@ def test_free_text_action_effects_cannot_mutate_state():
 def test_stalled_turn_uses_fallback_only_when_no_normal_outcome(tmp_path):
     fallback = _advancing_affordance("affordance_001", fallback_only=True)
     context = _stall_context(tmp_path, fallback=[fallback])
+
+    events = resolve_conflicts(context, [], [], _ids(), lambda roll: None)
+
+    assert [event.type for event in events] == ["character_action", "action_outcome"]
+    assert events[-1].effects["action_outcome"]["consumption"]["fallback"] is True
+
+
+def test_narrator_thread_advances_do_not_suppress_authored_fallback(tmp_path):
+    fallback = _advancing_affordance("affordance_001", fallback_only=True)
+    context = _stall_context(tmp_path, fallback=[fallback])
+    for turn in range(1, 4):
+        event_id = f"event_{turn:04d}"
+        turn_dir = context.paths.runs / f"turn_{turn:04d}"
+        turn_dir.mkdir(parents=True, exist_ok=True)
+        (turn_dir / "events.yaml").write_text(
+            yaml.safe_dump(
+                [
+                    {
+                        "id": event_id,
+                        "turn": turn,
+                        "type": "thread_update",
+                        "cause": "narrator",
+                        "text": "同じ謎を言い換える",
+                        "visibility": "reader",
+                        "effects": {"action": "advance", "thread_id": "thread_000101"},
+                    }
+                ],
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+        context.bundle.timeline.append(TimelineEntry(turn=turn, event_ids=[event_id]))
 
     events = resolve_conflicts(context, [], [], _ids(), lambda roll: None)
 
