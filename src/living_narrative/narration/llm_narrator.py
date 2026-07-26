@@ -40,8 +40,8 @@ scene_summary のみ。
 メタ言及(「ターン」「イベント」等)を書かない。
 
 ## 未回収の糸(伏線)
-- open_threads に、この物語でまだ回収されていない謎・伏線の一覧(id / description / \
-turns_open=経過ターン数)が渡される。
+- open_threads に、この物語でまだ回収されていない謎・伏線の一覧(id / description / origin / \
+turns_open=経過ターン数)が渡される。origin は narrator(語り手起源)または authored(作者起源)。
 - 今回の地文で新しい謎・伏線に触れたら、thread_updates に action="open" の項目を追加し、\
 description にその内容を日本語で書く(reader可視情報だけを根拠にする。隠された真相を書かない)。
 - 既存の糸が今回の地文で進展したら action="advance" とし、thread_id にその糸のidを指定し、\
@@ -49,7 +49,8 @@ note に進展の要約を日本語で書く。
 - 糸が今回の地文で決着したら action="resolve" とし、thread_id にその糸のidを指定する。
 - turns_open が大きい(長く放置されている)糸ほど、新しい謎を積むより advance か resolve を\
 優先して検討する。
-- turns_open が25以上の糸は、このターンで必ず resolve する。
+- origin が narrator で、turns_open が25以上の糸は、このターンで必ず resolve する。\
+origin が authored の糸はこの期限resolveの対象にしない。
 - 進展も決着もない糸は thread_updates に含めない。無理に埋めない。
 
 ## クエスト(明示的目標)
@@ -104,6 +105,7 @@ def _narrator_payload(
                 "turns_open": (
                     context.turn - thread.opened_turn if thread.opened_turn is not None else None
                 ),
+                "origin": thread.origin,
             }
             for thread in context.open_threads
         ],
