@@ -3,6 +3,7 @@ import json
 from living_narrative.llm.errors import ProviderConnectionError, StructuredOutputError
 from living_narrative.narration.llm_narrator import (
     PROMPT_TEMPLATE_NAME,
+    PROMPT_TEXT,
     LLMNarratorOutput,
     run_narrate_phase,
 )
@@ -215,8 +216,18 @@ def test_llm_narrator_payload_includes_open_threads_with_turns_open():
     context = _context()
     context.turn = 4
     context.open_threads = [
-        OpenThreadInfo(id="thread_000101", description="お守りの由来", opened_turn=1),
-        OpenThreadInfo(id="thread_000201", description="turnなし糸", opened_turn=None),
+        OpenThreadInfo(
+            id="thread_000101",
+            description="お守りの由来",
+            opened_turn=1,
+            origin="narrator",
+        ),
+        OpenThreadInfo(
+            id="thread_000201",
+            description="turnなし糸",
+            opened_turn=None,
+            origin="authored",
+        ),
     ]
 
     run_narrate_phase(
@@ -230,9 +241,20 @@ def test_llm_narrator_payload_includes_open_threads_with_turns_open():
 
     payload = json.loads(gateway.calls[0]["messages"][1]["content"])
     assert payload["open_threads"] == [
-        {"id": "thread_000101", "description": "お守りの由来", "turns_open": 3},
-        {"id": "thread_000201", "description": "turnなし糸", "turns_open": None},
+        {
+            "id": "thread_000101",
+            "description": "お守りの由来",
+            "turns_open": 3,
+            "origin": "narrator",
+        },
+        {
+            "id": "thread_000201",
+            "description": "turnなし糸",
+            "turns_open": None,
+            "origin": "authored",
+        },
     ]
+    assert "origin が narrator で、turns_open が25以上" in PROMPT_TEXT
 
 
 def test_overdue_emergent_thread_is_resolved_when_narrator_only_advances_it():

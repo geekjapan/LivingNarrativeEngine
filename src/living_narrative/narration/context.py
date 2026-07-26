@@ -36,11 +36,26 @@ def build_narrator_context(
         if fact not in blocked
     ]
     scene_summary = next((scene.summary for scene in active_scenes if scene.summary), "")
-    reader_visible_events = [
+    visible_events = [
         event
         for event in resolved_events
         if is_reader_visible_event(event) and event.text not in blocked
     ]
+    reader_visible_events = []
+    for index, event in enumerate(visible_events):
+        next_event = visible_events[index + 1] if index + 1 < len(visible_events) else None
+        outcome = next_event.effects.get("action_outcome") if next_event is not None else None
+        if (
+            event.type == "character_action"
+            and next_event is not None
+            and next_event.type == "action_outcome"
+            and event.turn == next_event.turn
+            and event.text == next_event.text
+            and isinstance(outcome, dict)
+            and event.effects.get("character_id") == outcome.get("character_id")
+        ):
+            continue
+        reader_visible_events.append(event)
     # 014: only open (not yet resolved) threads are meta-visible to the Narrator, never to
     # characters (spec §4: characters must not "know" about narrative-ledger bookkeeping).
     from living_narrative.agents.event_history import load_recent_events

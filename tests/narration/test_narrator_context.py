@@ -116,6 +116,62 @@ def test_hidden_facts_and_gm_only_events_are_excluded(tmp_path, build_project):
     assert narrator_context.scene_reader_visible_facts == ["駅は静まり返っている"]
 
 
+def test_identical_character_action_is_replaced_by_reader_visible_action_outcome(
+    tmp_path, build_project
+):
+    project_path = build_project(tmp_path)
+    events = [
+        Event(
+            id="event_0001",
+            turn=1,
+            type="character_action",
+            text="階段へ進み、足音の正体を確かめる",
+            visibility=Visibility.READER,
+            effects={"character_id": "char_001"},
+        ),
+        Event(
+            id="event_0002",
+            turn=1,
+            type="action_outcome",
+            text="階段へ進み、足音の正体を確かめる",
+            visibility=Visibility.READER,
+            effects={"action_outcome": {"character_id": "char_001"}},
+        ),
+        Event(
+            id="event_0003",
+            turn=1,
+            type="character_action",
+            text="懐中電灯を握り直す",
+            visibility=Visibility.READER,
+        ),
+        Event(
+            id="event_0004",
+            turn=1,
+            type="character_action",
+            text="階段へ進み、足音の正体を確かめる",
+            visibility=Visibility.READER,
+            effects={"character_id": "char_002"},
+        ),
+        Event(
+            id="event_0005",
+            turn=1,
+            type="character_action",
+            text="階段へ進み、足音の正体を確かめる",
+            visibility=Visibility.READER,
+            effects={"character_id": "char_001"},
+        ),
+    ]
+
+    narrator_context = build_narrator_context(_context(project_path, events), events)
+
+    assert [(event.type, event.text) for event in narrator_context.reader_visible_events] == [
+        ("action_outcome", "階段へ進み、足音の正体を確かめる"),
+        ("character_action", "懐中電灯を握り直す"),
+        ("character_action", "階段へ進み、足音の正体を確かめる"),
+        ("character_action", "階段へ進み、足音の正体を確かめる"),
+    ]
+
+
 def test_must_not_reveal_intervention_filters_matching_reader_visible_content(
     tmp_path, build_project
 ):
