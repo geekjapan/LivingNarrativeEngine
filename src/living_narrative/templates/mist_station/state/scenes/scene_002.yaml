@@ -22,7 +22,7 @@ status: pending
 affordances:
   - id: affordance_002
     text: 追跡者の真実を確かめ、封印の行方を決める
-    visibility: scene
+    visibility: reader
     known_by: [char_001, char_002]
     actor_ids: [char_001, char_002]
     prerequisites:
@@ -60,7 +60,7 @@ affordances:
         visibility: reader
   - id: affordance_003
     text: 追跡者の命令系統を問いただす
-    visibility: scene
+    visibility: reader
     known_by: [char_001, char_002]
     actor_ids: [char_001, char_002]
     prerequisites:
@@ -98,7 +98,7 @@ affordances:
         visibility: reader
   - id: affordance_004
     text: 封印施設の鍵の手がかりを探る
-    visibility: scene
+    visibility: reader
     known_by: [char_001, char_002]
     actor_ids: [char_001, char_002]
     prerequisites:
@@ -136,7 +136,7 @@ affordances:
         visibility: reader
   - id: affordance_005
     text: 封印の意味を追跡者に問い返す
-    visibility: scene
+    visibility: reader
     known_by: [char_001, char_002]
     actor_ids: [char_001, char_002]
     prerequisites:
@@ -174,7 +174,7 @@ affordances:
         visibility: reader
   - id: affordance_006
     text: 足音の噂が生まれた夜を聞き出す
-    visibility: scene
+    visibility: reader
     known_by: [char_001, char_002]
     actor_ids: [char_001, char_002]
     prerequisites:
@@ -212,7 +212,7 @@ affordances:
         visibility: reader
   - id: affordance_007
     text: 霧守りの秘密を確かめる
-    visibility: scene
+    visibility: reader
     known_by: [char_001, char_002]
     actor_ids: [char_001, char_002]
     prerequisites:
@@ -250,7 +250,7 @@ affordances:
         visibility: reader
   - id: affordance_008
     text: ミラの役目を問いただす
-    visibility: scene
+    visibility: reader
     known_by: [char_001, char_002]
     actor_ids: [char_001, char_002]
     prerequisites:
@@ -288,7 +288,7 @@ affordances:
         visibility: reader
   - id: affordance_009
     text: 封印を維持する最後の選択をする
-    visibility: scene
+    visibility: reader
     known_by: [char_001, char_002]
     actor_ids: [char_001, char_002]
     prerequisites:

@@ -209,6 +209,27 @@ def test_mist_authored_outcomes_cover_scene_fact_quest_and_thread_lifecycle(tmp_
     assert {"scene", "canon", "reader_state", "quests", "threads"} <= targets
 
 
+def test_mist_authored_fallback_actions_are_reader_visible_for_narration(tmp_path):
+    output = tmp_path / "mist_station"
+    create_project(output, title="霧の駅", template="mist_station")
+    bundle = StateStore.load(output / "workspace" / "state")
+
+    fallback_ids = {
+        affordance_id for scene in bundle.scenes for affordance_id in scene.fallback_affordance_ids
+    }
+    fallback_affordances = [
+        affordance
+        for scene in bundle.scenes
+        for affordance in scene.affordances
+        if affordance.id in fallback_ids
+    ]
+    assert fallback_affordances
+    assert {affordance.visibility for affordance in fallback_affordances} == {"reader"}
+    assert {
+        outcome.visibility for affordance in fallback_affordances for outcome in affordance.outcomes
+    } <= {"reader", "canon"}
+
+
 def test_every_character_has_a_speech_profile_with_a_first_person_pronoun(tmp_path):
     """Issue 012: mist_station defines each character's first-person pronoun and the
     other pronouns forbidden to them, so the speech-register checker has real targets."""

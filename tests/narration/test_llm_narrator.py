@@ -1,7 +1,5 @@
 import json
 
-import pytest
-
 from living_narrative.llm.errors import ProviderConnectionError, StructuredOutputError
 from living_narrative.narration.llm_narrator import (
     PROMPT_TEMPLATE_NAME,
@@ -69,6 +67,26 @@ class FakeGateway:
         if self.error is not None:
             raise self.error
         return self.result
+
+
+class SequenceGateway(FakeGateway):
+    def __init__(self, responses):
+        super().__init__()
+        self.responses = iter(responses)
+
+    def complete(self, binding_key, messages, response_schema, prompt_template_name):
+        self.calls.append(
+            {
+                "binding_key": binding_key,
+                "messages": messages,
+                "schema": response_schema,
+                "prompt_template_name": prompt_template_name,
+            }
+        )
+        response = next(self.responses)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def test_llm_narrator_used_when_narrator_binding_present():
@@ -215,6 +233,72 @@ def test_llm_narrator_payload_includes_open_threads_with_turns_open():
         {"id": "thread_000101", "description": "お守りの由来", "turns_open": 3},
         {"id": "thread_000201", "description": "turnなし糸", "turns_open": None},
     ]
+
+
+def test_overdue_emergent_thread_is_resolved_when_narrator_only_advances_it():
+    gateway = FakeGateway(
+        result=LLMNarratorOutput(
+            prose="物語は先へ進んだ。",
+            thread_updates=[
+                ThreadUpdateCandidate(
+                    action="advance", thread_id="thread_000101", note="手がかりを得た"
+                )
+            ],
+        )
+    )
+    context = _context()
+    context.turn = 26
+    context.open_threads = [
+        OpenThreadInfo(
+            id="thread_000101",
+            description="語り手が開いた糸",
+            opened_turn=1,
+            origin="narrator",
+        ),
+    ]
+
+    result, _record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=context,
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert [update.model_dump(exclude_none=True) for update in result.thread_updates] == [
+        {
+            "action": "advance",
+            "thread_id": "thread_000101",
+            "note": "手がかりを得た",
+        },
+        {"action": "resolve", "thread_id": "thread_000101"},
+    ]
+
+
+def test_overdue_authored_thread_with_emergent_shaped_id_is_not_resolved():
+    gateway = FakeGateway(result=LLMNarratorOutput(prose="物語は先へ進んだ。"))
+    context = _context()
+    context.turn = 26
+    context.open_threads = [
+        OpenThreadInfo(
+            id="thread_000101",
+            description="作者が開いた糸",
+            opened_turn=1,
+            origin="authored",
+        )
+    ]
+
+    result, _record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=context,
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert result.thread_updates == []
 
 
 def test_llm_narrator_payload_always_includes_current_memory_summary():
@@ -369,19 +453,8 @@ def test_empty_context_skips_llm_to_avoid_invention():
     assert result.text
 
 
-@pytest.mark.parametrize(
-    "error",
-    [
-        ProviderConnectionError(provider_name="openai-compatible", model="m", error="down"),
-        StructuredOutputError(
-            provider_name="openai-compatible",
-            model="m",
-            schema_name="LLMNarratorOutput",
-            last_error="bad json",
-        ),
-    ],
-)
-def test_llm_failure_falls_back_to_mechanical_renderer(error):
+def test_provider_failure_falls_back_to_mechanical_renderer():
+    error = ProviderConnectionError(provider_name="openai-compatible", model="m", error="down")
     gateway = FakeGateway(error=error)
 
     result, record = run_narrate_phase(
@@ -400,3 +473,29 @@ def test_llm_failure_falls_back_to_mechanical_renderer(error):
     assert result.scene_summary_update is None
     assert result.thread_updates == []
     assert result.memory_summary_update is None
+
+
+def test_turn_21_structured_output_failure_retries_before_renderer_fallback():
+    error = StructuredOutputError(
+        provider_name="openai-compatible",
+        model="m",
+        schema_name="LLMNarratorOutput",
+        last_error="bad json",
+    )
+    gateway = SequenceGateway([error, LLMNarratorOutput(prose="霧の底で、彼は歩き出した。")])
+    context = _context()
+    context.turn = 21
+
+    result, record = run_narrate_phase(
+        gateway=gateway,
+        project=_project({"narrator": "prose"}),
+        context=context,
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    assert result.text == "霧の底で、彼は歩き出した。"
+    assert record["mode"] == "llm"
+    assert record["recovered_from"]["type"] == "StructuredOutputError"
+    assert len(gateway.calls) == 2
