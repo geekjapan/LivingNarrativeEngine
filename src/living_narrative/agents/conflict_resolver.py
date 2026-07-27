@@ -140,7 +140,10 @@ def resolve_conflicts(
             _is_successful_outcome_event(event) for event in winner_events
         )
         handled.update(conflict_indexes)
-    if not normal_outcome_succeeded and detect_stall(context) is not None:
+    if (
+        not normal_outcome_succeeded
+        and detect_stall(context, include_narrator_thread_updates=False) is not None
+    ):
         fallback_events = _resolve_fallback(
             context, allocate_event_id, record_roll, used_affordances
         )

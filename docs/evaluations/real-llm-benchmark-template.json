@@ -23,6 +23,12 @@
   "turns": [],
   "mechanical": {
     "metrics": {},
+    "narrator": {
+      "binding": "narrator",
+      "call_count": 0,
+      "llm_turns": [],
+      "fallbacks": []
+    },
     "leak_scan": {
       "status": "not_run",
       "findings": []

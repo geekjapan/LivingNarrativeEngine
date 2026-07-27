@@ -12,6 +12,7 @@
 - completed_turns: <N> / 30
 - benchmark_json: sandbox/<run-id>/benchmark.json
 - provider_failure: none | turn <N>: <short reason>
+- narrator: <N> calls | LLM turns: <N> | fallback: none | turn <N>: <short reason>
 - resume: turn 15 → turn 16 | FAIL: <reason>
 
 ## 事前確認
@@ -20,6 +21,7 @@
 - [ ] 30ターンが`applied`
 - [ ] JSONとMarkdownのturn番号・narrationが一致
 - [ ] provider failureなし
+- [ ] narrator bindingが有効でcall数が1以上、renderer fallbackなし
 - [ ] reader-visible出力に非公開情報なし
 - [ ] `mechanical.metrics`、leak scan、resumeを確認
 
@@ -60,6 +62,7 @@
 - leak_scan: PASS | FAIL — <短い根拠>
 - resume: PASS | FAIL — checkpoint turn <N>, resumed turn <N>
 - provider_failures: none | <turn番号と短い理由>
+- narrator: binding `narrator`, <N> calls, LLM turns <一覧>, fallback <noneまたはturnと短い理由>
 
 ## 結論
 

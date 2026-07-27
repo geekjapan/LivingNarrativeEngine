@@ -1,8 +1,13 @@
+import json
+
 import yaml
 
+from living_narrative.narration.llm_narrator import LLMNarratorOutput
 from living_narrative.narration.models import NarrationResult, ThreadUpdateCandidate
-from living_narrative.pipeline import TurnPipeline, TurnStatus
+from living_narrative.pipeline import TurnPipeline, TurnStatus, default_registry
+from living_narrative.state.models import Event, Visibility
 from living_narrative.state.store import StateStore
+from living_narrative.workspace.init import create_project
 from living_narrative.workspace.loader import load_project
 
 ARTIFACT_FILES = [
@@ -136,6 +141,210 @@ def test_narrator_thread_updates_are_committed_across_a_mock_turn(
     bundle = StateStore.load(read.paths.state)
     assert len(bundle.unresolved_threads) == 1
     assert bundle.unresolved_threads[0].description == "お守りの由来は謎のままだ。"
+
+
+def test_overdue_narrator_thread_origin_flows_from_history_to_committed_diff(
+    tmp_path, build_project, monkeypatch
+):
+    project_path = build_project(tmp_path)
+    project = yaml.safe_load(project_path.read_text(encoding="utf-8"))
+    project["llm_profiles"] = {"prose": {"provider": "mock", "model": "mock-prose"}}
+    project["llm_bindings"] = {"narrator": "prose"}
+    project_path.write_text(yaml.safe_dump(project, allow_unicode=True), encoding="utf-8")
+    state_dir = project_path.parent / "workspace" / "state"
+    state_dir.joinpath("unresolved_threads.yaml").write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "id": "thread_000101",
+                    "description": "語り手が開いた糸",
+                    "status": "open",
+                    "related_event_ids": [],
+                    "notes": [],
+                    "opened_turn": 1,
+                },
+                {
+                    "id": "thread_000102",
+                    "description": "作者が開いた糸",
+                    "status": "open",
+                    "related_event_ids": [],
+                    "notes": [],
+                    "opened_turn": 1,
+                },
+            ],
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    state_dir.joinpath("timeline.yaml").write_text(
+        yaml.safe_dump(
+            [{"turn": 1, "event_ids": ["event_0001", "event_0002"]}],
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    runs_dir = project_path.parent / "workspace" / "runs"
+    turn_1 = runs_dir / "turn_0001"
+    turn_1.mkdir(parents=True)
+    turn_1.joinpath("events.yaml").write_text(
+        yaml.safe_dump(
+            [
+                Event(
+                    id="event_0001",
+                    turn=1,
+                    type="thread_update",
+                    cause="narrator",
+                    text="語り手が開いた糸",
+                    visibility=Visibility.GM_ONLY,
+                    effects={"action": "open", "thread_id": "thread_000101"},
+                ).model_dump(mode="json"),
+                Event(
+                    id="event_0002",
+                    turn=1,
+                    type="thread_update",
+                    cause="authored:affordance_001",
+                    text="作者が開いた糸",
+                    visibility=Visibility.READER,
+                    effects={"action": "open", "thread_id": "thread_000102"},
+                ).model_dump(mode="json"),
+            ],
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    turn_25 = runs_dir / "turn_0025"
+    turn_25.mkdir()
+    turn_25.joinpath("meta.yaml").write_text("turn: 25\nstatus: applied\n", encoding="utf-8")
+
+    payloads = []
+
+    def fake_complete(self, binding_key, messages, response_schema, prompt_template_name):
+        payloads.append(json.loads(messages[1]["content"]))
+        return LLMNarratorOutput(prose="足音は霧の中へ続いていた。")
+
+    monkeypatch.setattr("living_narrative.pipeline.llm_gateway.LLMGateway.complete", fake_complete)
+    registry = default_registry()
+    registry.register("simulate", lambda context, interventions: [])
+    registry.register(
+        "act",
+        lambda context, world_events, gateway, interventions=(), past_events=None: ([], []),
+    )
+    registry.register(
+        "resolve",
+        lambda context, world_events, action_candidates, allocate_event_id, record_roll: [
+            Event(
+                id=allocate_event_id(),
+                turn=context.turn,
+                type="background_event",
+                text="足音は霧の中へ続いている",
+                visibility=Visibility.READER,
+            )
+        ],
+    )
+
+    result = TurnPipeline(registry=registry).run(project_path)
+
+    assert result.status == TurnStatus.APPLIED
+    assert payloads[0]["open_threads"] == [
+        {
+            "id": "thread_000101",
+            "description": "語り手が開いた糸",
+            "turns_open": 25,
+            "origin": "narrator",
+        },
+        {
+            "id": "thread_000102",
+            "description": "作者が開いた糸",
+            "turns_open": 25,
+            "origin": "authored",
+        },
+    ]
+    state_diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
+    thread_changes = [
+        change for change in state_diff["diff"]["changes"] if change["target"] == "threads"
+    ]
+    assert [(change["id"], change["value"]) for change in thread_changes] == [
+        ("thread_000101", "resolved")
+    ]
+    bundle = StateStore.load(state_dir)
+    assert [(thread.id, thread.status) for thread in bundle.unresolved_threads] == [
+        ("thread_000101", "resolved"),
+        ("thread_000102", "open"),
+    ]
+
+
+def test_mist_station_fallback_outcome_reaches_grounded_narration_once(tmp_path, monkeypatch):
+    project_path = create_project(
+        tmp_path / "mist_station", title="霧の駅", template="mist_station"
+    )
+    project = yaml.safe_load(project_path.read_text(encoding="utf-8"))
+    project["llm_profiles"] = {"prose": {"provider": "mock", "model": "mock-prose"}}
+    project["llm_bindings"] = {"narrator": "prose"}
+    project_path.write_text(yaml.safe_dump(project, allow_unicode=True), encoding="utf-8")
+    state_dir = project_path.parent / "workspace" / "state"
+    state_dir.joinpath("timeline.yaml").write_text(
+        yaml.safe_dump(
+            [{"turn": turn, "event_ids": [f"event_{turn:04d}"]} for turn in range(1, 4)],
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    runs_dir = project_path.parent / "workspace" / "runs"
+    for turn in range(1, 4):
+        turn_dir = runs_dir / f"turn_{turn:04d}"
+        turn_dir.mkdir(parents=True)
+        turn_dir.joinpath("events.yaml").write_text(
+            yaml.safe_dump(
+                [
+                    Event(
+                        id=f"event_{turn:04d}",
+                        turn=turn,
+                        type="background_event",
+                        text=f"{turn}ターン目の静かな霧",
+                        visibility=Visibility.READER,
+                    ).model_dump(mode="json")
+                ],
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+    runs_dir.joinpath("turn_0003", "meta.yaml").write_text(
+        "turn: 3\nstatus: applied\n", encoding="utf-8"
+    )
+
+    payloads = []
+
+    def fake_complete(self, binding_key, messages, response_schema, prompt_template_name):
+        payload = json.loads(messages[1]["content"])
+        payloads.append(payload)
+        outcome = next(
+            event["text"]
+            for event in payload["reader_visible_events"]
+            if event["type"] == "action_outcome"
+        )
+        return LLMNarratorOutput(prose=f"{outcome}。")
+
+    monkeypatch.setattr("living_narrative.pipeline.llm_gateway.LLMGateway.complete", fake_complete)
+    registry = default_registry()
+    registry.register("simulate", lambda context, interventions: [])
+    registry.register(
+        "act",
+        lambda context, world_events, gateway, interventions=(), past_events=None: ([], []),
+    )
+
+    result = TurnPipeline(registry=registry).run(project_path)
+
+    assert result.status == TurnStatus.STOPPED_FOR_REVIEW
+    fallback_text = "階段へ進み、足音の正体を確かめる"
+    assert payloads[0]["reader_visible_events"] == [
+        {"type": "action_outcome", "text": fallback_text}
+    ]
+    assert fallback_text in (result.turn_dir / "narration.md").read_text(encoding="utf-8")
+    events = yaml.safe_load((result.turn_dir / "events.yaml").read_text(encoding="utf-8"))
+    assert [event["type"] for event in events if event["text"] == fallback_text] == [
+        "character_action",
+        "action_outcome",
+    ]
 
 
 def test_narrator_memory_summary_update_is_committed_across_a_mock_turn(

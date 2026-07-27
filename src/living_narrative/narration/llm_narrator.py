@@ -19,6 +19,7 @@ from living_narrative.state.models import ProjectConfig
 
 NARRATOR_BINDING_KEY = "narrator"
 PROMPT_TEMPLATE_NAME = "narration-narrator-v1"
+MAX_EMERGENT_THREAD_OPEN_TURNS = 25
 PROMPT_TEXT = """\
 あなたは物語のナレーターです。ユーザーメッセージのJSONで渡される読者可視情報だけを使い、\
 このターンの出来事を日本語の小説の地文として書き直してください。
@@ -39,8 +40,8 @@ scene_summary のみ。
 メタ言及(「ターン」「イベント」等)を書かない。
 
 ## 未回収の糸(伏線)
-- open_threads に、この物語でまだ回収されていない謎・伏線の一覧(id / description / \
-turns_open=経過ターン数)が渡される。
+- open_threads に、この物語でまだ回収されていない謎・伏線の一覧(id / description / origin / \
+turns_open=経過ターン数)が渡される。origin は narrator(語り手起源)または authored(作者起源)。
 - 今回の地文で新しい謎・伏線に触れたら、thread_updates に action="open" の項目を追加し、\
 description にその内容を日本語で書く(reader可視情報だけを根拠にする。隠された真相を書かない)。
 - 既存の糸が今回の地文で進展したら action="advance" とし、thread_id にその糸のidを指定し、\
@@ -48,6 +49,8 @@ note に進展の要約を日本語で書く。
 - 糸が今回の地文で決着したら action="resolve" とし、thread_id にその糸のidを指定する。
 - turns_open が大きい(長く放置されている)糸ほど、新しい謎を積むより advance か resolve を\
 優先して検討する。
+- origin が narrator で、turns_open が25以上の糸は、このターンで必ず resolve する。\
+origin が authored の糸はこの期限resolveの対象にしない。
 - 進展も決着もない糸は thread_updates に含めない。無理に埋めない。
 
 ## クエスト(明示的目標)
@@ -63,6 +66,8 @@ summary_request.previous_summary(あれば)を引き継ぎ、summary_request.win
 
 ## 出力
 - prose フィールドに完成した地文だけを入れる。
+- action_outcome タイプのイベントは作者が定義した物語の進展である。反復描写より優先して明確に\
+反映する。
 - scene_summary_update フィールドに、このターン終了時点での場面の現在状況を日本語1〜2文で書く\
 (このターンで何が変わったかを含める)。reader可視情報だけを根拠にする。
 - thread_updates フィールドに、上記の糸の更新をリストで入れる(0件でもよい)。
@@ -100,6 +105,7 @@ def _narrator_payload(
                 "turns_open": (
                     context.turn - thread.opened_turn if thread.opened_turn is not None else None
                 ),
+                "origin": thread.origin,
             }
             for thread in context.open_threads
         ],
@@ -114,6 +120,21 @@ def _narrator_payload(
             "window_events": context.summary_window_events,
         }
     return payload
+
+
+def _close_overdue_emergent_threads(
+    context: NarratorContext, updates: list[ThreadUpdateCandidate]
+) -> list[ThreadUpdateCandidate]:
+    resolved_ids = {update.thread_id for update in updates if update.action == "resolve"}
+    overdue = [
+        ThreadUpdateCandidate(action="resolve", thread_id=thread.id)
+        for thread in context.open_threads
+        if thread.origin == "narrator"
+        and thread.opened_turn is not None
+        and context.turn - thread.opened_turn >= MAX_EMERGENT_THREAD_OPEN_TURNS
+        and thread.id not in resolved_ids
+    ]
+    return [*updates, *overdue]
 
 
 def run_narrate_phase(
@@ -144,6 +165,8 @@ def run_narrate_phase(
         {"role": "system", "content": PROMPT_TEXT},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
+    recovered_from: dict[str, str] | None = None
+    failure: ProviderConnectionError | StructuredOutputError | None = None
     try:
         output = gateway.complete(
             NARRATOR_BINDING_KEY,
@@ -151,7 +174,23 @@ def run_narrate_phase(
             LLMNarratorOutput,
             prompt_template_name=PROMPT_TEMPLATE_NAME,
         )
-    except (ProviderConnectionError, StructuredOutputError) as exc:
+    except StructuredOutputError as exc:
+        recovered_from = {"type": type(exc).__name__, "message": str(exc)}
+        try:
+            output = gateway.complete(
+                NARRATOR_BINDING_KEY,
+                messages,
+                LLMNarratorOutput,
+                prompt_template_name=PROMPT_TEMPLATE_NAME,
+            )
+        except (ProviderConnectionError, StructuredOutputError) as retry_exc:
+            failure = retry_exc
+            output = None
+    except ProviderConnectionError as exc:
+        failure = exc
+        output = None
+    if output is None:
+        assert failure is not None
         fallback = narrate(
             context, style=style, mood=mood, tone_control=tone_control, registry=registry
         )
@@ -160,7 +199,7 @@ def run_narrate_phase(
             "style": fallback.style,
             "prompt_template_name": PROMPT_TEMPLATE_NAME,
             "input": payload,
-            "error": {"type": type(exc).__name__, "message": str(exc)},
+            "error": {"type": type(failure).__name__, "message": str(failure)},
         }
     assert isinstance(output, LLMNarratorOutput)
     summary_update = output.scene_summary_update.strip() if output.scene_summary_update else None
@@ -171,11 +210,11 @@ def run_narrate_phase(
         text=output.prose.strip(),
         style="novel",
         scene_summary_update=summary_update or None,
-        thread_updates=output.thread_updates,
+        thread_updates=_close_overdue_emergent_threads(context, output.thread_updates),
         quest_updates=output.quest_updates,
         memory_summary_update=memory_summary_update or None,
     )
-    return result, {
+    record = {
         "mode": "llm",
         "style": "novel",
         "prompt_template_name": PROMPT_TEMPLATE_NAME,
@@ -183,3 +222,6 @@ def run_narrate_phase(
         "input": payload,
         "output": output.model_dump(mode="json"),
     }
+    if recovered_from is not None:
+        record["recovered_from"] = recovered_from
+    return result, record

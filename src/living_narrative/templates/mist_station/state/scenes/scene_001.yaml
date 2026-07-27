@@ -24,7 +24,7 @@ status: active
 affordances:
   - id: affordance_001
     text: 階段へ進み、足音の正体を確かめる
-    visibility: scene
+    visibility: reader
     known_by: [char_001, char_002]
     actor_ids: [char_001, char_002]
     prerequisites:
@@ -54,7 +54,7 @@ affordances:
         path: active_characters
         id: scene_002
         value: [char_001, char_002]
-        visibility: scene
+        visibility: reader
       - target: canon
         op: add
         path: ""

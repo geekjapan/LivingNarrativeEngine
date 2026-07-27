@@ -1,7 +1,7 @@
 ---
 id: 086
 title: Action Outcomeをstate化して物語進展を保証する
-status: in_progress
+status: completed
 created: 2026-07-14
 type: implementation
 priority: P1
@@ -205,3 +205,57 @@ ADR-0010の機械SLOとR1–R8をすべてPASSすることとする。
 - narrator: 30 calls、LLM 29 turns、turn 20でstructured output不正によるrenderer fallback 1件
 - evidence: `sandbox/20260715-issue086-binding-baseline/metrics.json`、
   `docs/evaluations/2026-07-15-20260715-issue086-binding-baseline.md`
+
+## Post-implementation Acceptance Run
+
+- run ID: `20260721-issue086-post-implementation`
+- model / binding: `cx/gpt-5.6-luna-low`を`character_default`と`narrator`へ明示bind
+- seed: `issue-085-mist-station-v1`
+- result: `FAIL`（30/30 applied、15→16 resume成功、narrator 30 calls / fallback 0）
+- machine evidence: stall最大5（上限3）、thread opened/advanced/resolved=`1/11/0`、
+  max open turns=29、encounter 7、scene transition 1、replay match 1.0
+- human rubric: R3、R5がNO
+- diagnosis: scene 1のauthored fallbackはnarratorのemergent thread advanceとthreat stageでstallが
+  解除されるため発火せず、`thread_001`を作らないままscene 2へ遷移した。scene 2のfallback列は
+  `thread_001: open`を前提とするため全候補が不成立となり、作者定義thread chainを開始できない。
+- evidence: `sandbox/20260721-issue086-post-implementation/benchmark.json`、
+  `docs/evaluations/2026-07-22-20260721-issue086-post-implementation-benchmark.md`、
+  `docs/evaluations/2026-07-22-20260721-issue086-post-implementation-human-rubric.md`
+
+## Fallback Fix Acceptance Rerun
+
+- fix: authored fallback判定時だけnarrator由来`thread_update`をstall進展から除外。一般のpacing
+  checkerとpressure boostは従来のsemanticsを維持する。
+- regression: `test_narrator_thread_advances_do_not_suppress_authored_fallback`
+- run ID: `20260722-issue086-fallback-fix`
+- model / binding / seed: 前回と同一
+- result: `FAIL`（30/30 applied、15→16 resume成功、replay match 1.0）
+- improved: stall最大`5 → 1`、authored action outcomesがturn 7/17/21/25/29に発火、
+  thread resolved ratio `0.0 → 0.667`
+- remaining machine failures: narratorがturn 1で開いたemergent threadが未回収のまま
+  `max_open_turns=29`（上限25）、turn 21で`StructuredOutputError`によるrenderer fallback 1件
+- human rubric: R3はYESへ改善、R5は同義反復が残りNO
+- evidence: `sandbox/20260722-issue086-fallback-fix/benchmark.json`、
+  `docs/evaluations/2026-07-22-20260722-issue086-fallback-fix-benchmark.md`、
+  `docs/evaluations/2026-07-22-20260722-issue086-fallback-fix-human-rubric.md`
+
+## Issue 087 R1 Follow-up
+
+- narrator由来threadの25ターン上限、structured output再実行、authored Action Outcomeのnarration入力を
+  regression test付きで実装した。
+
+## R4 Acceptance Run
+
+- run ID: `20260727-issue086-r4-hardening`
+- revision: `48f4c0e9542a09354656ecf909002216c8fa2c15`
+- model / binding / seed: `cx/gpt-5.6-luna-low`をcharacterとnarratorへ明示bindし、
+  `issue-085-mist-station-v1`を使用した。
+- result: `PASS`（30/30 applied、turn 15→16 resume、replay match 1.0、narrator fallback 0）
+- machine evidence: stall最大1、thread resolved ratio 0.833、max open turns 1、scene transition 1、
+  elapsed 868.476秒、LLM calls 90、total tokens 487,284、reader-visible leak 0。
+- human rubric: Claude Fable 5の独立評価はR1–R8すべてYES。R5の同義反復を最大の不確実点として
+  明示したうえで、ユーザーが判定に同意した。
+- evidence: `sandbox/20260727-issue086-r4-hardening/benchmark.json`、
+  `docs/evaluations/2026-07-27-20260727-issue086-r4-hardening-benchmark.md`、
+  `docs/evaluations/2026-07-27-20260727-issue086-r4-hardening-human-rubric.md`
+- R4の機械SLOと人手rubricが全PASSしたため、本Issueを`completed`とする。

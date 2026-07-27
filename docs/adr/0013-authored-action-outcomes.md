@@ -1,5 +1,9 @@
 # ADR-0013: 作者定義Action Outcomeを状態進展の一次正本にする
 
+Status: accepted（Issue 086、2026-07-20承認）
+Date: 2026-07-20
+Relates: Issue 086、ADR-0010、ADR-0002、ADR-0003
+
 ## Context
 
 Issue 085の実LLM 30ターンrunでは、キャラクターが移動・調査・対決を自由文で繰り返しても、
@@ -27,6 +31,10 @@ Issue 085の実LLM 30ターンrunでは、キャラクターが移動・調査�
    残す。reader-visibleでないOutcomeからreader threadを生成しない。
 6. affordanceの前提とOutcomeはcharacter promptへ渡さず、可視IDと安全な表示文だけを渡す。
    rejection、CLI/web、benchmarkへhidden条件や値を転記しない。
+7. encounterは`once / cooldown / unlimited`の再発規則を持ち、append-only Event履歴の
+   `encounter_id`でeligibilityを決める。`unlimited`でも同一IDを連続turnに選ばない。
+8. test専用のthread/quest backfillを廃止し、実runtime経路でSLOを測る。実LLM gateは
+   characterとnarratorを同一の指定modelへbindし、narrator call数とfallbackをartifactへ残す。
 
 ## Consequences
 
@@ -36,3 +44,6 @@ Issue 085の実LLM 30ターンrunでは、キャラクターが移動・調査�
   restore後も同じOutcome列を検証できる。
 - narratorは派生ビューとemergent thread proposalを担うが、作者定義の因果と競合した場合は
   authored Outcomeが優先される。
+- 既存projectのencounter recurrence未指定時はpacing window以上のcooldownとして扱い、
+  保存済みreplayは変更しない。
+- 最終受入は実LLM 30ターンの機械SLOとR1–R8をすべてPASSした場合だけ成立する。

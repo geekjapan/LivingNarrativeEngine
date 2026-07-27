@@ -116,6 +116,62 @@ def test_hidden_facts_and_gm_only_events_are_excluded(tmp_path, build_project):
     assert narrator_context.scene_reader_visible_facts == ["駅は静まり返っている"]
 
 
+def test_identical_character_action_is_replaced_by_reader_visible_action_outcome(
+    tmp_path, build_project
+):
+    project_path = build_project(tmp_path)
+    events = [
+        Event(
+            id="event_0001",
+            turn=1,
+            type="character_action",
+            text="階段へ進み、足音の正体を確かめる",
+            visibility=Visibility.READER,
+            effects={"character_id": "char_001"},
+        ),
+        Event(
+            id="event_0002",
+            turn=1,
+            type="action_outcome",
+            text="階段へ進み、足音の正体を確かめる",
+            visibility=Visibility.READER,
+            effects={"action_outcome": {"character_id": "char_001"}},
+        ),
+        Event(
+            id="event_0003",
+            turn=1,
+            type="character_action",
+            text="懐中電灯を握り直す",
+            visibility=Visibility.READER,
+        ),
+        Event(
+            id="event_0004",
+            turn=1,
+            type="character_action",
+            text="階段へ進み、足音の正体を確かめる",
+            visibility=Visibility.READER,
+            effects={"character_id": "char_002"},
+        ),
+        Event(
+            id="event_0005",
+            turn=1,
+            type="character_action",
+            text="階段へ進み、足音の正体を確かめる",
+            visibility=Visibility.READER,
+            effects={"character_id": "char_001"},
+        ),
+    ]
+
+    narrator_context = build_narrator_context(_context(project_path, events), events)
+
+    assert [(event.type, event.text) for event in narrator_context.reader_visible_events] == [
+        ("action_outcome", "階段へ進み、足音の正体を確かめる"),
+        ("character_action", "懐中電灯を握り直す"),
+        ("character_action", "階段へ進み、足音の正体を確かめる"),
+        ("character_action", "階段へ進み、足音の正体を確かめる"),
+    ]
+
+
 def test_must_not_reveal_intervention_filters_matching_reader_visible_content(
     tmp_path, build_project
 ):
@@ -159,7 +215,9 @@ def test_scene_summary_defaults_to_empty_string(tmp_path, build_project):
     assert narrator_context.scene_summary == ""
 
 
-def test_open_threads_are_supplied_and_resolved_ones_are_excluded(tmp_path, build_project):
+def test_open_threads_are_supplied_and_resolved_ones_are_excluded(
+    tmp_path, build_project, monkeypatch
+):
     project_path = build_project(tmp_path)
     _write_unresolved_threads(
         project_path,
@@ -182,12 +240,42 @@ def test_open_threads_are_supplied_and_resolved_ones_are_excluded(tmp_path, buil
             },
         ],
     )
+    opening_event = Event(
+        id="event_0001",
+        turn=1,
+        type="thread_update",
+        cause="authored:affordance_001",
+        text="お守りの由来は謎のままだ。",
+        visibility=Visibility.READER,
+        effects={"action": "open", "thread_id": "thread_000101", "authored": True},
+    )
+    context = _context(project_path, [])
+    _write_turn_events(context.paths, 1, [opening_event.model_dump(mode="json")])
+    _write_timeline(
+        project_path,
+        [
+            {"turn": 1, "event_ids": [opening_event.id]},
+            {"turn": 2, "event_ids": ["event_0002"]},
+        ],
+    )
+    from living_narrative.agents import event_history
+
+    loaded_timeline_turns = []
+    load_recent_events = event_history.load_recent_events
+
+    def track_loaded_timeline(runs_dir, timeline, max_turns):
+        loaded_timeline_turns.append([entry.turn for entry in timeline])
+        return load_recent_events(runs_dir, timeline, max_turns)
+
+    monkeypatch.setattr(event_history, "load_recent_events", track_loaded_timeline)
 
     narrator_context = build_narrator_context(_context(project_path, []), [])
 
+    assert loaded_timeline_turns == [[1]]
     assert [thread.id for thread in narrator_context.open_threads] == ["thread_000101"]
     assert narrator_context.open_threads[0].description == "お守りの由来は謎のままだ。"
     assert narrator_context.open_threads[0].opened_turn == 1
+    assert narrator_context.open_threads[0].origin == "authored"
 
 
 def test_no_unresolved_threads_yields_empty_open_threads(tmp_path, build_project):
