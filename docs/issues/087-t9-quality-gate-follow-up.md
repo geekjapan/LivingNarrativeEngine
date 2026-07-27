@@ -1,7 +1,7 @@
 ---
 id: 087
 title: T9再実行で残ったthread寿命・narrator fallback・反復を解消する
-status: in_progress
+status: completed
 created: 2026-07-22
 type: implementation
 priority: P1
@@ -54,4 +54,15 @@ Issue 086のfallback開始条件修正後、T9を`20260722-issue086-fallback-fix
 - thread originはID形式ではなく、append-onlyなopening `thread_update` Eventの`cause`から判定する。
 - narratorのstructured output失敗時はrendererへ落とす前に同じreader-safe入力で1回再実行する。
 - mist_stationのauthored fallback actionをreader-visibleにし、Action Outcomeをnarrationへ渡す。
-- 実LLM 30ターンrunと人手rubric R5はR4のhuman-only gateで実施する。
+
+## R4受入結果
+
+- run ID: `20260727-issue086-r4-hardening`
+- 機械SLO: `PASS`。30/30 applied、resume、replay 1.0、max open turns 1、fallback 0、
+  scene transition 1、elapsed 868.476秒、LLM calls 90、total tokens 487,284、leak 0。
+- 人手rubric: Claude Fable 5が独立読解し、R1–R8をすべてYESと推奨した。R5の同義反復を
+  最大の不確実点として明示したうえで、ユーザーが判定に同意した。
+- 証拠: `sandbox/20260727-issue086-r4-hardening/benchmark.json`、
+  `docs/evaluations/2026-07-27-20260727-issue086-r4-hardening-benchmark.md`、
+  `docs/evaluations/2026-07-27-20260727-issue086-r4-hardening-human-rubric.md`
+- 完了条件をすべて満たしたため、本Issueを`completed`とする。

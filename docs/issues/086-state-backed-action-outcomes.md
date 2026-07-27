@@ -1,7 +1,7 @@
 ---
 id: 086
 title: Action Outcomeをstate化して物語進展を保証する
-status: in_progress
+status: completed
 created: 2026-07-14
 type: implementation
 priority: P1
@@ -243,4 +243,19 @@ ADR-0010の機械SLOとR1–R8をすべてPASSすることとする。
 
 - narrator由来threadの25ターン上限、structured output再実行、authored Action Outcomeのnarration入力を
   regression test付きで実装した。
-- Issue 086のstatusは、実LLM再実行と人手rubricが未実施のため`in_progress`を維持する。
+
+## R4 Acceptance Run
+
+- run ID: `20260727-issue086-r4-hardening`
+- revision: `48f4c0e9542a09354656ecf909002216c8fa2c15`
+- model / binding / seed: `cx/gpt-5.6-luna-low`をcharacterとnarratorへ明示bindし、
+  `issue-085-mist-station-v1`を使用した。
+- result: `PASS`（30/30 applied、turn 15→16 resume、replay match 1.0、narrator fallback 0）
+- machine evidence: stall最大1、thread resolved ratio 0.833、max open turns 1、scene transition 1、
+  elapsed 868.476秒、LLM calls 90、total tokens 487,284、reader-visible leak 0。
+- human rubric: Claude Fable 5の独立評価はR1–R8すべてYES。R5の同義反復を最大の不確実点として
+  明示したうえで、ユーザーが判定に同意した。
+- evidence: `sandbox/20260727-issue086-r4-hardening/benchmark.json`、
+  `docs/evaluations/2026-07-27-20260727-issue086-r4-hardening-benchmark.md`、
+  `docs/evaluations/2026-07-27-20260727-issue086-r4-hardening-human-rubric.md`
+- R4の機械SLOと人手rubricが全PASSしたため、本Issueを`completed`とする。
