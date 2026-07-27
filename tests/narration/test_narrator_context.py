@@ -215,7 +215,9 @@ def test_scene_summary_defaults_to_empty_string(tmp_path, build_project):
     assert narrator_context.scene_summary == ""
 
 
-def test_open_threads_are_supplied_and_resolved_ones_are_excluded(tmp_path, build_project):
+def test_open_threads_are_supplied_and_resolved_ones_are_excluded(
+    tmp_path, build_project, monkeypatch
+):
     project_path = build_project(tmp_path)
     _write_unresolved_threads(
         project_path,
@@ -249,10 +251,27 @@ def test_open_threads_are_supplied_and_resolved_ones_are_excluded(tmp_path, buil
     )
     context = _context(project_path, [])
     _write_turn_events(context.paths, 1, [opening_event.model_dump(mode="json")])
-    _write_timeline(project_path, [{"turn": 1, "event_ids": [opening_event.id]}])
+    _write_timeline(
+        project_path,
+        [
+            {"turn": 1, "event_ids": [opening_event.id]},
+            {"turn": 2, "event_ids": ["event_0002"]},
+        ],
+    )
+    from living_narrative.agents import event_history
+
+    loaded_timeline_turns = []
+    load_recent_events = event_history.load_recent_events
+
+    def track_loaded_timeline(runs_dir, timeline, max_turns):
+        loaded_timeline_turns.append([entry.turn for entry in timeline])
+        return load_recent_events(runs_dir, timeline, max_turns)
+
+    monkeypatch.setattr(event_history, "load_recent_events", track_loaded_timeline)
 
     narrator_context = build_narrator_context(_context(project_path, []), [])
 
+    assert loaded_timeline_turns == [[1]]
     assert [thread.id for thread in narrator_context.open_threads] == ["thread_000101"]
     assert narrator_context.open_threads[0].description == "お守りの由来は謎のままだ。"
     assert narrator_context.open_threads[0].opened_turn == 1

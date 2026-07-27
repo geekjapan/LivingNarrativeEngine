@@ -60,12 +60,18 @@ def build_narrator_context(
     # characters (spec §4: characters must not "know" about narrative-ledger bookkeeping).
     from living_narrative.agents.event_history import load_recent_events
 
+    opening_turns = {
+        thread.opened_turn
+        for thread in context.bundle.unresolved_threads
+        if thread.status != "resolved" and thread.opened_turn is not None
+    }
+    opening_timeline = [entry for entry in context.bundle.timeline if entry.turn in opening_turns]
     thread_origins = {
         event.effects.get("thread_id"): (
             "authored" if event.cause and event.cause.startswith("authored:") else "narrator"
         )
         for event in load_recent_events(
-            context.paths.runs, context.bundle.timeline, max_turns=len(context.bundle.timeline)
+            context.paths.runs, opening_timeline, max_turns=len(opening_timeline)
         )
         if event.type == "thread_update"
         and event.effects.get("action") == "open"
