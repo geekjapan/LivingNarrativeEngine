@@ -9,3 +9,6 @@ projects/
 
 # Orca worktrees/workspaces
 .orca/
+
+# Codex local environment config
+.codex/environments/
