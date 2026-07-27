@@ -40,8 +40,9 @@ def detect_stall(
     """Number of stalled turns (``pacing.stall_window``) if the last window of turns had no
     advancement signal, else ``None`` (also ``None`` when the feature is off, i.e.
     ``stall_window <= 0``, or when there aren't yet ``stall_window`` prior turns to judge).
-    Authored fallback resolution excludes narrator-proposed thread updates because they must
-    not defer the primary authored progression path.
+    Narrator thread updates count as advancement by default; pass
+    ``include_narrator_thread_updates=False`` to exclude them from that decision, as authored
+    fallback resolution does so they cannot defer the primary authored progression path.
     """
     window = context.bundle.world.pacing.stall_window
     if window <= 0 or context.turn <= window:
