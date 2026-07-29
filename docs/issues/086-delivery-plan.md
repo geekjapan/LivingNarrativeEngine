@@ -1,7 +1,7 @@
 ---
 id: 086-delivery-plan
 title: Issue 086 delivery DAG（ticket分解）
-status: approved
+status: done
 created: 2026-07-20
 parent: 086
 depends_adr: 0013
@@ -145,4 +145,8 @@ Issue 086を9ノードのDAGへ分解する。ADR-0013の契約（D1–D8）を�
   narrator 30 calls / fallback 0、replay 1.0は成功したが、pacingとthread SLO、R3/R5が未達。
 - T9 rerun: fallback開始条件修正後の`20260722-issue086-fallback-fix`も`FAIL`。pacingとR3は
   改善したが、thread max-open、narrator fallback、R5が未達。
-- parent Issue 086は`in_progress`を維持し、診断と証跡を同Issueへ記録した。
+- parent Issue 086は当時`in_progress`を維持し、診断と証跡を同Issueへ記録した。
+- T9最終: Issue 087のR1実装（thread寿命上限、structured output再実行、Outcomeのnarration入力）後、
+  `20260727-issue086-r4-hardening`（revision `48f4c0e`）で機械SLOとR1–R8が全`PASS`。
+  parent Issue 086とIssue 087は`completed`となり、本delivery planの全ノードが完了した。
+- 後続: v1.0出荷の残作業は`docs/issues/088-v1-release-closeout.md`が引き継ぐ。

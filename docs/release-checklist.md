@@ -45,6 +45,9 @@
 - [ ] ADR-0011に`schema_version 1 @ commit b17f72a289cada0170e00a10ee9222a8057063e0`と保証scopeがある。
 - [ ] 同じcommitを指すannotated tag `beta-schema-v1`が存在する。
 - [ ] Issue 072手順による実LLM 30ターン人手smokeが、Issue 073 rubricでpassしている。
+  - PASS証跡: `docs/evaluations/2026-07-27-20260727-issue086-r4-hardening-benchmark.md`、
+    `docs/evaluations/2026-07-27-20260727-issue086-r4-hardening-human-rubric.md`
+    （revision `48f4c0e`、機械SLOとR1–R8全PASS、Issue 086/087）。
 
 ## 1.0 gate
 
@@ -54,6 +57,12 @@
 - [ ] Issue 070–072のSLO・実LLM品質gateがpassしている。
   - FAIL証跡: `docs/evaluations/2026-07-14-20260714-issue085-gpt56-luna-low-v2-benchmark.md`
     （30/30完走、pacing/thread SLOとhuman rubric R1/R3/R5が不合格、Issue 085）。
+  - PASS証跡: `docs/evaluations/2026-07-27-20260727-issue086-r4-hardening-benchmark.md`、
+    `docs/evaluations/2026-07-27-20260727-issue086-r4-hardening-human-rubric.md`
+    （revision `48f4c0e`、機械SLOとR1–R8全PASS、Issue 086/087）。
+  - 注意: PASS run revision（`48f4c0e`）以降にrelease候補へ`src/living_narrative/narration/context.py`
+    の挙動変更が含まれる場合、gate証跡の再実行要否を出荷判定時に確認する
+    （`docs/issues/088-v1-release-closeout.md`参照）。
 - [ ] Issue 076のUX受入と人手2セッションがpassしている。
 - [ ] `pip-audit`のrelease時blocking checkがpassしている。coverageはreport-onlyで記録する。
 - [ ] LICENSEが選定・配置済みである（Issue 081）。
