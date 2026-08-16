@@ -1,5 +1,9 @@
 """Issue 071: ADR-0010's 100-turn mock journey is a permanent CI gate."""
 
+import hashlib
+import json
+import os
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,6 +13,10 @@ from living_narrative.agents.character import run_character_agent
 from living_narrative.export_replay import assemble_replay
 from living_narrative.pipeline import TurnPipeline, TurnStatus, default_registry
 from living_narrative.pipeline.models import ActionCandidate
+from living_narrative.session.long_run_report import (
+    LongRunObservation,
+    write_long_run_report,
+)
 from living_narrative.session.metrics import collect_metrics
 from living_narrative.session.resume import restore_resume_state
 from living_narrative.session.review import ReviewDecision, resolve_review
@@ -208,6 +216,11 @@ def _artifact_fingerprint(project_path: Path) -> dict[str, str]:
     return files
 
 
+def _workspace_artifact_bytes(project_path: Path) -> int:
+    workspace = project_path.parent / "workspace"
+    return sum(path.stat().st_size for path in workspace.rglob("*") if path.is_file())
+
+
 def _live_events(project_path: Path) -> list[dict]:
     runs = project_path.parent / "workspace" / "runs"
     events = []
@@ -217,6 +230,7 @@ def _live_events(project_path: Path) -> list[dict]:
 
 
 def _run_journey(tmp_path: Path, name: str):
+    started_at = time.perf_counter()
     project_path = _prepare_project(tmp_path / name)
     registry = _make_registry()
     pipeline = TurnPipeline(registry=registry)
@@ -329,12 +343,30 @@ def _run_journey(tmp_path: Path, name: str):
     assert resumed.turn == TURN_COUNT + 1
     assert resumed.status != TurnStatus.FAILED
 
-    return final_replay, _artifact_fingerprint(project_path)
+    artifacts = _artifact_fingerprint(project_path)
+    fingerprint_input = final_replay + json.dumps(
+        artifacts, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    observation = LongRunObservation(
+        name=name,
+        turn_count=TURN_COUNT,
+        elapsed_seconds=round(time.perf_counter() - started_at, 3),
+        workspace_artifact_bytes=_workspace_artifact_bytes(project_path),
+        replay_bytes=len(final_replay.encode("utf-8")),
+        run_fingerprint=hashlib.sha256(fingerprint_input.encode("utf-8")).hexdigest(),
+        metrics=metrics,
+    )
+    return final_replay, artifacts, observation
 
 
 def test_100_turn_mist_station_adr_0010_gate(tmp_path):
-    replay_a, artifacts_a = _run_journey(tmp_path, "journey-a")
-    replay_b, artifacts_b = _run_journey(tmp_path, "journey-b")
+    replay_a, artifacts_a, observation_a = _run_journey(tmp_path, "journey-a")
+    replay_b, artifacts_b, observation_b = _run_journey(tmp_path, "journey-b")
 
     assert replay_a == replay_b
     assert artifacts_a == artifacts_b
+    assert observation_a.run_fingerprint == observation_b.run_fingerprint
+
+    report_path = os.environ.get("LNE_LONG_SMOKE_REPORT")
+    if report_path:
+        write_long_run_report(Path(report_path), [observation_a, observation_b])
