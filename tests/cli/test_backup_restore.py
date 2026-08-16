@@ -30,13 +30,13 @@ def test_backup_and_restore_round_trip_with_manifest(tmp_path, build_project):
     manifest = yaml.safe_load((backup_root / "manifest.yaml").read_text(encoding="utf-8"))
     assert manifest["source_path"] == str(project_path.parent.resolve())
     assert datetime.fromisoformat(manifest["created_at"]).tzinfo is not None
-    assert manifest["schema_version"] == 1
+    assert manifest["schema_version"] == 2
     assert (backup_root / "project" / "notes.txt").read_text(encoding="utf-8") == "keep me"
 
     restored = tmp_path / "restored"
     restore_result = runner.invoke(app, ["restore", str(backup_root), "--output", str(restored)])
     assert restore_result.exit_code == 0, restore_result.output
-    assert "schema_version: 1" in restore_result.output
+    assert "schema_version: 2" in restore_result.output
     assert (restored / "project.yaml").is_file()
     assert (restored / "notes.txt").read_text(encoding="utf-8") == "keep me"
 
@@ -117,7 +117,7 @@ def test_restore_rejects_manifest_project_schema_mismatch(tmp_path, build_projec
     backup_root = create_backup(project_path, tmp_path / "backups")
     manifest_path = backup_root / "manifest.yaml"
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-    manifest["schema_version"] = 2
+    manifest["schema_version"] = 3
     manifest_path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
 
     result = runner.invoke(

@@ -43,7 +43,7 @@ def test_loader_defaults_legacy_project_to_schema_version_one(tmp_path):
     report = load_project_config(path)
 
     assert report.is_valid
-    assert report.config.schema_version == 1
+    assert report.config.schema_version == 2
     assert "schema_version" not in yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
@@ -57,19 +57,19 @@ def test_legacy_schema_version_one_project_defaults_to_empty_plugin_allowlist(tm
 
     assert report.errors == []
     assert report.config is not None
-    assert report.config.schema_version == 1
+    assert report.config.schema_version == 2
     assert report.config.plugins == []
 
 
 def test_loader_rejects_future_schema_version_with_clear_error(tmp_path):
     path = tmp_path / "project.yaml"
-    _write_project(path, {**_project_data(), "schema_version": 2})
+    _write_project(path, {**_project_data(), "schema_version": 3})
 
     report = load_project_config(path)
 
     assert not report.is_valid
     assert report.errors[0].field == "schema_version"
-    assert "newer than supported version 1" in report.errors[0].message
+    assert "newer than supported version 2" in report.errors[0].message
 
 
 def test_loader_applies_injected_migration_chain_before_validation(tmp_path):
@@ -101,3 +101,6 @@ def test_new_project_writes_current_schema_version_for_every_template(tmp_path, 
     raw = yaml.safe_load(project_path.read_text(encoding="utf-8"))
 
     assert raw["schema_version"] == CURRENT_SCHEMA_VERSION
+    state_dir = project_path.parent / "workspace" / "state"
+    assert yaml.safe_load((state_dir / "book_plan.yaml").read_text(encoding="utf-8")) == {}
+    assert yaml.safe_load((state_dir / "book_ledger.yaml").read_text(encoding="utf-8")) == {}

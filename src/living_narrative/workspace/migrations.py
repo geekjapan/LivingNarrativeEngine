@@ -4,7 +4,7 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from typing import Any
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 ProjectData = dict[str, Any]
 Migration = Callable[[ProjectData], ProjectData]
@@ -34,6 +34,16 @@ class DuplicateMigrationError(SchemaMigrationError):
 MIGRATIONS: MigrationRegistry = {}
 
 
+def _migrate_v1_to_v2(raw: ProjectData) -> ProjectData:
+    """Introduce ADR-0014's workspace-backed book state contract.
+
+    Book state lives in workspace/state rather than project.yaml, so the project
+    migration only declares the new schema version.  Missing book files load as
+    empty state until a transaction-backed save materializes them.
+    """
+    return {**raw, "schema_version": 2}
+
+
 def register_migration(
     registry: MigrationRegistry, from_version: int, migration: Migration
 ) -> None:
@@ -47,6 +57,9 @@ def register_migration(
             f"migration from schema version {from_version} is already registered"
         )
     registry[from_version] = migration
+
+
+register_migration(MIGRATIONS, 1, _migrate_v1_to_v2)
 
 
 def migrate_project_data(

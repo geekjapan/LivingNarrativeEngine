@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from living_narrative.state.ids import id_type, validate_relationship_key
 from living_narrative.state.models import (
+    BookLedgerState,
+    BookPlanState,
     CanonEntry,
     GmVaultEntry,
     MemorySummary,
@@ -40,6 +42,8 @@ Target = Literal[
     "threads",
     "memory",
     "quests",
+    "book_plan",
+    "book_ledger",
 ]
 Op = Literal["add", "remove", "set", "delta"]
 COLLECTION_TARGETS = {
@@ -59,6 +63,8 @@ _TARGET_ATTR = {
     "threads": "unresolved_threads",
     "memory": "memory_summaries",
     "quests": "quests",
+    "book_plan": "book_plan",
+    "book_ledger": "book_ledger",
 }
 
 
@@ -98,6 +104,10 @@ class StateDiffChange(BaseModel):
             validate_relationship_key(self.id)
         elif self.target in {"character", "scene"} and self.id is None:
             raise ValueError(f"{self.target} change requires id")
+        if self.target == "book_plan" and self.visibility != Visibility.CANON:
+            raise ValueError("book_plan changes require canon visibility")
+        if self.target == "book_ledger" and self.visibility != Visibility.GM_ONLY:
+            raise ValueError("book_ledger changes require gm_only visibility")
         return self
 
 
@@ -189,6 +199,24 @@ def _apply_change(
             op=inverse_op,
             path=change.path,
             value=inverse_value,
+            visibility=change.visibility,
+            source_event=change.source_event,
+        )
+        return inverse, report
+
+    if change.target in {"book_plan", "book_ledger"} and change.path == "":
+        if change.op != "set":
+            raise StateDiffError(f"{change.op} is not supported at {change.target} root")
+        model = BookPlanState if change.target == "book_plan" else BookLedgerState
+        old_value = deepcopy(getattr(bundle, _TARGET_ATTR[change.target]))
+        replacement = model.model_validate(change.value)
+        setattr(bundle, _TARGET_ATTR[change.target], replacement)
+        report = AppliedChange(change_id=index, original_value=old_value)
+        inverse = StateDiffChange(
+            target=change.target,
+            op="set",
+            path="",
+            value=old_value.model_dump(mode="json"),
             visibility=change.visibility,
             source_event=change.source_event,
         )
