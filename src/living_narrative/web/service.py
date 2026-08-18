@@ -15,12 +15,19 @@ from typing import Any
 import yaml
 from pydantic import TypeAdapter, ValidationError
 
+from living_narrative.book.cockpit import BookCockpit, build_book_cockpit
+from living_narrative.book.coordinator import (
+    ChapterProductionResult,
+    accept_chapter_review,
+    request_chapter_revision,
+    start_chapter_production,
+)
 from living_narrative.cli._common import read_narration_body
 from living_narrative.intervention.history import load_history
 from living_narrative.llm.costs import ModelPricing, ProjectCostSummary, collect_project_costs
 from living_narrative.pipeline import TurnPipeline, TurnRunResult
 from living_narrative.pipeline.turn_numbering import read_turn_status, turn_dir_path
-from living_narrative.session.mode import MODE_PERMISSIONS
+from living_narrative.session.mode import MODE_PERMISSIONS, is_book_authoring_allowed
 from living_narrative.session.player_character import build_player_character_projection
 from living_narrative.session.resume import restore_resume_state
 from living_narrative.session.review import ReviewDecision, ReviewResult, resolve_review
@@ -55,6 +62,10 @@ __all__ = [
     "RunStatus",
     "TurnNarration",
     "collect_narration",
+    "get_book_cockpit",
+    "start_book_chapter",
+    "accept_book_chapter",
+    "revise_book_chapter",
     "collect_structured_narration",
     "get_gm_characters",
     "get_gm_threads",
@@ -271,6 +282,41 @@ def get_status(project_yaml: Path) -> ProjectStatus:
         visible_facts=pc_projection.visible_facts if pc_projection else [],
         llm_usage=collect_project_costs(project_yaml, read.paths.runs),
     )
+
+
+def get_book_cockpit(project_yaml: Path) -> BookCockpit:
+    """Project a long-form BookPlan/BookLedger view without private state."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return build_book_cockpit(
+        StateStore.load(read.paths.state),
+        can_operate=is_book_authoring_allowed(read.config.user_mode),
+    )
+
+
+def accept_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
+    """Accept a reviewed chapter through the transaction-backed coordinator."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return accept_chapter_review(read.paths, chapter_id)
+
+
+def revise_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
+    """Request revision of a reviewed chapter through the coordinator."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return request_chapter_revision(read.paths, chapter_id)
+
+
+def start_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
+    """Reserve one planned chapter through the book transaction coordinator."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return start_chapter_production(read.paths, chapter_id)
 
 
 def collect_narration(project_yaml: Path, from_turn: int) -> str:

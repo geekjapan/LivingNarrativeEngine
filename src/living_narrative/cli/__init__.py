@@ -8,6 +8,7 @@ import typer
 
 from living_narrative.cli import auto as _auto
 from living_narrative.cli import backup as _backup
+from living_narrative.cli import book as _book
 from living_narrative.cli import branch as _branch
 from living_narrative.cli import doctor as _doctor
 from living_narrative.cli import export as _export
@@ -37,6 +38,7 @@ app.command("branch")(_branch.branch)
 app.command("doctor")(_doctor.doctor)
 app.command("backup")(_backup.backup)
 app.command("restore")(_backup.restore)
+app.add_typer(_book.app, name="book")
 app.add_typer(_export.app, name="export")
 
 __all__ = ["app"]

@@ -15,7 +15,7 @@ from living_narrative.workspace.migrations import (
 def test_missing_schema_version_is_treated_as_version_one():
     raw = {"title": "legacy"}
 
-    assert migrate_project_data(raw) == {"schema_version": 1, "title": "legacy"}
+    assert migrate_project_data(raw) == {"schema_version": 2, "title": "legacy"}
     assert raw == {"title": "legacy"}
 
 
@@ -27,7 +27,7 @@ def test_invalid_schema_version_is_rejected(version):
 
 def test_future_schema_version_is_rejected():
     with pytest.raises(FutureSchemaVersionError, match="newer than supported"):
-        migrate_project_data({"schema_version": 2})
+        migrate_project_data({"schema_version": 3})
 
 
 def test_migrations_are_applied_in_order_without_mutating_input():

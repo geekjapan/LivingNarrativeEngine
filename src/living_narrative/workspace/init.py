@@ -84,6 +84,12 @@ def create_project(
     factions_path = state_dir / "factions.yaml"
     if not factions_path.exists():
         factions_path.write_text("[]\n", encoding="utf-8")
+    # ADR-0014: new projects materialize empty, transaction-backed book state.
+    # Existing v1 projects load the same defaults lazily until their next state save.
+    for filename in ("book_plan.yaml", "book_ledger.yaml"):
+        book_path = state_dir / filename
+        if not book_path.exists():
+            book_path.write_text("{}\n", encoding="utf-8")
 
     (output_dir / "workspace" / "runs").mkdir(parents=True, exist_ok=True)
     (output_dir / "workspace" / "exports").mkdir(parents=True, exist_ok=True)

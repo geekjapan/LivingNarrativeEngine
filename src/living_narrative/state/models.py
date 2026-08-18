@@ -146,6 +146,164 @@ class ProjectConfig(BaseModel):
         return self
 
 
+class StateBaseModel(BaseModel):
+    model_config = {"extra": "allow"}
+
+
+class ChapterLifecycle(StrEnum):
+    PLANNED = "planned"
+    RUNNING = "running"
+    CANDIDATE = "candidate"
+    REVIEW = "review"
+    ACCEPTED = "accepted"
+    REVISING = "revising"
+    SUPERSEDED = "superseded"
+
+
+class BookWordRange(StateBaseModel):
+    min_words: Annotated[int, Field(strict=True, ge=1)]
+    max_words: Annotated[int, Field(strict=True, ge=1)]
+
+    @model_validator(mode="after")
+    def _validate_range(self) -> "BookWordRange":
+        if self.min_words > self.max_words:
+            raise ValueError("min_words must not exceed max_words")
+        return self
+
+
+class CharacterArcTarget(StateBaseModel):
+    character_id: CharacterId
+    delta: str = Field(min_length=1)
+
+
+class BookChapterPlan(StateBaseModel):
+    id: str = Field(pattern=r"^chapter_\d+$")
+    act_id: str = Field(pattern=r"^act_\d+$")
+    planned_goal: str = Field(min_length=1)
+    required_thread_ids: list[ThreadId] = Field(default_factory=list)
+    character_arc_targets: list[CharacterArcTarget] = Field(default_factory=list)
+    target_word_range: BookWordRange
+
+
+class BookActPlan(StateBaseModel):
+    id: str = Field(pattern=r"^act_\d+$")
+    promise: str = Field(min_length=1)
+    chapter_ids: list[str] = Field(default_factory=list)
+
+
+class BookPlanState(StateBaseModel):
+    """Author-intended long-form plan; it never replaces observed world state."""
+
+    premise: str = ""
+    audience: str = ""
+    language: str = "ja"
+    acts: list[BookActPlan] = Field(default_factory=list)
+    chapters: list[BookChapterPlan] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_plan_structure(self) -> "BookPlanState":
+        act_ids = [act.id for act in self.acts]
+        if len(act_ids) != len(set(act_ids)):
+            raise ValueError("act ids must be unique")
+        chapter_ids = [chapter.id for chapter in self.chapters]
+        if len(chapter_ids) != len(set(chapter_ids)):
+            raise ValueError("chapter ids must be unique")
+        chapters_by_act: dict[str, list[str]] = {act.id: [] for act in self.acts}
+        for chapter in self.chapters:
+            if chapter.act_id not in chapters_by_act:
+                raise ValueError(f"chapter {chapter.id} references unknown act {chapter.act_id}")
+            chapters_by_act[chapter.act_id].append(chapter.id)
+        listed_chapters = [chapter_id for act in self.acts for chapter_id in act.chapter_ids]
+        if len(listed_chapters) != len(set(listed_chapters)):
+            raise ValueError("chapter ids must be listed by exactly one act")
+        for chapter in self.chapters:
+            if listed_chapters.count(chapter.id) != 1:
+                raise ValueError(f"chapter {chapter.id} must be listed by exactly one act")
+        for act in self.acts:
+            if set(act.chapter_ids) != set(chapters_by_act[act.id]):
+                raise ValueError(f"act {act.id} chapter_ids must match chapter act_id references")
+        return self
+
+    def chapter(self, chapter_id: str) -> BookChapterPlan:
+        for chapter in self.chapters:
+            if chapter.id == chapter_id:
+                return chapter
+        raise ValueError(f"book chapter not found: {chapter_id}")
+
+
+class BookChapterLedger(StateBaseModel):
+    id: str = Field(pattern=r"^chapter_\d+$")
+    lifecycle: ChapterLifecycle = ChapterLifecycle.PLANNED
+    observed_beats: list[str] = Field(default_factory=list)
+    review_decision: str | None = None
+
+
+_ALLOWED_CHAPTER_LIFECYCLE_TRANSITIONS: dict[ChapterLifecycle, set[ChapterLifecycle]] = {
+    ChapterLifecycle.PLANNED: {ChapterLifecycle.RUNNING, ChapterLifecycle.SUPERSEDED},
+    ChapterLifecycle.RUNNING: {ChapterLifecycle.CANDIDATE, ChapterLifecycle.SUPERSEDED},
+    ChapterLifecycle.CANDIDATE: {ChapterLifecycle.REVIEW, ChapterLifecycle.REVISING},
+    ChapterLifecycle.REVIEW: {
+        ChapterLifecycle.ACCEPTED,
+        ChapterLifecycle.REVISING,
+        ChapterLifecycle.SUPERSEDED,
+    },
+    ChapterLifecycle.REVISING: {ChapterLifecycle.CANDIDATE, ChapterLifecycle.SUPERSEDED},
+    ChapterLifecycle.ACCEPTED: set(),
+    ChapterLifecycle.SUPERSEDED: set(),
+}
+
+
+class BookContinuityEntry(StateBaseModel):
+    """Reader-safe compact record derived from one accepted chapter."""
+
+    chapter_id: str = Field(pattern=r"^chapter_\d+$")
+    summary: str = ""
+    covered_thread_ids: list[ThreadId] = Field(default_factory=list)
+    open_thread_ids: list[ThreadId] = Field(default_factory=list)
+
+
+class BookContinuityState(StateBaseModel):
+    """Rolling reader-safe digest used to bound subsequent chapter context."""
+
+    entries: list[BookContinuityEntry] = Field(default_factory=list)
+    open_thread_ids: list[ThreadId] = Field(default_factory=list)
+
+
+class BookLedgerState(StateBaseModel):
+    """Operational long-form state; all lifecycle updates are StateDiff candidates."""
+
+    active_chapter_id: str | None = None
+    chapters: list[BookChapterLedger] = Field(default_factory=list)
+    next_action: str | None = None
+    continuity: BookContinuityState = Field(default_factory=BookContinuityState)
+
+    @model_validator(mode="after")
+    def _validate_chapter_ids_unique(self) -> "BookLedgerState":
+        chapter_ids = [chapter.id for chapter in self.chapters]
+        if len(chapter_ids) != len(set(chapter_ids)):
+            raise ValueError("book ledger chapter ids must be unique")
+        if self.active_chapter_id is not None and self.active_chapter_id not in chapter_ids:
+            raise ValueError("active_chapter_id must exist in book ledger chapters")
+        return self
+
+    def chapter(self, chapter_id: str) -> BookChapterLedger:
+        for chapter in self.chapters:
+            if chapter.id == chapter_id:
+                return chapter
+        raise ValueError(f"book ledger chapter not found: {chapter_id}")
+
+    def transition(self, chapter_id: str, lifecycle: ChapterLifecycle) -> "BookLedgerState":
+        current = self.chapter(chapter_id)
+        if lifecycle not in _ALLOWED_CHAPTER_LIFECYCLE_TRANSITIONS[current.lifecycle]:
+            raise ValueError(
+                "lifecycle transition "
+                f"{current.lifecycle.value} -> {lifecycle.value} is not allowed"
+            )
+        updated = self.model_copy(deep=True)
+        updated.chapter(chapter_id).lifecycle = lifecycle
+        return updated
+
+
 class Visibility(StrEnum):
     GM_ONLY = "gm_only"
     CANON = "canon"
@@ -164,10 +322,6 @@ class SceneStatus(StrEnum):
     PENDING = "pending"
     ACTIVE = "active"
     ENDED = "ended"
-
-
-class StateBaseModel(BaseModel):
-    model_config = {"extra": "allow"}
 
 
 class BackgroundEventTableEntry(StateBaseModel):
@@ -710,6 +864,10 @@ class WorldStateBundle(StateBaseModel):
     visual_profiles: VisualProfilesState = Field(default_factory=VisualProfilesState)
     encounters: list[EncounterEntry] = Field(default_factory=list)
     voice_profiles: VoiceProfilesState = Field(default_factory=VoiceProfilesState)
+    # ADR-0014: author intent and chapter-operation state share the same transaction,
+    # recovery, backup, and rollback boundary as all other canonical state.
+    book_plan: BookPlanState = Field(default_factory=BookPlanState)
+    book_ledger: BookLedgerState = Field(default_factory=BookLedgerState)
 
     @model_validator(mode="after")
     def _validate_authored_affordances_and_pacing(self) -> "WorldStateBundle":

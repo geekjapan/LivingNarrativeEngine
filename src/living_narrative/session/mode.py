@@ -83,6 +83,18 @@ def is_intervention_allowed(
     return True
 
 
+BOOK_AUTHORING_MODES = frozenset({UserMode.AUTHOR, UserMode.FULL_GM, UserMode.GOD})
+
+
+def is_book_authoring_allowed(user_mode: UserMode | str) -> bool:
+    """Whether the mode may drive long-form production (start/accept/revise a chapter).
+
+    docs/design/long-form-cockpit-architecture.md §2 limits those operations to ``author``,
+    ``full_gm`` and ``god``; reader- and assistant-facing modes only observe the cockpit.
+    """
+    return UserMode(user_mode) in BOOK_AUTHORING_MODES
+
+
 def is_gm_vault_visible(user_mode: UserMode | str) -> bool:
     return MODE_PERMISSIONS[UserMode(user_mode)].can_view_gm_vault
 

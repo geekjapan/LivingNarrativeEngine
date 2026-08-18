@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from living_narrative.pipeline import LoadError, UnresolvedTurnError
-from living_narrative.session.mode import is_gm_vault_visible
+from living_narrative.session.mode import is_book_authoring_allowed, is_gm_vault_visible
 from living_narrative.session.review import ReviewDecision, ReviewStateError
 from living_narrative.state.transaction import ProjectLockError
 from living_narrative.web.page import INDEX_HTML
@@ -28,8 +28,10 @@ from living_narrative.web.service import (
     NoPendingReviewError,
     ProjectNotFoundError,
     SettingsValidationError,
+    accept_book_chapter,
     collect_narration,
     collect_structured_narration,
+    get_book_cockpit,
     get_gm_characters,
     get_gm_threads,
     get_gm_timeline,
@@ -44,8 +46,10 @@ from living_narrative.web.service import (
     list_projects,
     request_stop,
     resolve_project_dir,
+    revise_book_chapter,
     run_turn,
     start_auto_run,
+    start_book_chapter,
     submit_review,
     update_settings_yaml,
 )
@@ -118,6 +122,14 @@ def create_app(project_root: Path) -> FastAPI:
         if info.user_mode == "player_character":
             raise HTTPException(status_code=403, detail="sensitive session view is unavailable")
 
+    def _require_book_authoring_access(project_yaml: Path) -> None:
+        """Long-form production is an authoring operation: only ``author``/``full_gm``/``god``
+        may mutate the chapter lifecycle (docs/design/long-form-cockpit-architecture.md §2).
+        Watcher and assistant-GM modes read the cockpit but never drive it."""
+        info = get_permissions(project_yaml)
+        if not is_book_authoring_allowed(info.user_mode):
+            raise HTTPException(status_code=403, detail="long-form production is unavailable")
+
     def _require_gm_vault_access(project_yaml: Path) -> None:
         info = get_permissions(project_yaml)
         if not is_gm_vault_visible(info.user_mode):
@@ -147,6 +159,51 @@ def create_app(project_root: Path) -> FastAPI:
             "visible_facts": status.visible_facts,
             "llm_usage": status.llm_usage.model_dump(mode="json"),
         }
+
+    @app.get("/api/project/{name}/book/cockpit")
+    def api_book_cockpit(name: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
+        try:
+            return get_book_cockpit(project_yaml).model_dump(mode="json")
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+
+    @app.post("/api/project/{name}/book/chapters/{chapter_id}/start")
+    def api_start_book_chapter(name: str, chapter_id: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_book_authoring_access(project_yaml)
+        try:
+            result = start_book_chapter(project_yaml, chapter_id)
+        except ProjectLockError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "chapter_id": result.chapter_id,
+            "lifecycle": result.lifecycle.value,
+            "journal_id": result.journal_dir.name,
+        }
+
+    @app.post("/api/project/{name}/book/chapters/{chapter_id}/accept")
+    def api_accept_book_chapter(name: str, chapter_id: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_book_authoring_access(project_yaml)
+        try:
+            result = accept_book_chapter(project_yaml, chapter_id)
+        except (ProjectLockError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"chapter_id": result.chapter_id, "lifecycle": result.lifecycle.value}
+
+    @app.post("/api/project/{name}/book/chapters/{chapter_id}/revise")
+    def api_revise_book_chapter(name: str, chapter_id: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_book_authoring_access(project_yaml)
+        try:
+            result = revise_book_chapter(project_yaml, chapter_id)
+        except (ProjectLockError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"chapter_id": result.chapter_id, "lifecycle": result.lifecycle.value}
 
     @app.get("/api/project/{name}/settings/{filename:path}")
     def api_get_settings(name: str, filename: str) -> dict[str, str]:

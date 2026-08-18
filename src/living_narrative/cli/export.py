@@ -6,6 +6,7 @@ import typer
 import yaml
 from pydantic import ValidationError
 
+from living_narrative.book.exporter import IncompleteManuscriptError, export_accepted_manuscript
 from living_narrative.cli._common import load_project_or_exit, runtime_error, usage_error
 from living_narrative.export_replay import (
     DEFAULT_IMAGE_PROMPT_PROFILE,
@@ -103,6 +104,26 @@ def vn_script(
         runtime_error(str(exc))
     typer.echo(f"Wrote {yaml_path}")
     typer.echo(f"Wrote {markdown_path}")
+
+
+@app.command("manuscript")
+def manuscript(
+    project: Path = typer.Option(..., "--project", help="Path to project.yaml"),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        help="Destination directory (default: workspace/exports/manuscript)",
+    ),
+) -> None:
+    """Export BookPlan-ordered accepted attempts as reader-safe Markdown and manifest."""
+    read = load_project_or_exit(project)
+    output_dir = output if output is not None else read.paths.exports / "manuscript"
+    try:
+        result = export_accepted_manuscript(read.paths, output_dir)
+    except IncompleteManuscriptError as exc:
+        runtime_error(str(exc))
+    typer.echo(f"Wrote {result.manuscript_path}")
+    typer.echo(f"Wrote {result.manifest_path}")
 
 
 @app.command("replay")

@@ -14,6 +14,8 @@ from pydantic import BaseModel, ValidationError
 
 from living_narrative.state.diff import fsync_directory
 from living_narrative.state.models import (
+    BookLedgerState,
+    BookPlanState,
     CanonEntry,
     CharacterState,
     EncounterEntry,
@@ -100,6 +102,10 @@ class StateStore:
             VoiceProfilesState,
             issues,
         )
+        # ADR-0014: v1 projects predate book state.  Missing files load as empty
+        # models until their first transaction-backed state save materializes them.
+        book_plan = _load_optional_one(state_dir / "book_plan.yaml", BookPlanState, issues)
+        book_ledger = _load_optional_one(state_dir / "book_ledger.yaml", BookLedgerState, issues)
 
         if issues:
             raise StateLoadError(issues)
@@ -121,6 +127,8 @@ class StateStore:
                 visual_profiles=visual_profiles,
                 encounters=encounters,
                 voice_profiles=voice_profiles,
+                book_plan=book_plan,
+                book_ledger=book_ledger,
             )
         except ValidationError as exc:
             _collect_validation_errors(state_dir, exc, issues)
@@ -162,6 +170,8 @@ def _bundle_files(bundle: WorldStateBundle) -> dict[Path, Any]:
         Path("visual_profiles.yaml"): _dump_model(bundle.visual_profiles),
         Path("encounters.yaml"): [_dump_model(item) for item in bundle.encounters],
         Path("voice_profiles.yaml"): _dump_model(bundle.voice_profiles),
+        Path("book_plan.yaml"): _dump_model(bundle.book_plan),
+        Path("book_ledger.yaml"): _dump_model(bundle.book_ledger),
     }
     files.update(
         {Path("characters") / f"{item.id}.yaml": _dump_model(item) for item in bundle.characters}
