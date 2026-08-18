@@ -10,10 +10,10 @@ from typing import Any
 import yaml
 from pydantic import BaseModel
 
-from living_narrative.book.artifacts import save_chapter_artifacts
+from living_narrative.book.artifacts import load_chapter_artifacts, save_chapter_artifacts
 from living_narrative.book.chapters import ChapterCandidate
 from living_narrative.book.planning import BookPlanProposal, proposal_to_state_diff
-from living_narrative.book.review import ChapterReview
+from living_narrative.book.review import ChapterReview, ChapterReviewDecision
 from living_narrative.book.scheduler import schedule_next_chapter
 from living_narrative.state.diff import StateDiff, StateDiffChange, fsync_directory
 from living_narrative.state.models import ChapterLifecycle, Visibility
@@ -225,6 +225,9 @@ def open_chapter_review(workspace_root: Path, chapter_id: str) -> ChapterProduct
 
 def accept_chapter_review(workspace_root: Path, chapter_id: str) -> ChapterProductionResult:
     """Accept a reviewed chapter as an immutable manuscript input."""
+    _, review = load_chapter_artifacts(workspace_root / "books" / "chapters", chapter_id)
+    if review.decision is not ChapterReviewDecision.ACCEPT:
+        raise ValueError("cannot accept a non-accept review")
     return _chapter_transition(
         workspace_root,
         chapter_id,

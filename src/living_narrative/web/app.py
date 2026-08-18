@@ -30,6 +30,7 @@ from living_narrative.web.service import (
     SettingsValidationError,
     collect_narration,
     collect_structured_narration,
+    get_book_cockpit,
     get_gm_characters,
     get_gm_threads,
     get_gm_timeline,
@@ -46,6 +47,7 @@ from living_narrative.web.service import (
     resolve_project_dir,
     run_turn,
     start_auto_run,
+    start_book_chapter,
     submit_review,
     update_settings_yaml,
 )
@@ -146,6 +148,31 @@ def create_app(project_root: Path) -> FastAPI:
             "characters": status.characters,
             "visible_facts": status.visible_facts,
             "llm_usage": status.llm_usage.model_dump(mode="json"),
+        }
+
+    @app.get("/api/project/{name}/book/cockpit")
+    def api_book_cockpit(name: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
+        try:
+            return get_book_cockpit(project_yaml).model_dump(mode="json")
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project not found: {name}") from None
+
+    @app.post("/api/project/{name}/book/chapters/{chapter_id}/start")
+    def api_start_book_chapter(name: str, chapter_id: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
+        try:
+            result = start_book_chapter(project_yaml, chapter_id)
+        except ProjectLockError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "chapter_id": result.chapter_id,
+            "lifecycle": result.lifecycle.value,
+            "journal_id": result.journal_dir.name,
         }
 
     @app.get("/api/project/{name}/settings/{filename:path}")

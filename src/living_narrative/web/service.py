@@ -15,6 +15,8 @@ from typing import Any
 import yaml
 from pydantic import TypeAdapter, ValidationError
 
+from living_narrative.book.cockpit import BookCockpit, build_book_cockpit
+from living_narrative.book.coordinator import ChapterProductionResult, start_chapter_production
 from living_narrative.cli._common import read_narration_body
 from living_narrative.intervention.history import load_history
 from living_narrative.llm.costs import ModelPricing, ProjectCostSummary, collect_project_costs
@@ -55,6 +57,8 @@ __all__ = [
     "RunStatus",
     "TurnNarration",
     "collect_narration",
+    "get_book_cockpit",
+    "start_book_chapter",
     "collect_structured_narration",
     "get_gm_characters",
     "get_gm_threads",
@@ -271,6 +275,22 @@ def get_status(project_yaml: Path) -> ProjectStatus:
         visible_facts=pc_projection.visible_facts if pc_projection else [],
         llm_usage=collect_project_costs(project_yaml, read.paths.runs),
     )
+
+
+def get_book_cockpit(project_yaml: Path) -> BookCockpit:
+    """Project a long-form BookPlan/BookLedger view without private state."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return build_book_cockpit(StateStore.load(read.paths.state))
+
+
+def start_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
+    """Reserve one planned chapter through the book transaction coordinator."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return start_chapter_production(read.paths.root, chapter_id)
 
 
 def collect_narration(project_yaml: Path, from_turn: int) -> str:

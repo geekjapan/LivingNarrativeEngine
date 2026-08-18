@@ -81,6 +81,16 @@ INDEX_HTML = """\
     text-align: left; }
   .review-finding { padding: 0.2rem 0; font-size: 0.85rem; }
   .review-finding .badge { margin-right: 0.4rem; }
+  #book-panel { border: 1px solid #455a64; border-radius: 6px; padding: 0.75rem 1rem;
+    margin: 0.75rem 0; }
+  #book-panel h2 { margin-top: 0; }
+  #book-roadmap .chapter { border-bottom: 1px solid #eceff1; padding: 0.55rem 0; }
+  #book-roadmap .chapter:last-child { border-bottom: none; }
+  #book-roadmap .chapter-head { display: flex; gap: 0.5rem; align-items: baseline;
+    flex-wrap: wrap; }
+  #book-roadmap .chapter p { margin: 0.25rem 0; }
+  #book-roadmap .book-start { margin-top: 0.25rem; }
+  #book-message { font-size: 0.9rem; color: #b45309; }
 </style>
 </head>
 <body>
@@ -174,6 +184,13 @@ INDEX_HTML = """\
     <button id="review-partial-button">選択のみ適用</button>
   </div>
 </div>
+<section id="book-panel" hidden>
+  <h2>長編制作コックピット</h2>
+  <p id="book-premise"></p>
+  <p>次アクション: <span id="book-next-action"></span></p>
+  <p id="book-message" aria-live="polite"></p>
+  <div id="book-roadmap"></div>
+</section>
 <div id="characters"></div>
 <h2>Story</h2>
 <div id="story"></div>
@@ -243,6 +260,11 @@ const projectSettingsSave = document.getElementById("project-settings-save");
 const pricingSettingsSave = document.getElementById("pricing-settings-save");
 const settingsMessage = document.getElementById("settings-message");
 const emptyStateEl = document.getElementById("empty-state");
+const bookPanelEl = document.getElementById("book-panel");
+const bookPremiseEl = document.getElementById("book-premise");
+const bookNextActionEl = document.getElementById("book-next-action");
+const bookMessageEl = document.getElementById("book-message");
+const bookRoadmapEl = document.getElementById("book-roadmap");
 
 let pollHandle = null;
 let gmOpen = false;
@@ -332,6 +354,59 @@ function renderReview(review) {
       </tr>`
     )
     .join("");
+}
+
+function renderBookCockpit(cockpit) {
+  bookPremiseEl.textContent = cockpit.premise ? "制作方針: " + cockpit.premise : "BookPlan未作成";
+  bookNextActionEl.innerHTML = escapeHtml(cockpit.next_action || "待機中");
+  bookRoadmapEl.innerHTML = (cockpit.chapters || [])
+    .map((chapter) => {
+      const startable = chapter.lifecycle === "planned";
+      const start = startable
+        ? `<button class="book-start" data-chapter-id="${escapeHtml(chapter.id)}" ` +
+          `aria-label="${escapeHtml(chapter.id)}の制作を開始">制作を開始</button>`
+        : "";
+      return `<article class="chapter">
+        <div class="chapter-head"><strong>${escapeHtml(chapter.id)}</strong>
+          <span class="badge badge-${escapeHtml(chapter.lifecycle)}">
+            ${escapeHtml(chapter.lifecycle)}</span>
+          <span>${escapeHtml(chapter.act_id)}</span></div>
+        <p>${escapeHtml(chapter.planned_goal)}</p>
+        <p>目標: ${escapeHtml(chapter.target_min_words)}–
+          ${escapeHtml(chapter.target_max_words)} units</p>
+        ${start}
+      </article>`;
+    })
+    .join("") || "<p>章計画はまだありません。</p>";
+  document.querySelectorAll(".book-start").forEach((button) => {
+    button.addEventListener("click", () => startBookChapter(button.dataset.chapterId));
+  });
+}
+
+async function loadBookCockpit() {
+  const name = currentProject();
+  if (!name) return;
+  const res = await fetch(`/api/project/${encodeURIComponent(name)}/book/cockpit`);
+  if (!res.ok) {
+    bookMessageEl.textContent = "長編コックピットを読み込めません。";
+    return;
+  }
+  bookMessageEl.textContent = "";
+  renderBookCockpit(await res.json());
+}
+
+async function startBookChapter(chapterId) {
+  const name = currentProject();
+  if (!name || !chapterId) return;
+  bookMessageEl.textContent = "章制作を開始しています…";
+  const path = `/api/project/${encodeURIComponent(name)}/book/chapters/` +
+    `${encodeURIComponent(chapterId)}/start`;
+  const res = await fetch(path, { method: "POST" });
+  const data = await res.json();
+  bookMessageEl.textContent = res.ok
+    ? `${data.chapter_id} を開始しました。`
+    : data.detail || "章制作を開始できませんでした。";
+  await loadBookCockpit();
 }
 
 async function loadReview() {
@@ -552,6 +627,7 @@ async function loadProjects() {
   autoButton.disabled = !hasProjects;
   gmToggleButton.disabled = !hasProjects;
   settingsToggleButton.disabled = !hasProjects;
+  bookPanelEl.hidden = true;
   if (hasProjects) await refresh();
 }
 
@@ -577,9 +653,12 @@ async function refresh() {
     ]);
     renderInterventionHistory(await interventionsRes.json());
     renderReview(await reviewRes.json());
+    bookPanelEl.hidden = false;
+    await loadBookCockpit();
   } else {
     renderReview({pending: false});
     interventionHistoryEl.innerHTML = "";
+    bookPanelEl.hidden = true;
   }
   gmToggleButton.hidden = !privileged;
   if (!privileged) {

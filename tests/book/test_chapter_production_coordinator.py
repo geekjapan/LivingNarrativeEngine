@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from living_narrative.book.chapters import ChapterCandidate
 from living_narrative.book.coordinator import (
     accept_chapter_review,
@@ -10,7 +12,13 @@ from living_narrative.book.coordinator import (
     start_chapter_production,
 )
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
-from living_narrative.book.review import ChapterReview, ChapterReviewDecision, ChapterReviewMetrics
+from living_narrative.book.review import (
+    ChapterReview,
+    ChapterReviewDecision,
+    ChapterReviewMetrics,
+    SemanticContinuityAssessment,
+    SemanticContinuityFinding,
+)
 from living_narrative.state.models import ChapterLifecycle
 from living_narrative.state.store import StateStore
 from living_narrative.workspace.init import create_project
@@ -69,6 +77,41 @@ def test_chapter_production_lifecycle_persists_candidate_review_and_acceptance(t
     assert bundle.book_ledger.chapter("chapter_001").review_decision == "accept"
     assert result.journal_dir.exists()
     assert (workspace / "books" / "chapters" / "chapter_001" / "candidate.md").exists()
+
+
+def test_semantic_block_review_cannot_be_accepted(tmp_path):
+    workspace = _workspace(tmp_path)
+    candidate = ChapterCandidate(
+        chapter_id="chapter_001",
+        source_turns=[1],
+        markdown="# chapter_001\n\n澪は時刻表の矛盾を見つけた。\n",
+    )
+    review = ChapterReview(
+        chapter_id="chapter_001",
+        decision=ChapterReviewDecision.REVISE,
+        metrics=ChapterReviewMetrics(body_units=20, min_units=10, max_units=100),
+        semantic=SemanticContinuityAssessment(
+            findings=[
+                SemanticContinuityFinding(
+                    code="required_thread_missing",
+                    severity="block",
+                    evidence="required thread thread_001 is not covered",
+                    repair_instruction="Address thread_001.",
+                )
+            ]
+        ),
+    )
+
+    start_chapter_production(workspace, "chapter_001")
+    record_chapter_candidate(workspace, candidate, review)
+    open_chapter_review(workspace, "chapter_001")
+
+    with pytest.raises(ValueError, match="cannot accept a non-accept review"):
+        accept_chapter_review(workspace, "chapter_001")
+
+    assert StateStore.load(workspace / "state").book_ledger.chapter("chapter_001").lifecycle == (
+        ChapterLifecycle.REVIEW
+    )
 
 
 def test_revised_candidate_uses_a_new_transaction_and_replaces_current_artifact(tmp_path):

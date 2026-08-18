@@ -250,7 +250,8 @@ def test_inner_html_template_values_use_escape_html(tmp_path, build_project):
     function_ranges = (
         ("function renderInterventionEntry", "function renderInterventionHistory"),
         ("function renderInterventionHistory", "function visibilityBadge"),
-        ("function renderReview", "async function loadReview"),
+        ("function renderReview", "function renderBookCockpit"),
+        ("function renderBookCockpit", "async function loadBookCockpit"),
         ("function renderGmCharacters", "function renderGmLlmUsage"),
         ("function renderGmLlmUsage", "function renderGmWorld"),
         ("function renderGmWorld", "function renderGmThreads"),
@@ -283,6 +284,7 @@ def test_inner_html_template_values_use_escape_html(tmp_path, build_project):
         "skills",
         "stats",
         "summaries",
+        "start",
         "threads",
         "threats",
         "visualProfile",
@@ -481,3 +483,27 @@ def test_index_serves_html(tmp_path):
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "<html" in response.text
+
+
+def test_book_cockpit_panel_loads_safe_roadmap_and_starts_planned_chapter(tmp_path, build_project):
+    build_project(tmp_path)
+
+    page = _client(tmp_path).get("/").text
+
+    assert '<section id="book-panel"' in page
+    assert "長編制作コックピット" in page
+    assert 'id="book-premise"' in page
+    assert 'id="book-next-action"' in page
+    assert 'id="book-roadmap"' in page
+    assert "function renderBookCockpit(cockpit)" in page
+    assert "async function loadBookCockpit()" in page
+    assert "fetch(`/api/project/${encodeURIComponent(name)}/book/cockpit`)" in page
+    assert "async function startBookChapter(chapterId)" in page
+    assert "const path = `/api/project/${encodeURIComponent(name)}/book/chapters/` +" in page
+    assert "`${encodeURIComponent(chapterId)}/start`;" in page
+    assert 'fetch(path, { method: "POST" })' in page
+    assert "${escapeHtml(chapter.planned_goal)}" in page
+    assert "${escapeHtml(chapter.lifecycle)}" in page
+    assert 'bookNextActionEl.innerHTML = escapeHtml(cockpit.next_action || "待機中");' in page
+    assert "book-roadmap .chapter" in page
+    assert "book-start" in page
