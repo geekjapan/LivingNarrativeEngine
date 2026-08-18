@@ -16,7 +16,12 @@ import yaml
 from pydantic import TypeAdapter, ValidationError
 
 from living_narrative.book.cockpit import BookCockpit, build_book_cockpit
-from living_narrative.book.coordinator import ChapterProductionResult, start_chapter_production
+from living_narrative.book.coordinator import (
+    ChapterProductionResult,
+    accept_chapter_review,
+    request_chapter_revision,
+    start_chapter_production,
+)
 from living_narrative.cli._common import read_narration_body
 from living_narrative.intervention.history import load_history
 from living_narrative.llm.costs import ModelPricing, ProjectCostSummary, collect_project_costs
@@ -59,6 +64,8 @@ __all__ = [
     "collect_narration",
     "get_book_cockpit",
     "start_book_chapter",
+    "accept_book_chapter",
+    "revise_book_chapter",
     "collect_structured_narration",
     "get_gm_characters",
     "get_gm_threads",
@@ -283,6 +290,22 @@ def get_book_cockpit(project_yaml: Path) -> BookCockpit:
     if not read.is_valid:
         raise ProjectNotFoundError(str(project_yaml))
     return build_book_cockpit(StateStore.load(read.paths.state))
+
+
+def accept_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
+    """Accept a reviewed chapter through the transaction-backed coordinator."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return accept_chapter_review(read.paths.root, chapter_id)
+
+
+def revise_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
+    """Request revision of a reviewed chapter through the coordinator."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return request_chapter_revision(read.paths.root, chapter_id)
 
 
 def start_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:

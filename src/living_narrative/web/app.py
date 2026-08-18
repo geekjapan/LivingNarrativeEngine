@@ -28,6 +28,7 @@ from living_narrative.web.service import (
     NoPendingReviewError,
     ProjectNotFoundError,
     SettingsValidationError,
+    accept_book_chapter,
     collect_narration,
     collect_structured_narration,
     get_book_cockpit,
@@ -45,6 +46,7 @@ from living_narrative.web.service import (
     list_projects,
     request_stop,
     resolve_project_dir,
+    revise_book_chapter,
     run_turn,
     start_auto_run,
     start_book_chapter,
@@ -174,6 +176,26 @@ def create_app(project_root: Path) -> FastAPI:
             "lifecycle": result.lifecycle.value,
             "journal_id": result.journal_dir.name,
         }
+
+    @app.post("/api/project/{name}/book/chapters/{chapter_id}/accept")
+    def api_accept_book_chapter(name: str, chapter_id: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
+        try:
+            result = accept_book_chapter(project_yaml, chapter_id)
+        except (ProjectLockError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"chapter_id": result.chapter_id, "lifecycle": result.lifecycle.value}
+
+    @app.post("/api/project/{name}/book/chapters/{chapter_id}/revise")
+    def api_revise_book_chapter(name: str, chapter_id: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
+        try:
+            result = revise_book_chapter(project_yaml, chapter_id)
+        except (ProjectLockError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"chapter_id": result.chapter_id, "lifecycle": result.lifecycle.value}
 
     @app.get("/api/project/{name}/settings/{filename:path}")
     def api_get_settings(name: str, filename: str) -> dict[str, str]:
