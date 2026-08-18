@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import yaml
+
 from living_narrative.book.benchmark import benchmark_book, write_book_benchmark_report
 from living_narrative.book.chapters import ChapterCandidate
 from living_narrative.book.coordinator import apply_book_plan_proposal
@@ -7,6 +9,7 @@ from living_narrative.book.lineage import accept_chapter_attempt, record_chapter
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
 from living_narrative.book.review import ChapterReview, ChapterReviewDecision, ChapterReviewMetrics
 from living_narrative.workspace.init import create_project
+from living_narrative.workspace.loader import load_project
 
 
 def test_book_benchmark_writes_public_stable_report_without_workspace_path(tmp_path):
@@ -110,3 +113,25 @@ def test_benchmark_fingerprint_binds_chapter_lineage_and_accepted_attempt(tmp_pa
     assert accepted_first.artifact_fingerprint != accepted_revised.artifact_fingerprint
     assert assigned.attempt_count == 2
     assert accepted_revised.attempt_count == 3
+
+
+def test_benchmark_honors_configured_state_path(tmp_path):
+    """A configured ``workspace.state`` must be measured, not the default layout."""
+    project_yaml = create_project(tmp_path / "book", title="Benchmark")
+    workspace = project_yaml.parent / "workspace"
+    (workspace / "state").rename(project_yaml.parent / "canon")
+    config = yaml.safe_load(project_yaml.read_text(encoding="utf-8"))
+    config["workspace"] = {
+        "root": "workspace",
+        "state": "canon",
+        "runs": "workspace/runs",
+        "exports": "workspace/exports",
+    }
+    project_yaml.write_text(
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+    observation = benchmark_book(load_project(project_yaml).paths, name="configured")
+
+    assert observation.planned_chapters == 0
+    assert len(observation.artifact_fingerprint) == 64

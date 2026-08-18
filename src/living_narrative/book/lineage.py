@@ -111,8 +111,13 @@ def record_chapter_attempt(
         raise ValueError("candidate and review chapter_id must match")
     lineage = _load_manifest(chapters_root, candidate.chapter_id)
     candidate_sha256 = hashlib.sha256(candidate.markdown.encode("utf-8")).hexdigest()
-    if any(attempt.candidate_sha256 == candidate_sha256 for attempt in lineage.attempts):
-        raise FileExistsError("an immutable attempt already exists for this candidate body")
+    if any(
+        attempt.candidate_sha256 == candidate_sha256
+        and attempt.review == review
+        and attempt.draft_run_id == draft_run_id
+        for attempt in lineage.attempts
+    ):
+        raise FileExistsError("an identical attempt already exists for this candidate body")
 
     attempt_id = f"attempt_{len(lineage.attempts) + 1:03d}"
     attempt = ChapterAttempt(

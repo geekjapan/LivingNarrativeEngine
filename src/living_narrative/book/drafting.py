@@ -160,17 +160,24 @@ def run_chapter_draft(
                     {"status": "blocked", "reason": stop_reason, "chapter_id": chapter_id},
                 )
                 raise BudgetExceededError(stop_reason)
-        _atomic_write_yaml(
-            run_dir / "request.yaml",
-            {
-                "run_id": run_id,
-                "chapter_id": chapter_id,
-                "attempt": attempt,
-                "binding_key": "chapter_draft",
-                "context": context.model_dump(mode="json"),
-            },
-        )
-        _atomic_write_yaml(run_dir / "prompt.yaml", {"messages": messages})
+        request_path = run_dir / "request.yaml"
+        prompt_path = run_dir / "prompt.yaml"
+        if request_path.is_file() and prompt_path.is_file():
+            # A retry of the same attempt keeps its original inputs: regenerating them would let
+            # one audit identity cover prose written from different reader facts.
+            messages = (yaml.safe_load(prompt_path.read_text(encoding="utf-8")) or {})["messages"]
+        else:
+            _atomic_write_yaml(
+                request_path,
+                {
+                    "run_id": run_id,
+                    "chapter_id": chapter_id,
+                    "attempt": attempt,
+                    "binding_key": "chapter_draft",
+                    "context": context.model_dump(mode="json"),
+                },
+            )
+            _atomic_write_yaml(prompt_path, {"messages": messages})
 
         if response_path.is_file():
             response = _load_response(response_path)

@@ -312,9 +312,16 @@ def _reviewed_attempt_id(chapters_root: Path, chapter_id: str) -> str:
     candidate_path = chapters_root / chapter_id / "candidate.md"
     if candidate_path.is_file():
         reviewed = hashlib.sha256(candidate_path.read_bytes()).hexdigest()
-        match = next((item for item in lineage.attempts if item.candidate_sha256 == reviewed), None)
-        if match is not None:
-            return match.id
+        _, current = load_chapter_artifacts(chapters_root, chapter_id)
+        # The same body may appear under more than one review (a replacement plan re-drafting
+        # the chapter), so match the current review first and fall back to the newest body match.
+        for predicate in (
+            lambda item: item.candidate_sha256 == reviewed and item.review == current,
+            lambda item: item.candidate_sha256 == reviewed,
+        ):
+            match = next((item for item in reversed(lineage.attempts) if predicate(item)), None)
+            if match is not None:
+                return match.id
     return lineage.attempts[-1].id
 
 

@@ -10,10 +10,12 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from living_narrative.book.coordinator import resolve_workspace_dirs
 from living_narrative.book.lineage import load_chapter_lineage
 from living_narrative.state.diff import fsync_directory
 from living_narrative.state.models import ChapterLifecycle
 from living_narrative.state.store import StateStore
+from living_narrative.workspace.loader import WorkspacePaths
 
 
 class BookBenchmarkObservation(BaseModel):
@@ -29,9 +31,14 @@ class BookBenchmarkObservation(BaseModel):
     artifact_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
-def benchmark_book(workspace_root: Path, *, name: str) -> BookBenchmarkObservation:
-    """Read one workspace without mutation and produce a path-free benchmark aggregate."""
-    bundle = StateStore.load(workspace_root / "state")
+def benchmark_book(workspace: Path | WorkspacePaths, *, name: str) -> BookBenchmarkObservation:
+    """Read one workspace without mutation and produce a path-free benchmark aggregate.
+
+    Accepts the resolved ``load_project()`` paths so a configured ``workspace.state`` is measured
+    instead of the default layout.
+    """
+    workspace_root, state_dir, _ = resolve_workspace_dirs(workspace)
+    bundle = StateStore.load(state_dir)
     chapter_ids = [chapter.id for chapter in bundle.book_plan.chapters]
     accepted = 0
     revising = 0

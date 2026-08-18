@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import yaml
 
 from living_narrative.book.coordinator import apply_book_plan_proposal
 from living_narrative.book.drafting import ChapterDraftResponse, run_chapter_draft
@@ -129,3 +130,33 @@ def test_replacement_plan_does_not_resume_the_previous_plan_response(tmp_path):
     assert second.run_id != first.run_id
     assert second.response.body == "新計画の本文。"
     assert replacement.call_count == 1
+
+
+def test_failed_retry_keeps_the_original_request_and_prompt(tmp_path):
+    """One run ID must cover one set of inputs: a retry resumes the persisted request instead of
+    rebuilding it from whatever the world looks like now."""
+    project_yaml = _project(tmp_path)
+
+    class FailingGateway:
+        call_count = 0
+
+        def complete(self, binding_key, messages, response_schema, prompt_template_name):
+            type(self).call_count += 1
+            raise RuntimeError("provider down")
+
+    with pytest.raises(RuntimeError):
+        run_chapter_draft(project_yaml, "chapter_001", gateway=FailingGateway())
+    runs = list((project_yaml.parent / "workspace" / "runs" / "chapter_drafts").iterdir())
+    assert len(runs) == 1
+    original = (runs[0] / "request.yaml").read_text(encoding="utf-8")
+
+    state_dir = project_yaml.parent / "workspace" / "state"
+    world = yaml.safe_load((state_dir / "world.yaml").read_text(encoding="utf-8"))
+    world["summary"] = "書庫の空気が変わった。"
+    (state_dir / "world.yaml").write_text(
+        yaml.safe_dump(world, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+    run_chapter_draft(project_yaml, "chapter_001", gateway=_Gateway())
+
+    assert (runs[0] / "request.yaml").read_text(encoding="utf-8") == original
