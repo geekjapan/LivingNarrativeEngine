@@ -55,15 +55,11 @@ def test_budget_blocks_chapter_attempt_before_provider_call_and_records_reason(t
             budget=BookBudgetPolicy(max_attempts_per_chapter=1),
         )
 
-    run_dir = (
-        project_yaml.parent
-        / "workspace"
-        / "runs"
-        / "chapter_drafts"
-        / "chapter_chapter_001_attempt_002"
-    )
+    drafts_root = project_yaml.parent / "workspace" / "runs" / "chapter_drafts"
+    blocked = list(drafts_root.glob("chapter_chapter_001_*_attempt_002"))
     assert gateway.call_count == 0
-    assert (run_dir / "circuit_breaker.yaml").exists()
+    assert len(blocked) == 1
+    assert (blocked[0] / "circuit_breaker.yaml").exists()
 
 
 def test_budget_blocks_book_attempts_across_chapters_before_provider_call(tmp_path):

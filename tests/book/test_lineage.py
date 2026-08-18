@@ -49,3 +49,22 @@ def test_attempt_lineage_preserves_immutable_revisions_and_accepted_pointer(tmp_
             ChapterCandidate(chapter_id="chapter_001", source_turns=[3], markdown="# revised\n"),
             _review(ChapterReviewDecision.ACCEPT),
         )
+
+
+def test_retry_completes_an_orphaned_attempt_directory(tmp_path):
+    """A crash between writing the attempt files and replacing lineage.yaml leaves a directory
+    the manifest never recorded; the retry must finish it rather than block the chapter."""
+    chapters_root = tmp_path / "chapters"
+    orphan = chapters_root / "chapter_001" / "attempts" / "attempt_001"
+    orphan.mkdir(parents=True)
+    (orphan / "candidate.md").write_text("# partial\n", encoding="utf-8")
+
+    attempt = record_chapter_attempt(
+        chapters_root,
+        ChapterCandidate(chapter_id="chapter_001", source_turns=[1], markdown="# retried\n"),
+        _review(ChapterReviewDecision.ACCEPT),
+    )
+
+    assert attempt.id == "attempt_001"
+    assert (orphan / "candidate.md").read_text(encoding="utf-8") == "# retried\n"
+    assert load_chapter_lineage(chapters_root, "chapter_001").attempts[0].id == "attempt_001"

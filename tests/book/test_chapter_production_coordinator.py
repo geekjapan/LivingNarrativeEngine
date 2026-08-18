@@ -218,3 +218,6 @@ def test_acceptance_selects_the_attempt_matching_the_reviewed_candidate(tmp_path
     accepted = next(item for item in lineage.attempts if item.id == lineage.accepted_attempt_id)
     assert accepted.candidate_markdown == reviewed.markdown
     assert accepted.draft_run_id == "chapter_chapter_001_attempt_001"
+    # The continuity ledger must summarise the same attempt the author reviewed.
+    entry = StateStore.load(workspace / "state").book_ledger.continuity.entries[-1]
+    assert "澪は時刻表の矛盾を見つけた。" in entry.summary

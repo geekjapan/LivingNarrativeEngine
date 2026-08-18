@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 from pathlib import Path
 
 import yaml
@@ -126,7 +127,10 @@ def record_chapter_attempt(
     )
     attempt_dir = _attempt_dir(chapters_root, candidate.chapter_id, attempt_id)
     if attempt_dir.exists():
-        raise FileExistsError(f"attempt already exists: {attempt_dir}")
+        # The manifest never recorded this ID (attempt IDs come from its own length), so the
+        # directory is a partial write from a crash before ``lineage.yaml`` was replaced. Nothing
+        # references it; discarding it lets the retry complete instead of blocking the chapter.
+        shutil.rmtree(attempt_dir)
     _atomic_write_text(attempt_dir / "candidate.md", candidate.markdown)
     _write_yaml(attempt_dir / "review.yaml", review.model_dump(mode="json"))
     _write_yaml(attempt_dir / "attempt.yaml", _stored_attempt(attempt))

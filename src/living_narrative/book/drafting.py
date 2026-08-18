@@ -16,6 +16,7 @@ from living_narrative.book.budget import (
     evaluate_draft_budget,
 )
 from living_narrative.book.chapters import ChapterContext, build_chapter_context
+from living_narrative.book.coordinator import plan_generation
 from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.state.diff import fsync_directory
 from living_narrative.state.store import StateStore
@@ -122,17 +123,19 @@ def run_chapter_draft(
 
     workspace_root = read.paths.root
     state_dir = read.paths.state
-    run_id = f"chapter_{chapter_id}_attempt_{attempt:03d}"
     drafts_root = read.paths.runs / "chapter_drafts"
-    run_dir = drafts_root / run_id
-    response_path = run_dir / "response.yaml"
-    completion_path = run_dir / "meta.yaml"
 
     # The state snapshot is taken inside the lock: a context built beforehand can observe a
     # partially published transaction, or feed a superseded plan to the provider.
     with project_lock(workspace_root):
         bundle = StateStore.load(state_dir)
         context = build_chapter_context(bundle, chapter_id, source_turns=[])
+        # The run identity carries the plan generation: a replacement plan reusing this chapter
+        # ID and attempt number would otherwise resume prose written for the previous goal.
+        run_id = f"chapter_{chapter_id}_{plan_generation(bundle)}_attempt_{attempt:03d}"
+        run_dir = drafts_root / run_id
+        response_path = run_dir / "response.yaml"
+        completion_path = run_dir / "meta.yaml"
         if completion_path.is_file() or response_path.is_file():
             response = _load_response(response_path)
             if not completion_path.is_file():

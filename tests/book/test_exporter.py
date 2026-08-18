@@ -17,6 +17,7 @@ from living_narrative.book.exporter import IncompleteManuscriptError, export_acc
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
 from living_narrative.book.review import ChapterReview, ChapterReviewDecision, ChapterReviewMetrics
 from living_narrative.workspace.init import create_project
+from living_narrative.workspace.loader import load_project
 
 
 def _workspace(tmp_path):
@@ -81,3 +82,39 @@ def test_exporter_rejects_book_with_unaccepted_chapter(tmp_path):
 
     with pytest.raises(IncompleteManuscriptError, match="not accepted"):
         export_accepted_manuscript(workspace, tmp_path / "exports")
+
+
+def test_export_honors_configured_state_path(tmp_path):
+    """``workspace.state`` is configurable: export must read the project's own canonical state."""
+    workspace = _workspace(tmp_path)
+    project_yaml = workspace.parent / "project.yaml"
+    (workspace / "state").rename(workspace.parent / "canon")
+    config = yaml.safe_load(project_yaml.read_text(encoding="utf-8"))
+    config["workspace"] = {
+        "root": "workspace",
+        "state": "canon",
+        "runs": "workspace/runs",
+        "exports": "workspace/exports",
+    }
+    project_yaml.write_text(
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    paths = load_project(project_yaml).paths
+    candidate = ChapterCandidate(
+        chapter_id="chapter_001",
+        source_turns=[1],
+        markdown="# chapter_001\n\n公開本文。\n",
+    )
+    review = ChapterReview(
+        chapter_id="chapter_001",
+        decision=ChapterReviewDecision.ACCEPT,
+        metrics=ChapterReviewMetrics(body_units=20, min_units=10, max_units=100),
+    )
+    start_chapter_production(paths, "chapter_001")
+    record_chapter_candidate(paths, candidate, review)
+    open_chapter_review(paths, "chapter_001")
+    accept_chapter_review(paths, "chapter_001")
+
+    result = export_accepted_manuscript(paths, tmp_path / "exports")
+
+    assert result.manuscript_path.read_text(encoding="utf-8") == "公開本文。"

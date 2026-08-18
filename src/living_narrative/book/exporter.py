@@ -11,10 +11,12 @@ import yaml
 from pydantic import BaseModel
 
 from living_narrative.book.continuity import strip_chapter_scaffolding
+from living_narrative.book.coordinator import resolve_workspace_dirs
 from living_narrative.book.lineage import load_chapter_lineage
 from living_narrative.state.diff import fsync_directory
 from living_narrative.state.models import ChapterLifecycle
 from living_narrative.state.store import StateStore
+from living_narrative.workspace.loader import WorkspacePaths
 
 
 class IncompleteManuscriptError(ValueError):
@@ -70,9 +72,16 @@ def _atomic_write_text(path: Path, text: str) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def export_accepted_manuscript(workspace_root: Path, output_dir: Path) -> ManuscriptExportResult:
-    """Write a reader-safe manuscript and manifest from BookPlan-ordered accepted attempts."""
-    bundle = StateStore.load(workspace_root / "state")
+def export_accepted_manuscript(
+    workspace: Path | WorkspacePaths, output_dir: Path
+) -> ManuscriptExportResult:
+    """Write a reader-safe manuscript and manifest from BookPlan-ordered accepted attempts.
+
+    Accepts the resolved ``load_project()`` paths so a project whose ``workspace.state`` is not
+    ``<root>/state`` exports from its own canonical state.
+    """
+    workspace_root, state_dir, _ = resolve_workspace_dirs(workspace)
+    bundle = StateStore.load(state_dir)
     bodies: list[str] = []
     manifest_chapters: list[dict[str, str]] = []
     chapters_root = workspace_root / "books" / "chapters"

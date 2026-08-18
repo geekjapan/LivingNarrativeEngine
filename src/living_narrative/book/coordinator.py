@@ -65,7 +65,8 @@ def _atomic_write_yaml(path: Path, data: Any) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _plan_generation(bundle: WorldStateBundle) -> str:
+def plan_generation(bundle: WorldStateBundle) -> str:
+    """Identity of the current BookPlan, used to namespace journals and draft runs."""
     payload = json.dumps(
         bundle.book_plan.model_dump(mode="json"),
         ensure_ascii=False,
@@ -85,7 +86,7 @@ def _reject_concurrent_chapter_start(ledger: BookLedgerState, chapter_id: str) -
         raise ValueError(f"chapter {in_flight[0]} is already in production")
 
 
-def _workspace_dirs(workspace: Path | WorkspacePaths) -> tuple[Path, Path, Path]:
+def resolve_workspace_dirs(workspace: Path | WorkspacePaths) -> tuple[Path, Path, Path]:
     """Resolve root/state/runs from either a workspace root or ``load_project()`` paths.
 
     ``workspace.state`` and ``workspace.runs`` are configurable, so a caller that already
@@ -111,7 +112,7 @@ def apply_book_plan_proposal(
     proposal: BookPlanProposal,
 ) -> BookPlanApplyResult:
     """Persist an accepted proposal through the same journal-before-state protocol as turns."""
-    workspace_root, state_dir, runs_dir = _workspace_dirs(workspace)
+    workspace_root, state_dir, runs_dir = resolve_workspace_dirs(workspace)
     journal_dir = runs_dir / ".transactions" / proposal.proposal_id
     diff = proposal_to_state_diff(proposal, turn=0)
 
@@ -154,7 +155,7 @@ def _chapter_transition(
     if review is not None and review.chapter_id != chapter_id:
         raise ValueError("review chapter_id does not match lifecycle target")
 
-    workspace_root, state_dir, runs_dir = _workspace_dirs(workspace)
+    workspace_root, state_dir, runs_dir = resolve_workspace_dirs(workspace)
     candidate_suffix = (
         hashlib.sha256(candidate.markdown.encode("utf-8")).hexdigest()[:16]
         if candidate is not None
@@ -166,7 +167,7 @@ def _chapter_transition(
         journal_dir = (
             runs_dir
             / ".transactions"
-            / f"chapter_{_plan_generation(bundle)}_{chapter_id}_{lifecycle}{journal_suffix}"
+            / f"chapter_{plan_generation(bundle)}_{chapter_id}_{lifecycle}{journal_suffix}"
         )
         existing_diff_id = _assert_recoverable(journal_dir, state_dir)
         if existing_diff_id is not None:
@@ -186,10 +187,12 @@ def _chapter_transition(
         if lifecycle in {ChapterLifecycle.ACCEPTED, ChapterLifecycle.REVISING}:
             ledger.next_action = schedule_next_chapter(ledger).action.value
             if lifecycle is ChapterLifecycle.ACCEPTED:
-                lineage = load_chapter_lineage(workspace_root / "books" / "chapters", chapter_id)
+                chapters_dir = workspace_root / "books" / "chapters"
+                lineage = load_chapter_lineage(chapters_dir, chapter_id)
                 if not lineage.attempts:
                     raise ValueError("cannot accept a chapter without an immutable attempt")
-                attempt = lineage.attempts[-1]
+                reviewed_id = _reviewed_attempt_id(chapters_dir, chapter_id)
+                attempt = next(item for item in lineage.attempts if item.id == reviewed_id)
                 chapter = bundle.book_plan.chapter(chapter_id)
                 covered = (
                     attempt.review.semantic.required_threads_covered
@@ -316,7 +319,7 @@ def _reviewed_attempt_id(chapters_root: Path, chapter_id: str) -> str:
 
 
 def _current_candidate_key(workspace: Path | WorkspacePaths, chapter_id: str) -> str:
-    root = _workspace_dirs(workspace)[0]
+    root = resolve_workspace_dirs(workspace)[0]
     candidate_path = root / "books" / "chapters" / chapter_id / "candidate.md"
     if not candidate_path.is_file():
         raise ValueError(f"candidate artifact not found for {chapter_id}")
@@ -339,7 +342,7 @@ def accept_chapter_review(
     workspace: Path | WorkspacePaths, chapter_id: str
 ) -> ChapterProductionResult:
     """Accept a reviewed chapter as an immutable manuscript input."""
-    root = _workspace_dirs(workspace)[0]
+    root = resolve_workspace_dirs(workspace)[0]
     _, review = load_chapter_artifacts(root / "books" / "chapters", chapter_id)
     if review.decision is not ChapterReviewDecision.ACCEPT:
         raise ValueError("cannot accept a non-accept review")

@@ -119,7 +119,7 @@ def manuscript(
     read = load_project_or_exit(project)
     output_dir = output if output is not None else read.paths.exports / "manuscript"
     try:
-        result = export_accepted_manuscript(read.paths.root, output_dir)
+        result = export_accepted_manuscript(read.paths, output_dir)
     except IncompleteManuscriptError as exc:
         runtime_error(str(exc))
     typer.echo(f"Wrote {result.manuscript_path}")

@@ -88,3 +88,44 @@ def test_draft_run_contends_for_workspace_lock_used_by_chapter_commits(tmp_path)
     with project_lock(workspace_root):
         with pytest.raises(ProjectLockError):
             run_chapter_draft(project_yaml, "chapter_001", gateway=_Gateway())
+
+
+def test_replacement_plan_does_not_resume_the_previous_plan_response(tmp_path):
+    """A reused chapter ID and attempt number must not hand the new goal prose written for the
+    old one: the run identity carries the plan generation."""
+    project_yaml = _project(tmp_path)
+    first = run_chapter_draft(project_yaml, "chapter_001", gateway=_Gateway("旧計画の本文。"))
+
+    apply_book_plan_proposal(
+        project_yaml.parent / "workspace",
+        build_book_plan_proposal(
+            StoryBible.model_validate(
+                {
+                    "premise": "書庫から王国の飢饉を調べる。",
+                    "audience": "fantasy readers",
+                    "acts": [
+                        {
+                            "id": "act_001",
+                            "promise": "帳簿の矛盾を発見する。",
+                            "chapter_ids": ["chapter_001"],
+                        }
+                    ],
+                    "chapters": [
+                        {
+                            "id": "chapter_001",
+                            "act_id": "act_001",
+                            "planned_goal": "王都の飢饉報告を突き合わせる。",
+                            "target_word_range": {"min_words": 20, "max_words": 200},
+                        }
+                    ],
+                }
+            )
+        ),
+    )
+    replacement = _Gateway("新計画の本文。")
+
+    second = run_chapter_draft(project_yaml, "chapter_001", gateway=replacement)
+
+    assert second.run_id != first.run_id
+    assert second.response.body == "新計画の本文。"
+    assert replacement.call_count == 1
