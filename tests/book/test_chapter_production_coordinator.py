@@ -11,7 +11,7 @@ from living_narrative.book.coordinator import (
     request_chapter_revision,
     start_chapter_production,
 )
-from living_narrative.book.lineage import load_chapter_lineage
+from living_narrative.book.lineage import load_chapter_lineage, record_chapter_attempt
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
 from living_narrative.book.review import (
     ChapterReview,
@@ -179,3 +179,42 @@ def test_replacement_plan_uses_a_new_running_journal_for_reused_chapter_id(tmp_p
         StateStore.load(workspace / "state").book_ledger.chapter("chapter_001").lifecycle
         == ChapterLifecycle.RUNNING
     )
+
+
+def test_acceptance_selects_the_attempt_matching_the_reviewed_candidate(tmp_path):
+    """List position is not evidence of what the author reviewed: a lineage can gain a newer
+    attempt while an older candidate is still the one on the review desk."""
+    workspace = _workspace(tmp_path)
+    reviewed = ChapterCandidate(
+        chapter_id="chapter_001",
+        source_turns=[1],
+        markdown="# chapter_001\n\n澪は時刻表の矛盾を見つけた。\n",
+    )
+    review = ChapterReview(
+        chapter_id="chapter_001",
+        decision=ChapterReviewDecision.ACCEPT,
+        metrics=ChapterReviewMetrics(body_units=20, min_units=10, max_units=100),
+    )
+    start_chapter_production(workspace, "chapter_001")
+    record_chapter_candidate(
+        workspace, reviewed, review, draft_run_id="chapter_chapter_001_attempt_001"
+    )
+    open_chapter_review(workspace, "chapter_001")
+
+    chapters_root = workspace / "books" / "chapters"
+    record_chapter_attempt(
+        chapters_root,
+        ChapterCandidate(
+            chapter_id="chapter_001",
+            source_turns=[2],
+            markdown="# chapter_001\n\n駅長は最終列車の記録を否定した。\n",
+        ),
+        review,
+    )
+
+    accept_chapter_review(workspace, "chapter_001")
+
+    lineage = load_chapter_lineage(chapters_root, "chapter_001")
+    accepted = next(item for item in lineage.attempts if item.id == lineage.accepted_attempt_id)
+    assert accepted.candidate_markdown == reviewed.markdown
+    assert accepted.draft_run_id == "chapter_chapter_001_attempt_001"

@@ -25,19 +25,25 @@ class CockpitChapter(BaseModel):
 class BookCockpit(BaseModel):
     premise: str
     audience: str
+    can_operate: bool = False
     active_chapter_id: str | None = None
     next_action: str
     chapters: list[CockpitChapter] = Field(default_factory=list)
 
 
-def build_book_cockpit(bundle: WorldStateBundle) -> BookCockpit:
-    """Return a UI-safe book view without copying GM or character-private data."""
+def build_book_cockpit(bundle: WorldStateBundle, *, can_operate: bool = False) -> BookCockpit:
+    """Return a UI-safe book view without copying GM or character-private data.
+
+    ``can_operate`` mirrors the API's authoring-mode gate so the UI does not offer controls
+    whose only outcome would be a 403.
+    """
     lifecycle_by_id = {chapter.id: chapter.lifecycle for chapter in bundle.book_ledger.chapters}
     schedule = schedule_next_chapter(bundle.book_ledger)
     in_flight = any(
         lifecycle in IN_FLIGHT_CHAPTER_LIFECYCLES for lifecycle in lifecycle_by_id.values()
     )
     return BookCockpit(
+        can_operate=can_operate,
         premise=bundle.book_plan.premise,
         audience=bundle.book_plan.audience,
         active_chapter_id=bundle.book_ledger.active_chapter_id,
@@ -51,7 +57,8 @@ def build_book_cockpit(bundle: WorldStateBundle) -> BookCockpit:
                 target_min_words=chapter.target_word_range.min_words,
                 target_max_words=chapter.target_word_range.max_words,
                 startable=(
-                    lifecycle_by_id.get(chapter.id) is ChapterLifecycle.PLANNED
+                    can_operate
+                    and lifecycle_by_id.get(chapter.id) is ChapterLifecycle.PLANNED
                     and not in_flight
                     and schedule.action is NextChapterAction.START
                     and schedule.chapter_id == chapter.id

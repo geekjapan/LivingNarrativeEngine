@@ -66,7 +66,9 @@ def test_exporter_writes_only_accepted_attempt_body_and_reproducible_manifest(tm
     generation = yaml.safe_load(
         (tmp_path / "exports" / "manuscript_generation.yaml").read_text(encoding="utf-8")
     )
-    assert manuscript == "# chapter_001\n\n公開本文。\n"
+    # The reader manuscript carries narration only: no frontmatter, generated heading or
+    # `> Planned goal:` author prompt (chapter provenance lives in the manifest).
+    assert manuscript == "公開本文。"
     assert "attempt_001" in manifest
     assert "review" not in manifest
     assert "/" not in manifest

@@ -27,7 +27,7 @@ from living_narrative.intervention.history import load_history
 from living_narrative.llm.costs import ModelPricing, ProjectCostSummary, collect_project_costs
 from living_narrative.pipeline import TurnPipeline, TurnRunResult
 from living_narrative.pipeline.turn_numbering import read_turn_status, turn_dir_path
-from living_narrative.session.mode import MODE_PERMISSIONS
+from living_narrative.session.mode import MODE_PERMISSIONS, is_book_authoring_allowed
 from living_narrative.session.player_character import build_player_character_projection
 from living_narrative.session.resume import restore_resume_state
 from living_narrative.session.review import ReviewDecision, ReviewResult, resolve_review
@@ -289,7 +289,10 @@ def get_book_cockpit(project_yaml: Path) -> BookCockpit:
     read = load_project(project_yaml)
     if not read.is_valid:
         raise ProjectNotFoundError(str(project_yaml))
-    return build_book_cockpit(StateStore.load(read.paths.state))
+    return build_book_cockpit(
+        StateStore.load(read.paths.state),
+        can_operate=is_book_authoring_allowed(read.config.user_mode),
+    )
 
 
 def accept_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
@@ -297,7 +300,7 @@ def accept_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductio
     read = load_project(project_yaml)
     if not read.is_valid:
         raise ProjectNotFoundError(str(project_yaml))
-    return accept_chapter_review(read.paths.root, chapter_id)
+    return accept_chapter_review(read.paths, chapter_id)
 
 
 def revise_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
@@ -305,7 +308,7 @@ def revise_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductio
     read = load_project(project_yaml)
     if not read.is_valid:
         raise ProjectNotFoundError(str(project_yaml))
-    return request_chapter_revision(read.paths.root, chapter_id)
+    return request_chapter_revision(read.paths, chapter_id)
 
 
 def start_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
@@ -313,7 +316,7 @@ def start_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProduction
     read = load_project(project_yaml)
     if not read.is_valid:
         raise ProjectNotFoundError(str(project_yaml))
-    return start_chapter_production(read.paths.root, chapter_id)
+    return start_chapter_production(read.paths, chapter_id)
 
 
 def collect_narration(project_yaml: Path, from_turn: int) -> str:

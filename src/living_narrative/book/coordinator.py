@@ -38,6 +38,7 @@ from living_narrative.state.transaction import (
     project_lock,
     read_commit_intent,
 )
+from living_narrative.workspace.loader import WorkspacePaths
 
 
 class BookPlanApplyResult(BaseModel):
@@ -84,6 +85,17 @@ def _reject_concurrent_chapter_start(ledger: BookLedgerState, chapter_id: str) -
         raise ValueError(f"chapter {in_flight[0]} is already in production")
 
 
+def _workspace_dirs(workspace: Path | WorkspacePaths) -> tuple[Path, Path, Path]:
+    """Resolve root/state/runs from either a workspace root or ``load_project()`` paths.
+
+    ``workspace.state`` and ``workspace.runs`` are configurable, so a caller that already
+    resolved them must be able to hand them over instead of having them re-derived here.
+    """
+    if isinstance(workspace, WorkspacePaths):
+        return workspace.root, workspace.state, workspace.runs
+    return workspace, workspace / "state", workspace / "runs"
+
+
 def _assert_recoverable(journal_dir: Path, state_dir: Path) -> str | None:
     recovery = classify_recovery_state(journal_dir, state_dir, apply=True)
     if recovery in {RecoveryState.BLOCKED, RecoveryState.QUARANTINE}:
@@ -95,12 +107,12 @@ def _assert_recoverable(journal_dir: Path, state_dir: Path) -> str | None:
 
 
 def apply_book_plan_proposal(
-    workspace_root: Path,
+    workspace: Path | WorkspacePaths,
     proposal: BookPlanProposal,
 ) -> BookPlanApplyResult:
     """Persist an accepted proposal through the same journal-before-state protocol as turns."""
-    state_dir = workspace_root / "state"
-    journal_dir = workspace_root / "runs" / ".transactions" / proposal.proposal_id
+    workspace_root, state_dir, runs_dir = _workspace_dirs(workspace)
+    journal_dir = runs_dir / ".transactions" / proposal.proposal_id
     diff = proposal_to_state_diff(proposal, turn=0)
 
     with project_lock(workspace_root):
@@ -124,7 +136,7 @@ def apply_book_plan_proposal(
 
 
 def _chapter_transition(
-    workspace_root: Path,
+    workspace: Path | WorkspacePaths,
     chapter_id: str,
     lifecycle: ChapterLifecycle,
     *,
@@ -132,6 +144,7 @@ def _chapter_transition(
     review_decision: str | None = None,
     candidate: ChapterCandidate | None = None,
     review: ChapterReview | None = None,
+    draft_run_id: str | None = None,
 ) -> ChapterProductionResult:
     """Commit one validated chapter lifecycle transition and its durable artifacts."""
     if candidate is not None and review is None:
@@ -141,7 +154,7 @@ def _chapter_transition(
     if review is not None and review.chapter_id != chapter_id:
         raise ValueError("review chapter_id does not match lifecycle target")
 
-    state_dir = workspace_root / "state"
+    workspace_root, state_dir, runs_dir = _workspace_dirs(workspace)
     candidate_suffix = (
         hashlib.sha256(candidate.markdown.encode("utf-8")).hexdigest()[:16]
         if candidate is not None
@@ -151,8 +164,7 @@ def _chapter_transition(
     with project_lock(workspace_root):
         bundle = StateStore.load(state_dir)
         journal_dir = (
-            workspace_root
-            / "runs"
+            runs_dir
             / ".transactions"
             / f"chapter_{_plan_generation(bundle)}_{chapter_id}_{lifecycle}{journal_suffix}"
         )
@@ -216,12 +228,16 @@ def _chapter_transition(
                 candidate_hash = hashlib.sha256(candidate.markdown.encode("utf-8")).hexdigest()
                 recorded_hashes = {attempt.candidate_sha256 for attempt in existing.attempts}
                 if candidate_hash not in recorded_hashes:
-                    record_chapter_attempt(chapters_root, candidate, review)
+                    record_chapter_attempt(
+                        chapters_root, candidate, review, draft_run_id=draft_run_id
+                    )
             if lifecycle is ChapterLifecycle.ACCEPTED:
                 lineage = load_chapter_lineage(chapters_root, chapter_id)
                 if not lineage.attempts:
                     raise ValueError("cannot accept a chapter without an immutable attempt")
-                accept_chapter_attempt(chapters_root, chapter_id, lineage.attempts[-1].id)
+                accept_chapter_attempt(
+                    chapters_root, chapter_id, _reviewed_attempt_id(chapters_root, chapter_id)
+                )
             _atomic_write_yaml(
                 journal_dir / "chapter_transition.yaml",
                 {
@@ -251,62 +267,98 @@ def _chapter_transition(
     )
 
 
-def start_chapter_production(workspace_root: Path, chapter_id: str) -> ChapterProductionResult:
+def start_chapter_production(
+    workspace: Path | WorkspacePaths, chapter_id: str
+) -> ChapterProductionResult:
     """Reserve a planned chapter for production."""
-    return _chapter_transition(workspace_root, chapter_id, ChapterLifecycle.RUNNING)
+    return _chapter_transition(workspace, chapter_id, ChapterLifecycle.RUNNING)
 
 
 def record_chapter_candidate(
-    workspace_root: Path,
+    workspace: Path | WorkspacePaths,
     candidate: ChapterCandidate,
     review: ChapterReview,
+    *,
+    draft_run_id: str | None = None,
 ) -> ChapterProductionResult:
-    """Persist the candidate/review pair before it enters author review."""
+    """Persist the candidate/review pair before it enters author review.
+
+    ``draft_run_id`` ties the immutable attempt back to the persisted request, prompt and
+    response of the draft run that produced it.
+    """
     return _chapter_transition(
-        workspace_root,
+        workspace,
         candidate.chapter_id,
         ChapterLifecycle.CANDIDATE,
         candidate=candidate,
         review=review,
+        draft_run_id=draft_run_id,
     )
 
 
-def _current_candidate_key(workspace_root: Path, chapter_id: str) -> str:
-    candidate_path = workspace_root / "books" / "chapters" / chapter_id / "candidate.md"
+def _reviewed_attempt_id(chapters_root: Path, chapter_id: str) -> str:
+    """Resolve the attempt holding the body under review.
+
+    A retained lineage can gain attempts out of review order (a replacement plan reusing a
+    chapter ID, or a revision recorded while an older candidate is still under review), so list
+    position is not evidence of what the author accepted.
+    """
+    lineage = load_chapter_lineage(chapters_root, chapter_id)
+    if not lineage.attempts:
+        raise ValueError("cannot accept a chapter without an immutable attempt")
+    candidate_path = chapters_root / chapter_id / "candidate.md"
+    if candidate_path.is_file():
+        reviewed = hashlib.sha256(candidate_path.read_bytes()).hexdigest()
+        match = next((item for item in lineage.attempts if item.candidate_sha256 == reviewed), None)
+        if match is not None:
+            return match.id
+    return lineage.attempts[-1].id
+
+
+def _current_candidate_key(workspace: Path | WorkspacePaths, chapter_id: str) -> str:
+    root = _workspace_dirs(workspace)[0]
+    candidate_path = root / "books" / "chapters" / chapter_id / "candidate.md"
     if not candidate_path.is_file():
         raise ValueError(f"candidate artifact not found for {chapter_id}")
     return hashlib.sha256(candidate_path.read_bytes()).hexdigest()[:16]
 
 
-def open_chapter_review(workspace_root: Path, chapter_id: str) -> ChapterProductionResult:
+def open_chapter_review(
+    workspace: Path | WorkspacePaths, chapter_id: str
+) -> ChapterProductionResult:
     """Move a durable candidate into the explicit author-review state."""
     return _chapter_transition(
-        workspace_root,
+        workspace,
         chapter_id,
         ChapterLifecycle.REVIEW,
-        journal_key=_current_candidate_key(workspace_root, chapter_id),
+        journal_key=_current_candidate_key(workspace, chapter_id),
     )
 
 
-def accept_chapter_review(workspace_root: Path, chapter_id: str) -> ChapterProductionResult:
+def accept_chapter_review(
+    workspace: Path | WorkspacePaths, chapter_id: str
+) -> ChapterProductionResult:
     """Accept a reviewed chapter as an immutable manuscript input."""
-    _, review = load_chapter_artifacts(workspace_root / "books" / "chapters", chapter_id)
+    root = _workspace_dirs(workspace)[0]
+    _, review = load_chapter_artifacts(root / "books" / "chapters", chapter_id)
     if review.decision is not ChapterReviewDecision.ACCEPT:
         raise ValueError("cannot accept a non-accept review")
     return _chapter_transition(
-        workspace_root,
+        workspace,
         chapter_id,
         ChapterLifecycle.ACCEPTED,
         review_decision="accept",
     )
 
 
-def request_chapter_revision(workspace_root: Path, chapter_id: str) -> ChapterProductionResult:
+def request_chapter_revision(
+    workspace: Path | WorkspacePaths, chapter_id: str
+) -> ChapterProductionResult:
     """Return a reviewed chapter to revision without destroying its prior artifact."""
     return _chapter_transition(
-        workspace_root,
+        workspace,
         chapter_id,
         ChapterLifecycle.REVISING,
-        journal_key=_current_candidate_key(workspace_root, chapter_id),
+        journal_key=_current_candidate_key(workspace, chapter_id),
         review_decision="revise",
     )

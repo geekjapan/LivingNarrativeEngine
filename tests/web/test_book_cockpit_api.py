@@ -10,6 +10,7 @@ from living_narrative.book.coordinator import apply_book_plan_proposal  # noqa: 
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal  # noqa: E402
 from living_narrative.web.app import create_app  # noqa: E402
 from living_narrative.workspace.init import create_project  # noqa: E402
+from living_narrative.workspace.loader import load_project  # noqa: E402
 
 
 def _client_with_book(tmp_path, *, user_mode: str = "author") -> TestClient:
@@ -92,3 +93,56 @@ def test_book_mutations_require_an_authoring_mode(tmp_path, user_mode):
     for action in ("start", "accept", "revise"):
         response = client.post(f"/api/project/book/book/chapters/chapter_001/{action}")
         assert response.status_code == 403, action
+
+
+def test_book_mutations_follow_configured_workspace_paths(tmp_path):
+    """``workspace.state``/``runs`` are configurable: the coordinator must receive the resolved
+    paths, not re-derive them from the workspace root."""
+    root = tmp_path / "projects"
+    project_yaml = create_project(root / "book", title="Book")
+    proposal = build_book_plan_proposal(
+        StoryBible.model_validate(
+            {
+                "premise": "書庫から飢饉帳簿の矛盾を調べる。",
+                "audience": "fantasy readers",
+                "acts": [
+                    {
+                        "id": "act_001",
+                        "promise": "帳簿の矛盾を発見する。",
+                        "chapter_ids": ["chapter_001"],
+                    }
+                ],
+                "chapters": [
+                    {
+                        "id": "chapter_001",
+                        "act_id": "act_001",
+                        "planned_goal": "飢饉帳簿の矛盾を発見する。",
+                        "target_word_range": {"min_words": 10, "max_words": 100},
+                    }
+                ],
+            }
+        )
+    )
+    workspace = project_yaml.parent / "workspace"
+    (workspace / "state").rename(project_yaml.parent / "canon")
+    (workspace / "runs").rename(project_yaml.parent / "history")
+    config = yaml.safe_load(project_yaml.read_text(encoding="utf-8"))
+    config["user_mode"] = "author"
+    config["workspace"] = {
+        "root": "workspace",
+        "state": "canon",
+        "runs": "history",
+        "exports": "workspace/exports",
+    }
+    project_yaml.write_text(
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    apply_book_plan_proposal(load_project(project_yaml).paths, proposal)
+    client = TestClient(create_app(root))
+
+    started = client.post("/api/project/book/book/chapters/chapter_001/start")
+
+    assert started.status_code == 200, started.text
+    assert started.json()["lifecycle"] == "running"
+    assert (project_yaml.parent / "history" / ".transactions").is_dir()
+    assert not (workspace / "runs").exists()

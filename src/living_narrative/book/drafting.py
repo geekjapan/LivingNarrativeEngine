@@ -122,15 +122,17 @@ def run_chapter_draft(
 
     workspace_root = read.paths.root
     state_dir = read.paths.state
-    bundle = StateStore.load(state_dir)
-    context = build_chapter_context(bundle, chapter_id, source_turns=[])
     run_id = f"chapter_{chapter_id}_attempt_{attempt:03d}"
     drafts_root = read.paths.runs / "chapter_drafts"
     run_dir = drafts_root / run_id
     response_path = run_dir / "response.yaml"
     completion_path = run_dir / "meta.yaml"
 
+    # The state snapshot is taken inside the lock: a context built beforehand can observe a
+    # partially published transaction, or feed a superseded plan to the provider.
     with project_lock(workspace_root):
+        bundle = StateStore.load(state_dir)
+        context = build_chapter_context(bundle, chapter_id, source_turns=[])
         if completion_path.is_file() or response_path.is_file():
             response = _load_response(response_path)
             if not completion_path.is_file():

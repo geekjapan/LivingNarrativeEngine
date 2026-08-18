@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
+from living_narrative.book.continuity import strip_chapter_scaffolding
 from living_narrative.book.lineage import load_chapter_lineage
 from living_narrative.state.diff import fsync_directory
 from living_narrative.state.models import ChapterLifecycle
@@ -87,7 +88,9 @@ def export_accepted_manuscript(workspace_root: Path, output_dir: Path) -> Manusc
         )
         if attempt is None:
             raise IncompleteManuscriptError(f"accepted attempt is missing for {chapter.id}")
-        bodies.append(attempt.candidate_markdown)
+        # The manuscript is the reader artifact: the compile frontmatter, generated heading and
+        # `> Planned goal:` author prompt are production scaffolding, never narration.
+        bodies.append(strip_chapter_scaffolding(attempt.candidate_markdown))
         manifest_chapters.append(
             {
                 "chapter_id": chapter.id,
