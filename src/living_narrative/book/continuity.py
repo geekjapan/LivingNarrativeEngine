@@ -39,8 +39,12 @@ def advance_continuity_ledger(
         raise ValueError(f"continuity entry already exists for {candidate.chapter_id}")
     covered_set = set(covered_thread_ids)
     covered = [thread_id for thread_id in required_thread_ids if thread_id in covered_set]
-    newly_open = [thread_id for thread_id in required_thread_ids if thread_id not in set(covered)]
-    open_threads = list(dict.fromkeys([*ledger.continuity.open_thread_ids, *newly_open]))
+    newly_open = [thread_id for thread_id in required_thread_ids if thread_id not in covered_set]
+    open_threads = [
+        thread_id
+        for thread_id in dict.fromkeys([*ledger.continuity.open_thread_ids, *newly_open])
+        if thread_id not in covered_set
+    ]
     entry = BookContinuityEntry(
         chapter_id=candidate.chapter_id,
         summary=_reader_body(candidate.markdown)[:max_summary_chars],

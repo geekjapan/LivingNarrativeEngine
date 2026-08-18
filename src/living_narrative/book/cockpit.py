@@ -13,6 +13,8 @@ class CockpitChapter(BaseModel):
     act_id: str
     planned_goal: str
     lifecycle: ChapterLifecycle | None = None
+    target_min_words: int
+    target_max_words: int
 
 
 class BookCockpit(BaseModel):
@@ -38,6 +40,8 @@ def build_book_cockpit(bundle: WorldStateBundle) -> BookCockpit:
                 act_id=chapter.act_id,
                 planned_goal=chapter.planned_goal,
                 lifecycle=lifecycle_by_id.get(chapter.id),
+                target_min_words=chapter.target_word_range.min_words,
+                target_max_words=chapter.target_word_range.max_words,
             )
             for chapter in bundle.book_plan.chapters
         ],

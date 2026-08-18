@@ -5,6 +5,7 @@ import pytest
 from living_narrative.book.coordinator import apply_book_plan_proposal
 from living_narrative.book.drafting import ChapterDraftResponse, run_chapter_draft
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
+from living_narrative.state.transaction import ProjectLockError, project_lock
 from living_narrative.workspace.init import create_project
 
 
@@ -78,3 +79,12 @@ def test_draft_run_keeps_partial_artifact_and_can_resume_after_provider_failure(
     assert recovered.response == ChapterDraftResponse(body="改稿本文")
     assert (recovered.run_dir / "request.yaml").exists()
     assert (recovered.run_dir / "meta.yaml").exists()
+
+
+def test_draft_run_contends_for_workspace_lock_used_by_chapter_commits(tmp_path):
+    project_yaml = _project(tmp_path)
+    workspace_root = project_yaml.parent / "workspace"
+
+    with project_lock(workspace_root):
+        with pytest.raises(ProjectLockError):
+            run_chapter_draft(project_yaml, "chapter_001", gateway=_Gateway())

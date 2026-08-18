@@ -50,7 +50,12 @@ def test_book_cockpit_api_projects_safe_read_model_and_start_action(tmp_path):
 
     assert initial.status_code == 200
     assert initial.json()["premise"] == "書庫から飢饉帳簿の矛盾を調べる。"
-    assert initial.json()["chapters"][0]["lifecycle"] == "planned"
+    chapter = initial.json()["chapters"][0]
+    assert chapter["chapter_id"] == "chapter_001"
+    assert "id" not in chapter
+    assert chapter["lifecycle"] == "planned"
+    assert chapter["target_min_words"] == 10
+    assert chapter["target_max_words"] == 100
     assert started.status_code == 200
     assert started.json()["lifecycle"] == "running"
     assert updated.json()["active_chapter_id"] == "chapter_001"

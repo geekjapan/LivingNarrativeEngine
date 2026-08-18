@@ -363,17 +363,17 @@ function renderBookCockpit(cockpit) {
     .map((chapter) => {
       const startable = chapter.lifecycle === "planned";
       const start = startable
-        ? `<button class="book-start" data-chapter-id="${escapeHtml(chapter.id)}" ` +
-          `aria-label="${escapeHtml(chapter.id)}の制作を開始">制作を開始</button>`
+        ? `<button class="book-start" data-chapter-id="${escapeHtml(chapter.chapter_id)}" ` +
+          `aria-label="${escapeHtml(chapter.chapter_id)}の制作を開始">制作を開始</button>`
         : "";
       const reviewActions = chapter.lifecycle === "review"
         ? `<button class="book-action" data-action="accept" ` +
-          `data-chapter-id="${escapeHtml(chapter.id)}">承認</button>` +
+          `data-chapter-id="${escapeHtml(chapter.chapter_id)}">承認</button>` +
           `<button class="book-action" data-action="revise" ` +
-          `data-chapter-id="${escapeHtml(chapter.id)}">改稿</button>`
+          `data-chapter-id="${escapeHtml(chapter.chapter_id)}">改稿</button>`
         : "";
       return `<article class="chapter">
-        <div class="chapter-head"><strong>${escapeHtml(chapter.id)}</strong>
+        <div class="chapter-head"><strong>${escapeHtml(chapter.chapter_id)}</strong>
           <span class="badge badge-${escapeHtml(chapter.lifecycle)}">
             ${escapeHtml(chapter.lifecycle)}</span>
           <span>${escapeHtml(chapter.act_id)}</span></div>

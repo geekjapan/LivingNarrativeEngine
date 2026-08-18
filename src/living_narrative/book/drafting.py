@@ -129,7 +129,7 @@ def run_chapter_draft(
     response_path = run_dir / "response.yaml"
     completion_path = run_dir / "meta.yaml"
 
-    with project_lock(project_yaml.parent):
+    with project_lock(workspace_root):
         if completion_path.is_file():
             return ChapterDraftResult(run_id, run_dir, _load_response(response_path), resumed=True)
 

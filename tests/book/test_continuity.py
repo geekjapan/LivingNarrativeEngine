@@ -27,3 +27,30 @@ def test_continuity_ledger_keeps_reader_safe_bounded_digest_and_open_threads():
     assert updated.continuity.open_thread_ids == ["thread_002"]
     digest = render_continuity_digest(updated.continuity, max_chars=100)
     assert digest == updated.continuity.entries[0].summary[:100]
+
+
+def test_continuity_ledger_closes_threads_covered_by_a_later_chapter():
+    first = advance_continuity_ledger(
+        BookLedgerState(),
+        ChapterCandidate(
+            chapter_id="chapter_001",
+            source_turns=[1],
+            markdown="# chapter_001\n\n公開本文。",
+        ),
+        required_thread_ids=["thread_001", "thread_002"],
+        covered_thread_ids=["thread_001"],
+    )
+    later = advance_continuity_ledger(
+        first,
+        ChapterCandidate(
+            chapter_id="chapter_002",
+            source_turns=[2],
+            markdown="# chapter_002\n\n回収本文。",
+        ),
+        required_thread_ids=["thread_002"],
+        covered_thread_ids=["thread_002"],
+    )
+
+    assert first.continuity.open_thread_ids == ["thread_002"]
+    assert later.continuity.open_thread_ids == []
+    assert later.continuity.entries[-1].open_thread_ids == []
