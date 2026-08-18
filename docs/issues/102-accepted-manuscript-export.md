@@ -1,7 +1,8 @@
 ---
 id: 102
 title: Accepted Artifact限定Manuscript Export
-status: in_progress
+status: completed
+completed: 2026-08-18
 created: 2026-08-18
 ---
 
@@ -29,6 +30,10 @@ created: 2026-08-18
 - `src/living_narrative/cli/export.py`
 - `tests/book/test_exporter.py`
 - `tests/cli/test_export_command.py`
+
+## 実装結果
+
+BookPlan順にaccepted lifecycleとaccepted attempt pointerを照合し、reader-safeな`manuscript.md`とcandidate hashを持つ`manuscript_manifest.yaml`をatomicに生成する。未accept章・欠落pointerは明示的に失敗し、CLIから再生成可能である。focused回帰と全回帰で検証済み。
 
 ## 非対象
 

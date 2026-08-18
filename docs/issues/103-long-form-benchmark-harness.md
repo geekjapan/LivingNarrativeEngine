@@ -1,7 +1,8 @@
 ---
 id: 103
 title: 長編Benchmark Harness
-status: in_progress
+status: completed
+completed: 2026-08-18
 created: 2026-08-18
 ---
 
@@ -28,6 +29,10 @@ created: 2026-08-18
 - `src/living_narrative/session/long_run_report.py`
 - `tests/book/test_benchmark.py`
 - `tests/smoke/test_long_form_benchmark.py`
+
+## 実装結果
+
+`benchmark_book()`がBookPlanの章数、accepted/revising/block中章数、immutable attempt数、open thread数、path-free artifact fingerprintを集計する。`write_book_benchmark_report()`はatomicな公開JSONを出力し、絶対path・prompt・credentialを含めない。focused回帰と全回帰で検証済み。
 
 ## 非対象
 

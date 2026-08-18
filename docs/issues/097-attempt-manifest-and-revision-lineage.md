@@ -1,7 +1,8 @@
 ---
 id: 097
 title: Attempt ManifestとRevision Lineage
-status: in_progress
+status: completed
+completed: 2026-08-18
 created: 2026-08-18
 ---
 
@@ -28,6 +29,10 @@ created: 2026-08-18
 - `src/living_narrative/book/artifacts.py`
 - `src/living_narrative/book/coordinator.py`
 - `tests/book/test_lineage.py`
+
+## 実装結果
+
+`ChapterAttempt` / `ChapterLineage`を追加し、candidate hash・親attempt・draft run・reviewをimmutable artifactとして保存する。accept時はtransaction-backed lifecycle内でaccepted attempt pointerを更新し、旧candidateを破壊しない。focused回帰と全回帰で検証済み。
 
 ## 非対象
 

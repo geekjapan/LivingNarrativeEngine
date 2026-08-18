@@ -135,9 +135,7 @@ def record_chapter_attempt(
     return attempt
 
 
-def accept_chapter_attempt(
-    chapters_root: Path, chapter_id: str, attempt_id: str
-) -> ChapterLineage:
+def accept_chapter_attempt(chapters_root: Path, chapter_id: str, attempt_id: str) -> ChapterLineage:
     """Select an existing accept-reviewed attempt without changing its immutable files."""
     lineage = _load_manifest(chapters_root, chapter_id)
     attempt = next((item for item in lineage.attempts if item.id == attempt_id), None)

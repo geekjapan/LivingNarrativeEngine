@@ -1,7 +1,8 @@
 ---
 id: 101
 title: 長編制作Web Cockpit完全実装
-status: in_progress
+status: completed
+completed: 2026-08-18
 created: 2026-08-18
 ---
 
@@ -30,6 +31,10 @@ created: 2026-08-18
 - `src/living_narrative/book/cockpit.py`
 - `tests/web/test_book_cockpit_api.py`
 - `tests/web/test_web_app.py`
+
+## 実装結果
+
+Cockpitは章roadmap、lifecycle、next actionを投影し、planned章の開始、review章のaccept/reviseを許可状態だけで実行する。APIはpermission gateと409競合応答を通し、UIはエスケープ済みDOM描画と操作後の再読込を行う。focused回帰と全回帰で検証済み。
 
 ## 非対象
 

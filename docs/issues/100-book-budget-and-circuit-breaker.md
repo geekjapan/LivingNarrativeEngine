@@ -1,7 +1,8 @@
 ---
 id: 100
 title: Book BudgetとCircuit Breaker
-status: in_progress
+status: completed
+completed: 2026-08-18
 created: 2026-08-18
 ---
 
@@ -29,6 +30,10 @@ created: 2026-08-18
 - `src/living_narrative/book/cockpit.py`
 - `src/living_narrative/llm/costs.py`
 - `tests/book/test_budget.py`
+
+## 実装結果
+
+`BookBudgetPolicy`にchapter/book attempt上限と連続改稿上限を導入し、draft runはprovider呼出し前に決定的preflightを行う。停止時は`circuit_breaker.yaml`へ理由を保存する。token/USDは既存の正本usage集計を参照する後続policy拡張として残すが、無制限retryを止める本Issueのcircuit-breakerは実装済みである。focused回帰と全回帰で検証済み。
 
 ## 非対象
 

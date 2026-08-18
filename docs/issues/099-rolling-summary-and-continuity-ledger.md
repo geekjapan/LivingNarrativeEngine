@@ -1,7 +1,8 @@
 ---
 id: 099
 title: Rolling SummaryとContinuity Ledger
-status: in_progress
+status: completed
+completed: 2026-08-18
 created: 2026-08-18
 ---
 
@@ -29,6 +30,10 @@ created: 2026-08-18
 - `src/living_narrative/book/coordinator.py`
 - `src/living_narrative/state/models.py`
 - `tests/book/test_continuity.py`
+
+## 実装結果
+
+accepted chapter本文からreader-safeかつ上限付きのdigestを導出し、`BookLedgerState.continuity`へStateDiff経由で永続化する。次章のdraft promptとsemantic reviewはこのdigestを入力に含め、未被覆required threadをopen ledgerとして追跡する。focused回帰と全回帰で検証済み。
 
 ## 非対象
 
