@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import yaml
 
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
@@ -11,9 +12,14 @@ from living_narrative.web.app import create_app  # noqa: E402
 from living_narrative.workspace.init import create_project  # noqa: E402
 
 
-def _client_with_book(tmp_path) -> TestClient:
+def _client_with_book(tmp_path, *, user_mode: str = "author") -> TestClient:
     root = tmp_path / "projects"
     project_yaml = create_project(root / "book", title="Book")
+    config = yaml.safe_load(project_yaml.read_text(encoding="utf-8"))
+    config["user_mode"] = user_mode
+    project_yaml.write_text(
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
     proposal = build_book_plan_proposal(
         StoryBible.model_validate(
             {
@@ -74,3 +80,15 @@ def test_book_cockpit_api_reuses_completed_start_operation_idempotently(tmp_path
     assert repeated.status_code == 200
     assert repeated.json()["journal_id"] == first.json()["journal_id"]
     assert "/" not in first.json()["journal_id"]
+
+
+@pytest.mark.parametrize("user_mode", ["watcher", "assistant_gm"])
+def test_book_mutations_require_an_authoring_mode(tmp_path, user_mode):
+    """docs/design/long-form-cockpit-architecture.md §2: only author/full_gm/god drive
+    production. Non-authoring modes still read the cockpit but every mutation is 403."""
+    client = _client_with_book(tmp_path, user_mode=user_mode)
+
+    assert client.get("/api/project/book/book/cockpit").status_code == 200
+    for action in ("start", "accept", "revise"):
+        response = client.post(f"/api/project/book/book/chapters/chapter_001/{action}")
+        assert response.status_code == 403, action

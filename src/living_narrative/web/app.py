@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from living_narrative.pipeline import LoadError, UnresolvedTurnError
-from living_narrative.session.mode import is_gm_vault_visible
+from living_narrative.session.mode import is_book_authoring_allowed, is_gm_vault_visible
 from living_narrative.session.review import ReviewDecision, ReviewStateError
 from living_narrative.state.transaction import ProjectLockError
 from living_narrative.web.page import INDEX_HTML
@@ -122,6 +122,14 @@ def create_app(project_root: Path) -> FastAPI:
         if info.user_mode == "player_character":
             raise HTTPException(status_code=403, detail="sensitive session view is unavailable")
 
+    def _require_book_authoring_access(project_yaml: Path) -> None:
+        """Long-form production is an authoring operation: only ``author``/``full_gm``/``god``
+        may mutate the chapter lifecycle (docs/design/long-form-cockpit-architecture.md §2).
+        Watcher and assistant-GM modes read the cockpit but never drive it."""
+        info = get_permissions(project_yaml)
+        if not is_book_authoring_allowed(info.user_mode):
+            raise HTTPException(status_code=403, detail="long-form production is unavailable")
+
     def _require_gm_vault_access(project_yaml: Path) -> None:
         info = get_permissions(project_yaml)
         if not is_gm_vault_visible(info.user_mode):
@@ -164,7 +172,7 @@ def create_app(project_root: Path) -> FastAPI:
     @app.post("/api/project/{name}/book/chapters/{chapter_id}/start")
     def api_start_book_chapter(name: str, chapter_id: str) -> dict:
         project_yaml = _project_yaml(name)
-        _require_sensitive_session_access(project_yaml)
+        _require_book_authoring_access(project_yaml)
         try:
             result = start_book_chapter(project_yaml, chapter_id)
         except ProjectLockError as exc:
@@ -180,7 +188,7 @@ def create_app(project_root: Path) -> FastAPI:
     @app.post("/api/project/{name}/book/chapters/{chapter_id}/accept")
     def api_accept_book_chapter(name: str, chapter_id: str) -> dict:
         project_yaml = _project_yaml(name)
-        _require_sensitive_session_access(project_yaml)
+        _require_book_authoring_access(project_yaml)
         try:
             result = accept_book_chapter(project_yaml, chapter_id)
         except (ProjectLockError, ValueError) as exc:
@@ -190,7 +198,7 @@ def create_app(project_root: Path) -> FastAPI:
     @app.post("/api/project/{name}/book/chapters/{chapter_id}/revise")
     def api_revise_book_chapter(name: str, chapter_id: str) -> dict:
         project_yaml = _project_yaml(name)
-        _require_sensitive_session_access(project_yaml)
+        _require_book_authoring_access(project_yaml)
         try:
             result = revise_book_chapter(project_yaml, chapter_id)
         except (ProjectLockError, ValueError) as exc:
