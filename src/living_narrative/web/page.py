@@ -361,7 +361,7 @@ function renderBookCockpit(cockpit) {
   bookNextActionEl.innerHTML = escapeHtml(cockpit.next_action || "待機中");
   bookRoadmapEl.innerHTML = (cockpit.chapters || [])
     .map((chapter) => {
-      const startable = chapter.lifecycle === "planned";
+      const startable = chapter.startable === true;
       const start = startable
         ? `<button class="book-start" data-chapter-id="${escapeHtml(chapter.chapter_id)}" ` +
           `aria-label="${escapeHtml(chapter.chapter_id)}の制作を開始">制作を開始</button>`

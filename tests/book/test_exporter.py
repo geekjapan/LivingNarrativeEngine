@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+
 import pytest
+import yaml
 
 from living_narrative.book.chapters import ChapterCandidate
 from living_narrative.book.coordinator import (
@@ -58,11 +61,17 @@ def test_exporter_writes_only_accepted_attempt_body_and_reproducible_manifest(tm
 
     result = export_accepted_manuscript(workspace, tmp_path / "exports")
 
-    assert result.manuscript_path.read_text(encoding="utf-8") == "# chapter_001\n\n公開本文。\n"
+    manuscript = result.manuscript_path.read_text(encoding="utf-8")
     manifest = result.manifest_path.read_text(encoding="utf-8")
+    generation = yaml.safe_load(
+        (tmp_path / "exports" / "manuscript_generation.yaml").read_text(encoding="utf-8")
+    )
+    assert manuscript == "# chapter_001\n\n公開本文。\n"
     assert "attempt_001" in manifest
     assert "review" not in manifest
     assert "/" not in manifest
+    assert generation["manuscript_sha256"] == hashlib.sha256(manuscript.encode("utf-8")).hexdigest()
+    assert generation["manifest_sha256"] == hashlib.sha256(manifest.encode("utf-8")).hexdigest()
 
 
 def test_exporter_rejects_book_with_unaccepted_chapter(tmp_path):

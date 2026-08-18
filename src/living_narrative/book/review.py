@@ -9,6 +9,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, Field
 
 from living_narrative.book.chapters import ChapterCandidate, ChapterContext
+from living_narrative.book.continuity import strip_chapter_scaffolding
 
 
 class ChapterReviewDecision(StrEnum):
@@ -58,7 +59,7 @@ class ChapterReview(BaseModel):
 
 def _body_units(markdown: str) -> int:
     """Count CJK characters and word-like Latin tokens without model-dependent tokenizers."""
-    body = markdown.partition("\n\n")[2]
+    body = strip_chapter_scaffolding(markdown)
     cjk = re.findall(r"[\u3040-\u30ff\u3400-\u9fff]", body)
     latin_tokens = re.findall(r"[A-Za-z0-9]+", body)
     return len(cjk) + len(latin_tokens)

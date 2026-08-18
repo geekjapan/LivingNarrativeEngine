@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -23,6 +24,35 @@ class ManuscriptExportResult(BaseModel):
     manuscript_path: Path
     manifest_path: Path
     chapter_count: int
+
+
+def _publish_manuscript_generation(output_dir: Path, manuscript: str, manifest: str) -> None:
+    """Stage manuscript artifacts and publish a generation marker last."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=".manuscript_generation.", dir=output_dir))
+    generation = yaml.safe_dump(
+        {
+            "schema_version": 1,
+            "manuscript_sha256": hashlib.sha256(manuscript.encode("utf-8")).hexdigest(),
+            "manifest_sha256": hashlib.sha256(manifest.encode("utf-8")).hexdigest(),
+        },
+        allow_unicode=True,
+        sort_keys=False,
+    )
+    try:
+        _atomic_write_text(staging / "manuscript.md", manuscript)
+        _atomic_write_text(staging / "manuscript_manifest.yaml", manifest)
+        _atomic_write_text(staging / "manuscript_generation.yaml", generation)
+        os.replace(staging / "manuscript.md", output_dir / "manuscript.md")
+        os.replace(staging / "manuscript_manifest.yaml", output_dir / "manuscript_manifest.yaml")
+        os.replace(
+            staging / "manuscript_generation.yaml", output_dir / "manuscript_generation.yaml"
+        )
+        fsync_directory(output_dir)
+    finally:
+        for leftover in staging.glob("*"):
+            leftover.unlink(missing_ok=True)
+        staging.rmdir()
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -68,19 +98,16 @@ def export_accepted_manuscript(workspace_root: Path, output_dir: Path) -> Manusc
     manuscript_path = output_dir / "manuscript.md"
     manifest_path = output_dir / "manuscript_manifest.yaml"
     manuscript = "\n\n".join(bodies)
-    _atomic_write_text(manuscript_path, manuscript)
-    _atomic_write_text(
-        manifest_path,
-        yaml.safe_dump(
-            {
-                "schema_version": 1,
-                "manuscript_sha256": hashlib.sha256(manuscript.encode("utf-8")).hexdigest(),
-                "chapters": manifest_chapters,
-            },
-            allow_unicode=True,
-            sort_keys=False,
-        ),
+    manifest = yaml.safe_dump(
+        {
+            "schema_version": 1,
+            "manuscript_sha256": hashlib.sha256(manuscript.encode("utf-8")).hexdigest(),
+            "chapters": manifest_chapters,
+        },
+        allow_unicode=True,
+        sort_keys=False,
     )
+    _publish_manuscript_generation(output_dir, manuscript, manifest)
     return ManuscriptExportResult(
         manuscript_path=manuscript_path,
         manifest_path=manifest_path,

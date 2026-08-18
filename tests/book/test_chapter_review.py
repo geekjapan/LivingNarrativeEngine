@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from living_narrative.book.chapters import ChapterCandidate, ChapterContext
+from living_narrative.book.chapters import ChapterCandidate, ChapterContext, compile_chapter
 from living_narrative.book.review import ChapterReviewDecision, review_chapter
 
 
@@ -40,3 +40,14 @@ def test_chapter_review_accepts_candidate_inside_deterministic_length_gate():
     assert review.decision == ChapterReviewDecision.ACCEPT
     assert review.metrics.body_units >= 5
     assert review.reasons == []
+
+
+def test_chapter_review_excludes_compiled_scaffolding_from_body_units():
+    context = _context(min_words=20)
+    candidate = compile_chapter(context, ["短い文"])
+
+    review = review_chapter(context, candidate)
+
+    assert review.decision == ChapterReviewDecision.REVISE
+    assert review.metrics.body_units == 3
+    assert "below minimum" in review.reasons[0]

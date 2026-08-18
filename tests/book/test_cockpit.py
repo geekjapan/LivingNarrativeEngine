@@ -43,6 +43,7 @@ def test_cockpit_projects_chapter_status_and_next_action_without_world_secrets()
     assert cockpit.chapters[0].lifecycle == ChapterLifecycle.REVISING
     assert cockpit.chapters[0].target_min_words == 100
     assert cockpit.chapters[0].target_max_words == 500
+    assert cockpit.chapters[0].startable is False
     dumped = cockpit.model_dump(mode="json")
     assert dumped["chapters"][0]["chapter_id"] == "chapter_001"
     assert "id" not in dumped["chapters"][0]

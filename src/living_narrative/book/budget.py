@@ -19,13 +19,17 @@ class BookBudgetPolicy(BaseModel):
     max_consecutive_revisions: int | None = Field(default=None, ge=1)
 
 
-def _completed_or_started_attempt_count(runs_root: Path) -> int:
+def _completed_or_started_attempt_count(
+    runs_root: Path, *, exclude_run_id: str | None = None
+) -> int:
     if not runs_root.is_dir():
         return 0
     return sum(
         1
         for run_dir in runs_root.iterdir()
-        if run_dir.is_dir() and run_dir.name.startswith("chapter_")
+        if run_dir.is_dir()
+        and run_dir.name.startswith("chapter_")
+        and run_dir.name != exclude_run_id
     )
 
 
@@ -34,12 +38,14 @@ def evaluate_draft_budget(
     chapter_id: str,
     attempt: int,
     policy: BookBudgetPolicy,
+    *,
+    exclude_run_id: str | None = None,
 ) -> str | None:
     """Return a stable stop reason, or ``None`` when a provider call is permitted."""
     if policy.max_attempts_per_chapter is not None and attempt > policy.max_attempts_per_chapter:
         return "chapter attempt budget exceeded"
     if policy.max_attempts_per_book is not None:
-        existing = _completed_or_started_attempt_count(runs_root)
+        existing = _completed_or_started_attempt_count(runs_root, exclude_run_id=exclude_run_id)
         if existing >= policy.max_attempts_per_book:
             return "book attempt budget exceeded"
     if (

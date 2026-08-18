@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import yaml
 
 from living_narrative.book.budget import BookBudgetPolicy, BudgetExceededError
 from living_narrative.book.coordinator import apply_book_plan_proposal
@@ -76,3 +77,42 @@ def test_budget_blocks_book_attempts_across_chapters_before_provider_call(tmp_pa
         run_chapter_draft(project_yaml, "chapter_001", attempt=2, gateway=gateway, budget=budget)
 
     assert gateway.call_count == 1
+
+
+def test_budget_allows_resume_of_the_current_attempt_at_book_limit(tmp_path):
+    project_yaml = _project(tmp_path)
+    gateway = _Gateway()
+    budget = BookBudgetPolicy(max_attempts_per_book=1)
+
+    first = run_chapter_draft(project_yaml, "chapter_001", gateway=gateway, budget=budget)
+    (first.run_dir / "meta.yaml").unlink()
+
+    recovered = run_chapter_draft(project_yaml, "chapter_001", gateway=gateway, budget=budget)
+
+    assert recovered.resumed is True
+    assert recovered.response.body == "公開本文"
+    assert gateway.call_count == 1
+    assert (first.run_dir / "meta.yaml").exists()
+
+
+def test_draft_run_uses_resolved_workspace_paths(tmp_path):
+    project_yaml = _project(tmp_path)
+    project_dir = project_yaml.parent
+    custom_root = project_dir / "custom_ws"
+    (project_dir / "workspace").rename(custom_root)
+    payload = yaml.safe_load(project_yaml.read_text(encoding="utf-8"))
+    payload["workspace"] = {
+        "root": "custom_ws",
+        "state": "custom_ws/state",
+        "runs": "custom_ws/runs",
+        "exports": "custom_ws/exports",
+    }
+    project_yaml.write_text(
+        yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+
+    result = run_chapter_draft(project_yaml, "chapter_001", gateway=_Gateway())
+
+    assert result.run_dir == custom_root / "runs" / "chapter_drafts" / result.run_id
+    assert (result.run_dir / "meta.yaml").exists()
+    assert not (project_dir / "workspace").exists()

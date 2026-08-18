@@ -16,6 +16,17 @@ class NextChapterAction(StrEnum):
     COMPLETE = "complete"
 
 
+ACTIVE_PRODUCTION_LIFECYCLES = {
+    ChapterLifecycle.RUNNING,
+    ChapterLifecycle.CANDIDATE,
+    ChapterLifecycle.REVIEW,
+}
+IN_FLIGHT_CHAPTER_LIFECYCLES = {
+    *ACTIVE_PRODUCTION_LIFECYCLES,
+    ChapterLifecycle.REVISING,
+}
+
+
 class ChapterScheduleDecision(BaseModel):
     action: NextChapterAction
     chapter_id: str | None = None
@@ -26,13 +37,9 @@ def schedule_next_chapter(ledger: BookLedgerState) -> ChapterScheduleDecision:
     for chapter in ledger.chapters:
         if chapter.lifecycle == ChapterLifecycle.REVISING:
             return ChapterScheduleDecision(action=NextChapterAction.REVISE, chapter_id=chapter.id)
+    if any(chapter.lifecycle in ACTIVE_PRODUCTION_LIFECYCLES for chapter in ledger.chapters):
+        return ChapterScheduleDecision(action=NextChapterAction.WAIT_FOR_REVIEW)
     for chapter in ledger.chapters:
         if chapter.lifecycle == ChapterLifecycle.PLANNED:
             return ChapterScheduleDecision(action=NextChapterAction.START, chapter_id=chapter.id)
-    if any(
-        chapter.lifecycle
-        in {ChapterLifecycle.RUNNING, ChapterLifecycle.CANDIDATE, ChapterLifecycle.REVIEW}
-        for chapter in ledger.chapters
-    ):
-        return ChapterScheduleDecision(action=NextChapterAction.WAIT_FOR_REVIEW)
     return ChapterScheduleDecision(action=NextChapterAction.COMPLETE)

@@ -216,7 +216,7 @@ write_book_benchmark_report(
 ) -> Path
 ```
 
-`benchmark_book()`はworkspaceを変更しません。`blocked_chapters`は`review`または`revising`の章数です。fingerprintはBookPlanの章順と並べ替え済みattempt hashから決定的に生成されます。
+`benchmark_book()`はworkspaceを変更しません。`blocked_chapters`は`review`または`revising`の章数です。fingerprintはBookPlanの章順、各章のattempt identity、accepted attempt、およびcandidate hashから決定的に生成されます。
 
 `write_book_benchmark_report()`はnameの重複を`ValueError`で拒否し、次の形式のJSONをatomicに書込みます。
 

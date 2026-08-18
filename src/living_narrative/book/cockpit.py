@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from living_narrative.book.scheduler import schedule_next_chapter
+from living_narrative.book.scheduler import (
+    IN_FLIGHT_CHAPTER_LIFECYCLES,
+    NextChapterAction,
+    schedule_next_chapter,
+)
 from living_narrative.state.models import ChapterLifecycle, WorldStateBundle
 
 
@@ -15,6 +19,7 @@ class CockpitChapter(BaseModel):
     lifecycle: ChapterLifecycle | None = None
     target_min_words: int
     target_max_words: int
+    startable: bool = False
 
 
 class BookCockpit(BaseModel):
@@ -29,6 +34,9 @@ def build_book_cockpit(bundle: WorldStateBundle) -> BookCockpit:
     """Return a UI-safe book view without copying GM or character-private data."""
     lifecycle_by_id = {chapter.id: chapter.lifecycle for chapter in bundle.book_ledger.chapters}
     schedule = schedule_next_chapter(bundle.book_ledger)
+    in_flight = any(
+        lifecycle in IN_FLIGHT_CHAPTER_LIFECYCLES for lifecycle in lifecycle_by_id.values()
+    )
     return BookCockpit(
         premise=bundle.book_plan.premise,
         audience=bundle.book_plan.audience,
@@ -42,6 +50,12 @@ def build_book_cockpit(bundle: WorldStateBundle) -> BookCockpit:
                 lifecycle=lifecycle_by_id.get(chapter.id),
                 target_min_words=chapter.target_word_range.min_words,
                 target_max_words=chapter.target_word_range.max_words,
+                startable=(
+                    lifecycle_by_id.get(chapter.id) is ChapterLifecycle.PLANNED
+                    and not in_flight
+                    and schedule.action is NextChapterAction.START
+                    and schedule.chapter_id == chapter.id
+                ),
             )
             for chapter in bundle.book_plan.chapters
         ],

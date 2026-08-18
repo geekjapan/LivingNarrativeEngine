@@ -36,16 +36,27 @@ def benchmark_book(workspace_root: Path, *, name: str) -> BookBenchmarkObservati
     accepted = 0
     revising = 0
     blocked = 0
-    attempt_hashes: list[str] = []
+    attempt_count = 0
+    lineage_records: list[dict[str, object]] = []
     for chapter_id in chapter_ids:
         lifecycle = bundle.book_ledger.chapter(chapter_id).lifecycle
         accepted += lifecycle is ChapterLifecycle.ACCEPTED
         revising += lifecycle is ChapterLifecycle.REVISING
         blocked += lifecycle in {ChapterLifecycle.REVIEW, ChapterLifecycle.REVISING}
         lineage = load_chapter_lineage(workspace_root / "books" / "chapters", chapter_id)
-        attempt_hashes.extend(attempt.candidate_sha256 for attempt in lineage.attempts)
+        attempt_count += len(lineage.attempts)
+        lineage_records.append(
+            {
+                "chapter_id": chapter_id,
+                "accepted_attempt_id": lineage.accepted_attempt_id,
+                "attempts": [
+                    {"id": attempt.id, "candidate_sha256": attempt.candidate_sha256}
+                    for attempt in lineage.attempts
+                ],
+            }
+        )
     fingerprint_input = json.dumps(
-        {"chapters": chapter_ids, "attempt_hashes": sorted(attempt_hashes)},
+        {"chapters": lineage_records},
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -56,7 +67,7 @@ def benchmark_book(workspace_root: Path, *, name: str) -> BookBenchmarkObservati
         accepted_chapters=accepted,
         revising_chapters=revising,
         blocked_chapters=blocked,
-        attempt_count=len(attempt_hashes),
+        attempt_count=attempt_count,
         open_thread_count=len(bundle.book_ledger.continuity.open_thread_ids),
         artifact_fingerprint=hashlib.sha256(fingerprint_input.encode("utf-8")).hexdigest(),
     )

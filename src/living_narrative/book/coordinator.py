@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -20,9 +21,14 @@ from living_narrative.book.lineage import (
 )
 from living_narrative.book.planning import BookPlanProposal, proposal_to_state_diff
 from living_narrative.book.review import ChapterReview, ChapterReviewDecision
-from living_narrative.book.scheduler import schedule_next_chapter
+from living_narrative.book.scheduler import IN_FLIGHT_CHAPTER_LIFECYCLES, schedule_next_chapter
 from living_narrative.state.diff import StateDiff, StateDiffChange, fsync_directory
-from living_narrative.state.models import ChapterLifecycle, Visibility
+from living_narrative.state.models import (
+    BookLedgerState,
+    ChapterLifecycle,
+    Visibility,
+    WorldStateBundle,
+)
 from living_narrative.state.store import StateStore
 from living_narrative.state.transaction import (
     RecoveryError,
@@ -56,6 +62,26 @@ def _atomic_write_yaml(path: Path, data: Any) -> None:
         fsync_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _plan_generation(bundle: WorldStateBundle) -> str:
+    payload = json.dumps(
+        bundle.book_plan.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _reject_concurrent_chapter_start(ledger: BookLedgerState, chapter_id: str) -> None:
+    in_flight = [
+        chapter.id
+        for chapter in ledger.chapters
+        if chapter.id != chapter_id and chapter.lifecycle in IN_FLIGHT_CHAPTER_LIFECYCLES
+    ]
+    if in_flight:
+        raise ValueError(f"chapter {in_flight[0]} is already in production")
 
 
 def _assert_recoverable(journal_dir: Path, state_dir: Path) -> str | None:
@@ -122,13 +148,14 @@ def _chapter_transition(
         else journal_key
     )
     journal_suffix = f"_{candidate_suffix}" if candidate_suffix else ""
-    journal_dir = (
-        workspace_root
-        / "runs"
-        / ".transactions"
-        / f"chapter_{chapter_id}_{lifecycle}{journal_suffix}"
-    )
     with project_lock(workspace_root):
+        bundle = StateStore.load(state_dir)
+        journal_dir = (
+            workspace_root
+            / "runs"
+            / ".transactions"
+            / f"chapter_{_plan_generation(bundle)}_{chapter_id}_{lifecycle}{journal_suffix}"
+        )
         existing_diff_id = _assert_recoverable(journal_dir, state_dir)
         if existing_diff_id is not None:
             return ChapterProductionResult(
@@ -137,7 +164,8 @@ def _chapter_transition(
                 chapter_id=chapter_id,
                 lifecycle=lifecycle,
             )
-        bundle = StateStore.load(state_dir)
+        if lifecycle is ChapterLifecycle.RUNNING:
+            _reject_concurrent_chapter_start(bundle.book_ledger, chapter_id)
         ledger = bundle.book_ledger.transition(chapter_id, lifecycle)
         if lifecycle is ChapterLifecycle.RUNNING:
             ledger.active_chapter_id = chapter_id

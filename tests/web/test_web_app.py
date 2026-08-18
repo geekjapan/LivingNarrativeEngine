@@ -510,6 +510,7 @@ def test_book_cockpit_panel_loads_safe_roadmap_and_starts_planned_chapter(tmp_pa
     assert 'data-chapter-id="${escapeHtml(chapter.id)}"' not in page
     assert "${escapeHtml(chapter.target_min_words)}" in page
     assert "${escapeHtml(chapter.target_max_words)}" in page
+    assert "chapter.startable === true" in page
     assert 'bookNextActionEl.innerHTML = escapeHtml(cockpit.next_action || "待機中");' in page
     assert "book-roadmap .chapter" in page
     assert "book-start" in page

@@ -10,15 +10,30 @@ if TYPE_CHECKING:
     from living_narrative.book.chapters import ChapterCandidate
 
 
-def _reader_body(markdown: str) -> str:
-    """Remove the optional compile frontmatter and heading from a reader artifact."""
+def strip_chapter_scaffolding(markdown: str) -> str:
+    """Remove compile frontmatter, heading, and planned-goal prompt from a chapter artifact."""
     body = markdown
     if body.startswith("---\n"):
         _, separator, remainder = body.partition("\n---\n")
         body = remainder if separator else body
-    if body.startswith("# "):
-        _, _, body = body.partition("\n")
-    return " ".join(body.split())
+    lines = body.splitlines()
+    index = 0
+    while index < len(lines) and lines[index].strip() == "":
+        index += 1
+    if index < len(lines) and lines[index].startswith("# "):
+        index += 1
+    while index < len(lines) and lines[index].strip() == "":
+        index += 1
+    if index < len(lines) and lines[index].startswith("> Planned goal:"):
+        index += 1
+    while index < len(lines) and lines[index].strip() == "":
+        index += 1
+    return "\n".join(lines[index:])
+
+
+def _reader_body(markdown: str) -> str:
+    """Remove compile scaffolding and collapse whitespace for a bounded digest."""
+    return " ".join(strip_chapter_scaffolding(markdown).split())
 
 
 def advance_continuity_ledger(

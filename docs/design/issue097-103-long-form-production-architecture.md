@@ -86,9 +86,9 @@ write_book_benchmark_report(Path("artifacts/book-benchmark.json"), observations)
 | `blocked_chapters` | `review`または`revising`の章数 | 品質ゲートで止まる制作量 |
 | `attempt_count` | lineage上のimmutable candidate数 | 改稿・試行コストの代理指標 |
 | `open_thread_count` | continuity ledgerの未解決thread数 | 物語上の回収負債 |
-| `artifact_fingerprint` | 章順とcandidate hashのSHA-256 | 同一入力・同一成果物の比較、回帰検知 |
+| `artifact_fingerprint` | 章順・attempt identity・accepted attemptとcandidate hashのSHA-256 | 同一入力・同一成果物の比較、回帰検知 |
 
-`artifact_fingerprint` は本文内容を出力しません。ただし、章順または任意attemptのcandidate hashが変化すれば変わります。したがって、同じfixtureの二回測定でhashが異なる場合は、BookPlan順序または保存済みattemptが変化したことを示します。
+`artifact_fingerprint` は本文内容を出力しません。ただし、章順、attemptの所属、accepted attempt、またはcandidate hashが変化すれば変わります。したがって、同じfixtureの二回測定でhashが異なる場合は、BookPlan順序、lineage、または保存済みattemptが変化したことを示します。
 
 ## 2. Issue 097〜103 の統合アーキテクチャ
 

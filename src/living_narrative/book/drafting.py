@@ -117,26 +117,37 @@ def run_chapter_draft(
     if attempt < 1:
         raise ValueError("attempt must be at least 1")
     read = load_project(project_yaml)
-    if not read.is_valid or read.config is None:
+    if not read.is_valid or read.config is None or read.paths is None:
         raise ValueError(f"invalid project: {project_yaml}")
 
-    workspace_root = project_yaml.parent / "workspace"
-    state_dir = workspace_root / "state"
+    workspace_root = read.paths.root
+    state_dir = read.paths.state
     bundle = StateStore.load(state_dir)
     context = build_chapter_context(bundle, chapter_id, source_turns=[])
     run_id = f"chapter_{chapter_id}_attempt_{attempt:03d}"
-    run_dir = workspace_root / "runs" / "chapter_drafts" / run_id
+    drafts_root = read.paths.runs / "chapter_drafts"
+    run_dir = drafts_root / run_id
     response_path = run_dir / "response.yaml"
     completion_path = run_dir / "meta.yaml"
 
     with project_lock(workspace_root):
-        if completion_path.is_file():
-            return ChapterDraftResult(run_id, run_dir, _load_response(response_path), resumed=True)
+        if completion_path.is_file() or response_path.is_file():
+            response = _load_response(response_path)
+            if not completion_path.is_file():
+                _atomic_write_yaml(
+                    completion_path,
+                    {"status": "completed", "resumed_without_provider": True},
+                )
+            return ChapterDraftResult(run_id, run_dir, response, resumed=True)
 
         messages = _prompt(context)
         if budget is not None:
             stop_reason = evaluate_draft_budget(
-                workspace_root / "runs" / "chapter_drafts", chapter_id, attempt, budget
+                drafts_root,
+                chapter_id,
+                attempt,
+                budget,
+                exclude_run_id=run_id,
             )
             if stop_reason is not None:
                 _atomic_write_yaml(

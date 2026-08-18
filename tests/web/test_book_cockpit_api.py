@@ -56,6 +56,8 @@ def test_book_cockpit_api_projects_safe_read_model_and_start_action(tmp_path):
     assert chapter["lifecycle"] == "planned"
     assert chapter["target_min_words"] == 10
     assert chapter["target_max_words"] == 100
+    assert chapter["startable"] is True
+    assert updated.json()["chapters"][0]["startable"] is False
     assert started.status_code == 200
     assert started.json()["lifecycle"] == "running"
     assert updated.json()["active_chapter_id"] == "chapter_001"
