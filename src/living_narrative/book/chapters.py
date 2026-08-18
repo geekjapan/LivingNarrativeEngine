@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from living_narrative.book.continuity import render_continuity_digest
 from living_narrative.state.models import WorldStateBundle, latest_memory_summary
 
 
@@ -18,6 +19,7 @@ class ChapterContext(BaseModel):
     target_max_words: int
     reader_facts: list[str] = Field(default_factory=list)
     memory_summary: str = ""
+    continuity_digest: str = ""
     source_turns: list[int] = Field(default_factory=list)
 
 
@@ -49,6 +51,7 @@ def build_chapter_context(
         target_max_words=chapter.target_word_range.max_words,
         reader_facts=reader_facts,
         memory_summary=latest_memory_summary(bundle.memory_summaries),
+        continuity_digest=render_continuity_digest(bundle.book_ledger.continuity),
         source_turns=sorted(set(source_turns)),
     )
 

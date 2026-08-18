@@ -12,6 +12,12 @@ from pydantic import BaseModel
 
 from living_narrative.book.artifacts import load_chapter_artifacts, save_chapter_artifacts
 from living_narrative.book.chapters import ChapterCandidate
+from living_narrative.book.continuity import advance_continuity_ledger
+from living_narrative.book.lineage import (
+    accept_chapter_attempt,
+    load_chapter_lineage,
+    record_chapter_attempt,
+)
 from living_narrative.book.planning import BookPlanProposal, proposal_to_state_diff
 from living_narrative.book.review import ChapterReview, ChapterReviewDecision
 from living_narrative.book.scheduler import schedule_next_chapter
@@ -140,6 +146,26 @@ def _chapter_transition(
         if lifecycle in {ChapterLifecycle.ACCEPTED, ChapterLifecycle.REVISING}:
             ledger.next_action = schedule_next_chapter(ledger).action.value
             if lifecycle is ChapterLifecycle.ACCEPTED:
+                lineage = load_chapter_lineage(workspace_root / "books" / "chapters", chapter_id)
+                if not lineage.attempts:
+                    raise ValueError("cannot accept a chapter without an immutable attempt")
+                attempt = lineage.attempts[-1]
+                chapter = bundle.book_plan.chapter(chapter_id)
+                covered = (
+                    attempt.review.semantic.required_threads_covered
+                    if attempt.review.semantic is not None
+                    else []
+                )
+                ledger = advance_continuity_ledger(
+                    ledger,
+                    ChapterCandidate(
+                        chapter_id=chapter_id,
+                        source_turns=attempt.source_turns,
+                        markdown=attempt.candidate_markdown,
+                    ),
+                    required_thread_ids=list(chapter.required_thread_ids),
+                    covered_thread_ids=covered,
+                )
                 ledger.active_chapter_id = None
         diff = StateDiff(
             id="diff_0000",
@@ -155,8 +181,19 @@ def _chapter_transition(
         )
 
         def write_artifacts() -> None:
+            chapters_root = workspace_root / "books" / "chapters"
             if candidate is not None and review is not None:
-                save_chapter_artifacts(workspace_root / "books" / "chapters", candidate, review)
+                save_chapter_artifacts(chapters_root, candidate, review)
+                existing = load_chapter_lineage(chapters_root, chapter_id)
+                candidate_hash = hashlib.sha256(candidate.markdown.encode("utf-8")).hexdigest()
+                recorded_hashes = {attempt.candidate_sha256 for attempt in existing.attempts}
+                if candidate_hash not in recorded_hashes:
+                    record_chapter_attempt(chapters_root, candidate, review)
+            if lifecycle is ChapterLifecycle.ACCEPTED:
+                lineage = load_chapter_lineage(chapters_root, chapter_id)
+                if not lineage.attempts:
+                    raise ValueError("cannot accept a chapter without an immutable attempt")
+                accept_chapter_attempt(chapters_root, chapter_id, lineage.attempts[-1].id)
             _atomic_write_yaml(
                 journal_dir / "chapter_transition.yaml",
                 {

@@ -11,6 +11,7 @@ from living_narrative.book.coordinator import (
     request_chapter_revision,
     start_chapter_production,
 )
+from living_narrative.book.lineage import load_chapter_lineage
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
 from living_narrative.book.review import (
     ChapterReview,
@@ -75,8 +76,11 @@ def test_chapter_production_lifecycle_persists_candidate_review_and_acceptance(t
     bundle = StateStore.load(workspace / "state")
     assert bundle.book_ledger.chapter("chapter_001").lifecycle == ChapterLifecycle.ACCEPTED
     assert bundle.book_ledger.chapter("chapter_001").review_decision == "accept"
+    assert bundle.book_ledger.continuity.entries[0].chapter_id == "chapter_001"
     assert result.journal_dir.exists()
     assert (workspace / "books" / "chapters" / "chapter_001" / "candidate.md").exists()
+    lineage = load_chapter_lineage(workspace / "books" / "chapters", "chapter_001")
+    assert lineage.accepted_attempt_id == "attempt_001"
 
 
 def test_semantic_block_review_cannot_be_accepted(tmp_path):

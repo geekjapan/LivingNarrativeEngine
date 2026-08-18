@@ -93,6 +93,7 @@ def evaluate_semantic_continuity(
                 f"Required threads: {context.required_thread_ids}\n"
                 f"Reader facts: {context.reader_facts}\n"
                 f"Continuity summary: {context.memory_summary}\n"
+                f"Book continuity digest: {context.continuity_digest}\n"
                 f"Candidate:\n{candidate.markdown}"
             ),
         },

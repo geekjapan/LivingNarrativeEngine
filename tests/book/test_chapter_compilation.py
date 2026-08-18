@@ -4,6 +4,7 @@ from living_narrative.book.chapters import build_chapter_context, compile_chapte
 from living_narrative.state.models import (
     BookActPlan,
     BookChapterPlan,
+    BookContinuityEntry,
     BookLedgerState,
     BookPlanState,
     BookWordRange,
@@ -90,3 +91,17 @@ def test_chapter_compiler_emits_deterministic_provenance_markdown():
     assert candidate.markdown.startswith("---\nchapter_id: chapter_001\n")
     assert "時刻表の矛盾を発見する。" in candidate.markdown
     assert "澪は時刻表の余白に気づいた。" in candidate.markdown
+
+
+def test_chapter_context_includes_bounded_book_continuity_digest():
+    bundle = _bundle()
+    bundle.book_ledger.continuity.entries.append(
+        BookContinuityEntry(
+            chapter_id="chapter_001",
+            summary="透は公開された帳簿の矛盾を保留している。",
+        )
+    )
+
+    context = build_chapter_context(bundle, "chapter_001", source_turns=[])
+
+    assert context.continuity_digest == "透は公開された帳簿の矛盾を保留している。"

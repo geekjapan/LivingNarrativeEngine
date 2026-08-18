@@ -253,12 +253,29 @@ _ALLOWED_CHAPTER_LIFECYCLE_TRANSITIONS: dict[ChapterLifecycle, set[ChapterLifecy
 }
 
 
+class BookContinuityEntry(StateBaseModel):
+    """Reader-safe compact record derived from one accepted chapter."""
+
+    chapter_id: str = Field(pattern=r"^chapter_\d+$")
+    summary: str = ""
+    covered_thread_ids: list[ThreadId] = Field(default_factory=list)
+    open_thread_ids: list[ThreadId] = Field(default_factory=list)
+
+
+class BookContinuityState(StateBaseModel):
+    """Rolling reader-safe digest used to bound subsequent chapter context."""
+
+    entries: list[BookContinuityEntry] = Field(default_factory=list)
+    open_thread_ids: list[ThreadId] = Field(default_factory=list)
+
+
 class BookLedgerState(StateBaseModel):
     """Operational long-form state; all lifecycle updates are StateDiff candidates."""
 
     active_chapter_id: str | None = None
     chapters: list[BookChapterLedger] = Field(default_factory=list)
     next_action: str | None = None
+    continuity: BookContinuityState = Field(default_factory=BookContinuityState)
 
     @model_validator(mode="after")
     def _validate_chapter_ids_unique(self) -> "BookLedgerState":

@@ -10,6 +10,11 @@ from typing import Any, Protocol
 import yaml
 from pydantic import BaseModel
 
+from living_narrative.book.budget import (
+    BookBudgetPolicy,
+    BudgetExceededError,
+    evaluate_draft_budget,
+)
 from living_narrative.book.chapters import ChapterContext, build_chapter_context
 from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.state.diff import fsync_directory
@@ -87,6 +92,7 @@ def _prompt(context: ChapterContext) -> list[dict[str, Any]]:
                 f"Target body units: {context.target_min_words}-{context.target_max_words}\n"
                 f"Reader-visible facts:\n{reader_facts}\n"
                 f"Continuity summary:\n{context.memory_summary or 'None'}\n"
+                f"Book continuity digest:\n{context.continuity_digest or 'None'}\n"
                 "Write one self-contained chapter draft. Do not reveal GM-only or private facts."
             ),
         },
@@ -99,6 +105,7 @@ def run_chapter_draft(
     *,
     attempt: int = 1,
     gateway: _Gateway | None = None,
+    budget: BookBudgetPolicy | None = None,
 ) -> ChapterDraftResult:
     """Create or resume one recoverable chapter draft run.
 
@@ -127,6 +134,16 @@ def run_chapter_draft(
             return ChapterDraftResult(run_id, run_dir, _load_response(response_path), resumed=True)
 
         messages = _prompt(context)
+        if budget is not None:
+            stop_reason = evaluate_draft_budget(
+                workspace_root / "runs" / "chapter_drafts", chapter_id, attempt, budget
+            )
+            if stop_reason is not None:
+                _atomic_write_yaml(
+                    run_dir / "circuit_breaker.yaml",
+                    {"status": "blocked", "reason": stop_reason, "chapter_id": chapter_id},
+                )
+                raise BudgetExceededError(stop_reason)
         _atomic_write_yaml(
             run_dir / "request.yaml",
             {
