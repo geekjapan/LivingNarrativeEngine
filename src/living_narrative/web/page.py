@@ -366,6 +366,12 @@ function renderBookCockpit(cockpit) {
         ? `<button class="book-start" data-chapter-id="${escapeHtml(chapter.id)}" ` +
           `aria-label="${escapeHtml(chapter.id)}の制作を開始">制作を開始</button>`
         : "";
+      const reviewActions = chapter.lifecycle === "review"
+        ? `<button class="book-action" data-action="accept" ` +
+          `data-chapter-id="${escapeHtml(chapter.id)}">承認</button>` +
+          `<button class="book-action" data-action="revise" ` +
+          `data-chapter-id="${escapeHtml(chapter.id)}">改稿</button>`
+        : "";
       return `<article class="chapter">
         <div class="chapter-head"><strong>${escapeHtml(chapter.id)}</strong>
           <span class="badge badge-${escapeHtml(chapter.lifecycle)}">
@@ -374,12 +380,17 @@ function renderBookCockpit(cockpit) {
         <p>${escapeHtml(chapter.planned_goal)}</p>
         <p>目標: ${escapeHtml(chapter.target_min_words)}–
           ${escapeHtml(chapter.target_max_words)} units</p>
-        ${start}
+        ${start}${reviewActions}
       </article>`;
     })
     .join("") || "<p>章計画はまだありません。</p>";
   document.querySelectorAll(".book-start").forEach((button) => {
     button.addEventListener("click", () => startBookChapter(button.dataset.chapterId));
+  });
+  document.querySelectorAll(".book-action").forEach((button) => {
+    button.addEventListener("click", () => {
+      applyBookChapterAction(button.dataset.chapterId, button.dataset.action);
+    });
   });
 }
 
@@ -406,6 +417,19 @@ async function startBookChapter(chapterId) {
   bookMessageEl.textContent = res.ok
     ? `${data.chapter_id} を開始しました。`
     : data.detail || "章制作を開始できませんでした。";
+  await loadBookCockpit();
+}
+
+async function applyBookChapterAction(chapterId, action) {
+  const name = currentProject();
+  if (!name || !chapterId || !action) return;
+  const path = `/api/project/${encodeURIComponent(name)}/book/chapters/` +
+    `${encodeURIComponent(chapterId)}/${encodeURIComponent(action)}`;
+  const res = await fetch(path, { method: "POST" });
+  const data = await res.json();
+  bookMessageEl.textContent = res.ok
+    ? `${data.chapter_id} を${data.lifecycle}へ更新しました。`
+    : data.detail || "章の状態を更新できませんでした。";
   await loadBookCockpit();
 }
 

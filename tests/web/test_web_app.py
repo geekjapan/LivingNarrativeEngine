@@ -280,6 +280,7 @@ def test_inner_html_template_values_use_escape_html(tmp_path, build_project):
         "privateMind",
         "profiles",
         "relationships",
+        "reviewActions",
         "secrets",
         "skills",
         "stats",
