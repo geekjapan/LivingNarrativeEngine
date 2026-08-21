@@ -23,7 +23,7 @@ def test_book_benchmark_writes_public_stable_report_without_workspace_path(tmp_p
     assert observation.planned_chapters == 0
     assert observation.accepted_chapters == 0
     assert len(observation.artifact_fingerprint) == 64
-    assert '"schema_version": 1' in report
+    assert '"schema_version": 2' in report
     assert str(workspace) not in report
     assert "prompt" not in report
 
@@ -135,3 +135,58 @@ def test_benchmark_honors_configured_state_path(tmp_path):
 
     assert observation.planned_chapters == 0
     assert len(observation.artifact_fingerprint) == 64
+
+
+def test_benchmark_aggregates_reader_safe_production_run_evidence(tmp_path):
+    workspace = _two_chapter_workspace(tmp_path)
+    run_root = workspace / "runs" / "chapter_production"
+    first = run_root / "chapter_001" / "generation_example_revision_001"
+    second = run_root / "chapter_002" / "generation_example_revision_001"
+    third = run_root / "chapter_002" / "generation_example_revision_002"
+    for run_dir, phase, events in (
+        (
+            first,
+            "awaiting_author",
+            [
+                {"event": "preparing", "phase": "drafting"},
+                {"event": "draft_completed", "resumed_without_provider": True},
+                {"event": "awaiting_author", "phase": "awaiting_author"},
+            ],
+        ),
+        (
+            second,
+            "failed",
+            [{"event": "preparing", "phase": "drafting"}, {"event": "failed", "phase": "failed"}],
+        ),
+        (third, "stopped", [{"event": "preparing", "phase": "drafting"}, {"event": "stopped"}]),
+    ):
+        (run_dir / "events").mkdir(parents=True)
+        (run_dir / "manifest.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "run_id": run_dir.name,
+                    "chapter_id": run_dir.parent.name,
+                    "phase": phase,
+                }
+            ),
+            encoding="utf-8",
+        )
+        for index, event in enumerate(events, start=1):
+            (run_dir / "events" / f"{index:03d}_{event['event']}.yaml").write_text(
+                yaml.safe_dump(event), encoding="utf-8"
+            )
+    (second / "failure.yaml").write_text(
+        yaml.safe_dump({"code": "runtimeerror", "detail": "must not leak"}), encoding="utf-8"
+    )
+
+    observation = benchmark_book(workspace, name="run-evidence")
+
+    assert observation.production_run_count == 3
+    assert observation.resumed_production_run_count == 1
+    assert observation.stopped_production_run_count == 1
+    assert observation.failed_production_run_count == 1
+    assert observation.production_run_event_count == 7
+    assert len(observation.production_run_fingerprint) == 64
+    assert "detail" not in observation.model_dump_json()
+    assert "must not leak" not in observation.model_dump_json()

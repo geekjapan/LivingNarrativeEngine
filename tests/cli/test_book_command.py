@@ -232,3 +232,92 @@ def test_book_run_chapter_delegates_to_the_domain_runner_and_returns_public_stat
     assert payload["phase"] == "awaiting_author"
     assert payload["lifecycle"] == "review"
     assert "auto_accept" not in payload
+
+
+def test_book_benchmark_writes_a_reader_safe_read_only_report(tmp_path):
+    project_yaml = _production_project(tmp_path)
+    output_path = tmp_path / "benchmark.json"
+    before = StateStore.load(project_yaml.parent / "workspace" / "state").model_dump(mode="json")
+
+    result = runner.invoke(
+        app,
+        [
+            "book",
+            "benchmark",
+            "--project",
+            str(project_yaml),
+            "--name",
+            "one-chapter",
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    report = yaml.safe_load(output_path.read_text(encoding="utf-8"))
+    assert report["schema_version"] == 2
+    assert len(report["books"]) == 1
+    book = report["books"][0]
+    assert book["name"] == "one-chapter"
+    assert book["planned_chapters"] == 1
+    assert book["accepted_chapters"] == 0
+    assert book["revising_chapters"] == 0
+    assert book["blocked_chapters"] == 0
+    assert book["attempt_count"] == 0
+    assert book["open_thread_count"] == 0
+    assert book["production_run_count"] == 0
+    assert book["failed_production_run_count"] == 0
+    assert len(book["artifact_fingerprint"]) == 64
+    assert len(book["production_run_fingerprint"]) == 64
+    assert "benchmark report:" in result.output
+    assert str(project_yaml.parent) not in output_path.read_text(encoding="utf-8")
+    after = StateStore.load(project_yaml.parent / "workspace" / "state").model_dump(mode="json")
+    assert after == before
+
+
+def test_book_benchmark_returns_runtime_error_when_expected_fingerprint_differs(tmp_path):
+    project_yaml = _production_project(tmp_path)
+    output_path = tmp_path / "benchmark.json"
+
+    result = runner.invoke(
+        app,
+        [
+            "book",
+            "benchmark",
+            "--project",
+            str(project_yaml),
+            "--name",
+            "one-chapter",
+            "--output",
+            str(output_path),
+            "--expect-fingerprint",
+            "0" * 64,
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "benchmark fingerprint differs" in result.output
+    assert output_path.is_file()
+
+
+def test_book_benchmark_rejects_an_invalid_project_as_usage_error(tmp_path):
+    project_yaml = tmp_path / "invalid" / "project.yaml"
+    project_yaml.parent.mkdir()
+    project_yaml.write_text("title: incomplete\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "book",
+            "benchmark",
+            "--project",
+            str(project_yaml),
+            "--name",
+            "invalid",
+            "--output",
+            str(tmp_path / "report.json"),
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "invalid project" in result.output

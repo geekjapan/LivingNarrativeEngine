@@ -12,12 +12,13 @@ import typer
 import yaml
 from pydantic import ValidationError
 
+from living_narrative.book.benchmark import benchmark_book, write_book_benchmark_report
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
 from living_narrative.book.production_runner import (
     ChapterProductionRunner,
     ChapterProductionRunStatus,
 )
-from living_narrative.cli._common import runtime_error, usage_error
+from living_narrative.cli._common import load_project_or_exit, runtime_error, usage_error
 
 app = typer.Typer(name="book", help="Long-form book planning commands")
 
@@ -62,6 +63,40 @@ def plan(
     )
     typer.echo(f"book plan proposal: {output}")
     typer.echo("canonical state was not changed; review the proposal before applying its StateDiff")
+
+
+@app.command("benchmark")
+def benchmark(
+    project: Annotated[Path, typer.Option(..., "--project", help="Path to project.yaml")],
+    name: Annotated[str, typer.Option(..., "--name", help="Stable benchmark fixture name")],
+    output: Annotated[Path, typer.Option(..., "--output", help="Path for the public JSON report")],
+    expected_fingerprint: Annotated[
+        str | None,
+        typer.Option(
+            "--expect-fingerprint",
+            help="Expected combined benchmark fingerprint; mismatch exits with code 1",
+        ),
+    ] = None,
+) -> None:
+    """Write a read-only, reader-safe Book benchmark report for one project."""
+    read = load_project_or_exit(project)
+    if read.paths is None:
+        runtime_error(f"project paths unavailable: {project}")
+    try:
+        observation = benchmark_book(read.paths, name=name)
+        report_path = write_book_benchmark_report(output, [observation])
+    except (OSError, ValueError) as exc:
+        runtime_error(str(exc))
+    fingerprint_differs = (
+        expected_fingerprint is not None
+        and expected_fingerprint != observation.benchmark_fingerprint
+    )
+    if fingerprint_differs:
+        runtime_error(
+            "benchmark fingerprint differs: "
+            f"expected {expected_fingerprint}, observed {observation.benchmark_fingerprint}"
+        )
+    typer.echo(f"benchmark report: {report_path}")
 
 
 def _echo_production_run_status(status: ChapterProductionRunStatus) -> None:
