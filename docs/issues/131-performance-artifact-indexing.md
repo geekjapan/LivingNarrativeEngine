@@ -23,7 +23,7 @@ Cockpit、benchmark、export planningがchapterごとのrun artifactを毎回全
 ## 完了条件
 
 - [x] deterministic 100章fixtureを`create_benchmark_fixture.py --chapters 100`で生成できる。
-- [x] 100章fixtureのbenchmark fingerprintをversioned baselineとして固定する。
+- [x] 100章fixtureのbenchmark fingerprintをversioned baselineとして固定し、CIで継続比較する。
 - [ ] status/benchmark/export planningのSLOをCI環境に耐える閾値として固定する。
 - [x] reader-safe benchmark fingerprintとplanned chapter countだけをatomic YAML indexとして保存・再読込できる。
 - [ ] reader-safe run/lineage/publication metadataを追加索引化し、本文、prompt、credential、private contextを保存しない。

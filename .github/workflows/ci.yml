@@ -64,6 +64,20 @@ jobs:
             --name ci-nine \
             --output "$REPORT_PATH" \
             --expect-fingerprint "$expected"
+      - name: generate and compare hundred-chapter book benchmark
+        env:
+          FIXTURE_ROOT: artifacts/benchmark-fixture-hundred-${{ matrix.name }}
+          REPORT_PATH: artifacts/book-benchmark-hundred-${{ matrix.name }}.json
+          BASELINE_PATH: tests/fixtures/benchmark-v2-hundred-baseline.json
+        run: |
+          rm -rf "$FIXTURE_ROOT"
+          uv run python scripts/create_benchmark_fixture.py --output "$FIXTURE_ROOT" --chapters 100
+          expected="$(uv run python -c "import json; print(json.load(open('$BASELINE_PATH', encoding='utf-8'))['benchmark_fingerprint'])")"
+          uv run living-narrative book benchmark \
+            --project "$FIXTURE_ROOT/project.yaml" \
+            --name ci-hundred \
+            --output "$REPORT_PATH" \
+            --expect-fingerprint "$expected"
       - name: upload long-smoke report
         if: ${{ always() && hashFiles('artifacts/long-smoke-*.json') != '' }}
         uses: actions/upload-artifact@v4
