@@ -191,6 +191,15 @@ class ProductionAdmissionController:
                 admitted_at=_timestamp(now),
             ),
         ]
+        self._write_event(
+            "admitted",
+            {
+                "admission_id": lease.admission_id,
+                "book_id": request.book_id,
+                "provider_profile_id": request.provider_profile_id,
+                "forecast_usd": str(request.forecast_usd) if request.forecast_usd else None,
+            },
+        )
         self._write_snapshot()
         return ProductionAdmissionDecision(allowed=True, lease=lease)
 
@@ -198,7 +207,16 @@ class ProductionAdmissionController:
         """Release an active delivery admission after the worker exits."""
         with self._locked():
             self._reload_snapshot()
-            self._leases.pop(lease.admission_id, None)
+            admission = self._leases.pop(lease.admission_id, None)
+            if admission is not None:
+                self._write_event(
+                    "released",
+                    {
+                        "admission_id": admission.admission_id,
+                        "book_id": admission.book_id,
+                        "provider_profile_id": admission.provider_profile_id,
+                    },
+                )
             self._write_snapshot()
 
     def _expire_leases(self, now: datetime) -> None:
@@ -220,6 +238,19 @@ class ProductionAdmissionController:
             for admission in self._provider_admissions
             if _parse_timestamp(admission.admitted_at) > cutoff
         ]
+
+    def _write_event(self, event: str, details: dict[str, Any]) -> None:
+        events_dir = self._scheduler_root / "events"
+        existing = sorted(events_dir.glob("*.yaml")) if events_dir.exists() else []
+        _atomic_write_yaml(
+            events_dir / f"{len(existing) + 1:06d}_{event}.yaml",
+            {
+                "schema_version": 1,
+                "event": event,
+                "recorded_at": _timestamp(self._clock()),
+                **details,
+            },
+        )
 
     def _reload_snapshot(self) -> None:
         snapshot = _read_snapshot(self._snapshot_path)

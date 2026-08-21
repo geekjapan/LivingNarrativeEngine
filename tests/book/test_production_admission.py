@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
+import yaml
+
 from living_narrative.book.production_admission import (
     ProductionAdmissionController,
     ProductionAdmissionPolicy,
@@ -203,3 +205,36 @@ def test_admission_reloads_shared_snapshot_before_each_cross_book_decision(
     assert first.allowed is True
     assert second.allowed is False
     assert second.reason == "parallel delivery limit reached"
+
+
+def test_admission_records_reader_safe_admit_and_release_events(tmp_path: Path) -> None:
+    scheduler_root = tmp_path / "scheduler"
+    controller = ProductionAdmissionController(
+        scheduler_root,
+        policy=ProductionAdmissionPolicy(),
+        clock=lambda: datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+
+    admitted = controller.try_admit(
+        ProductionAdmissionRequest(
+            book_id="book-alpha",
+            provider_profile_id="provider-a/fiction",
+            forecast_usd=Decimal("0.75"),
+        )
+    )
+    assert admitted.lease is not None
+    controller.release(admitted.lease)
+
+    events = [
+        yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in sorted((scheduler_root / "events").glob("*.yaml"))
+    ]
+
+    assert [event["event"] for event in events] == ["admitted", "released"]
+    assert events[0]["book_id"] == "book-alpha"
+    assert events[0]["provider_profile_id"] == "provider-a/fiction"
+    assert events[0]["forecast_usd"] == "0.75"
+    for event in events:
+        serialized = yaml.safe_dump(event, allow_unicode=True)
+        for forbidden in ("prompt", "credential", "worker", "workspace", "traceback"):
+            assert forbidden not in serialized
