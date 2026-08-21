@@ -26,7 +26,7 @@ durable workerを運用するには、queue depth、lease age、delivery duratio
 - [x] active leaseの最古heartbeat ageをworker identityなしでreader-safeに集計する。
 - [ ] delivery duration、sanitized failure code、budget stopをreader-safeに集計する。
 - [ ] 本文、candidate本文、prompt、credential、absolute path、GM/private context、tracebackがmetrics/alert/runbookに含まれないことを固定する。
-- [ ] worker kill、lease expiry、provider timeout、partial writeのtriage手順と安全なrecovery条件をrunbookへ記載する。
+- [x] worker kill、lease expiry、provider timeout、partial writeのtriage手順と安全なrecovery条件をrunbookへ記載する。
 - [ ] thresholdとalert候補を定義し、100章fixtureのSLO測定から検証する。
 - [ ] Cockpitへの投影はread-onlyで、著者のaccept/reviseを自動化しない。
 
