@@ -44,6 +44,11 @@ def load_book_artifact_index(workspace: Path) -> BookArtifactIndex | None:
         raise ValueError("book artifact index is invalid") from exc
 
 
+def ensure_book_artifact_index(workspace: Path) -> BookArtifactIndex:
+    """Return the valid cache or rebuild it from authoritative artifacts when absent."""
+    return load_book_artifact_index(workspace) or build_book_artifact_index(workspace)
+
+
 def build_book_artifact_index(workspace: Path) -> BookArtifactIndex:
     """Rebuild the index from authoritative artifacts and atomically publish it."""
     observation = benchmark_book(workspace, name="artifact-index")
@@ -73,4 +78,9 @@ def build_book_artifact_index(workspace: Path) -> BookArtifactIndex:
     return index
 
 
-__all__ = ["BookArtifactIndex", "build_book_artifact_index", "load_book_artifact_index"]
+__all__ = [
+    "BookArtifactIndex",
+    "build_book_artifact_index",
+    "ensure_book_artifact_index",
+    "load_book_artifact_index",
+]

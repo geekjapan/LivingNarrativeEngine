@@ -27,7 +27,8 @@ Cockpit、benchmark、export planningがchapterごとのrun artifactを毎回全
 - [x] reader-safe benchmark fingerprintとplanned chapter countだけをatomic YAML indexとして保存・再読込できる。
 - [ ] reader-safe run/lineage/publication metadataを追加索引化し、本文、prompt、credential、private contextを保存しない。
 - [ ] index更新はevent-first/atomic publishで、partial writeまたはhash不整合時にfail closedまたはartifact再読込する。
-- [ ] cache miss、index削除、worker restartでpublic結果が変わらないことを回帰テストで固定する。
+- [x] cache missまたはindex削除時に、authoritative artifactsから同じpublic fingerprint indexを再構築できる。
+- [ ] worker restartでpublic結果が変わらないことを回帰テストで固定する。
 - [ ] SLO測定をbenchmark reportへ追加し、閾値超過をCIで検出する。
 
 ## 初期観測

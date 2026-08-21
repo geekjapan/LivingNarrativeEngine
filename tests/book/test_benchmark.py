@@ -210,3 +210,17 @@ def test_artifact_index_persists_reader_safe_benchmark_fingerprints(tmp_path):
     rendered = built.model_dump_json()
     assert str(workspace) not in rendered
     assert "prompt" not in rendered
+
+
+def test_artifact_index_rebuilds_when_the_optional_cache_is_missing(tmp_path):
+    workspace = _two_chapter_workspace(tmp_path)
+
+    from living_narrative.book.artifact_index import ensure_book_artifact_index
+
+    first = ensure_book_artifact_index(workspace)
+    index_path = workspace / "runs" / "book_artifact_index" / "index.yaml"
+    index_path.unlink()
+    rebuilt = ensure_book_artifact_index(workspace)
+
+    assert rebuilt == first
+    assert index_path.is_file()
