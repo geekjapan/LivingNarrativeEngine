@@ -18,7 +18,7 @@ durable workerを運用するには、queue depth、lease age、delivery duratio
 
 ## 公開seam
 
-`collect_production_operational_metrics(workspace) -> ProductionOperationalMetrics`と`render_production_runbook_snapshot(metrics) -> str`を候補seamとする。metricsはqueue/status/eventから導出するread-only projectionであり、Book Stateやauthor decisionを変更しない。
+`collect_production_operational_metrics(project_yaml) -> ProductionOperationalMetrics`と`render_production_runbook_snapshot(metrics) -> str`を公開seamとする。metricsはqueue/status/eventから導出するread-only projectionであり、Book Stateやauthor decisionを変更しない。
 
 ## 完了条件
 
@@ -29,6 +29,7 @@ durable workerを運用するには、queue depth、lease age、delivery duratio
 - [ ] 本文、candidate本文、prompt、credential、absolute path、GM/private context、tracebackがmetrics/alert/runbookに含まれないことを固定する。
 - [x] worker kill、lease expiry、provider timeout、partial writeのtriage手順と安全なrecovery条件をrunbookへ記載する。
 - [ ] thresholdとalert候補を定義し、100章fixtureのSLO測定から検証する。
+- [x] queue metricsを`ProductionOperationalMetrics`とpath-free runbook snapshotへread-only投影できる。
 - [ ] Cockpitへの投影はread-onlyで、著者のaccept/reviseを自動化しない。
 
 ## 非対象

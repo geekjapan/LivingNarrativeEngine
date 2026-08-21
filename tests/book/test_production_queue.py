@@ -337,3 +337,22 @@ def test_queue_metrics_aggregates_sanitized_failure_codes_without_private_detail
     rendered = metrics.model_dump_json()
     assert "private provider response" not in rendered
     assert "worker-alpha" not in rendered
+
+
+def test_operational_metrics_and_runbook_snapshot_are_reader_safe(tmp_path):
+    project_yaml = _project(tmp_path)
+    DurableProductionQueue().enqueue(project_yaml, "chapter_001")
+
+    from living_narrative.book.production_observability import (
+        collect_production_operational_metrics,
+        render_production_runbook_snapshot,
+    )
+
+    metrics = collect_production_operational_metrics(project_yaml)
+    snapshot = render_production_runbook_snapshot(metrics)
+
+    assert metrics.queue.total_jobs == 1
+    assert metrics.queue.queued_jobs == 1
+    assert "queue_total_jobs=1" in snapshot
+    assert "prompt" not in snapshot
+    assert str(project_yaml) not in snapshot
