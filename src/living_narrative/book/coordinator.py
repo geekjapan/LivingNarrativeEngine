@@ -201,10 +201,10 @@ def _chapter_transition(
                 reviewed_id = _reviewed_attempt_id(chapters_dir, chapter_id)
                 attempt = next(item for item in lineage.attempts if item.id == reviewed_id)
                 chapter = bundle.book_plan.chapter(chapter_id)
-                covered = (
-                    attempt.review.semantic.required_threads_covered
-                    if attempt.review.semantic is not None
-                    else []
+                semantic = attempt.review.semantic
+                covered = semantic.required_threads_covered if semantic is not None else []
+                covered_arc_ids = (
+                    semantic.character_arc_target_ids_covered if semantic is not None else []
                 )
                 ledger = advance_continuity_ledger(
                     ledger,
@@ -215,6 +215,9 @@ def _chapter_transition(
                     ),
                     required_thread_ids=list(chapter.required_thread_ids),
                     covered_thread_ids=covered,
+                    act_id=chapter.act_id,
+                    character_arc_targets=list(chapter.character_arc_targets),
+                    covered_character_arc_target_ids=covered_arc_ids,
                 )
                 ledger.active_chapter_id = None
         diff = StateDiff(

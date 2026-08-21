@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from living_narrative.state.models import BookContinuityEntry, BookContinuityState, BookLedgerState
+from living_narrative.state.models import (
+    BookActContinuitySummary,
+    BookCharacterArcSummary,
+    BookContinuityEntry,
+    BookContinuityState,
+    BookLedgerState,
+    CharacterArcTarget,
+)
 
 if TYPE_CHECKING:
     from living_narrative.book.chapters import ChapterCandidate
@@ -42,6 +49,9 @@ def advance_continuity_ledger(
     *,
     required_thread_ids: list[str],
     covered_thread_ids: list[str],
+    act_id: str | None = None,
+    character_arc_targets: list[CharacterArcTarget] | None = None,
+    covered_character_arc_target_ids: list[str] | None = None,
     max_summary_chars: int = 1_200,
 ) -> BookLedgerState:
     """Return a copied ledger with one accepted chapter's bounded continuity entry.
@@ -60,18 +70,79 @@ def advance_continuity_ledger(
         for thread_id in dict.fromkeys([*ledger.continuity.open_thread_ids, *newly_open])
         if thread_id not in covered_set
     ]
+    chapter_summary = _reader_body(candidate.markdown)[:max_summary_chars]
     entry = BookContinuityEntry(
         chapter_id=candidate.chapter_id,
-        summary=_reader_body(candidate.markdown)[:max_summary_chars],
+        summary=chapter_summary,
         covered_thread_ids=covered,
         open_thread_ids=open_threads,
     )
     updated = ledger.model_copy(deep=True)
+    act_summaries = list(updated.continuity.act_summaries)
+    if act_id is not None:
+        previous_act = next((item for item in act_summaries if item.act_id == act_id), None)
+        act_summaries = [item for item in act_summaries if item.act_id != act_id]
+        previous_chapter_ids = previous_act.chapter_ids if previous_act else []
+        act_summary_parts = [previous_act.summary if previous_act else "", chapter_summary]
+        act_summaries.append(
+            BookActContinuitySummary(
+                act_id=act_id,
+                chapter_ids=[*previous_chapter_ids, candidate.chapter_id],
+                summary=" ".join(part for part in act_summary_parts if part)[:max_summary_chars],
+                open_thread_ids=open_threads,
+            )
+        )
+    character_arcs = list(updated.continuity.character_arcs)
+    covered_arc_ids = set(covered_character_arc_target_ids or [])
+    for target in character_arc_targets or []:
+        if target.character_id not in covered_arc_ids:
+            continue
+        previous_arc = next(
+            (item for item in character_arcs if item.character_id == target.character_id), None
+        )
+        character_arcs = [
+            item for item in character_arcs if item.character_id != target.character_id
+        ]
+        previous_chapter_ids = previous_arc.chapter_ids if previous_arc else []
+        previous_deltas = previous_arc.observed_deltas if previous_arc else []
+        character_arcs.append(
+            BookCharacterArcSummary(
+                character_id=target.character_id,
+                chapter_ids=[*previous_chapter_ids, candidate.chapter_id],
+                observed_deltas=[*previous_deltas, target.delta],
+            )
+        )
     updated.continuity = BookContinuityState(
         entries=[*updated.continuity.entries, entry],
         open_thread_ids=open_threads,
+        act_summaries=act_summaries,
+        character_arcs=character_arcs,
     )
     return updated
+
+
+def render_hierarchical_continuity_context(
+    continuity: BookContinuityState,
+    *,
+    act_id: str,
+    character_ids: list[str],
+    max_chars: int = 2_000,
+) -> str:
+    """Render current-act and relevant character evidence within a deterministic budget."""
+    if max_chars < 1:
+        raise ValueError("max_chars must be at least 1")
+    segments: list[str] = []
+    act = next((item for item in continuity.act_summaries if item.act_id == act_id), None)
+    if act is not None and act.summary:
+        segments.append(f"Act {act_id}: {act.summary}")
+    arcs_by_character = {item.character_id: item for item in continuity.character_arcs}
+    for character_id in character_ids:
+        arc = arcs_by_character.get(character_id)
+        if arc is not None and arc.observed_deltas:
+            segments.append(f"Character {character_id}: {'; '.join(arc.observed_deltas)}")
+    if continuity.open_thread_ids:
+        segments.append(f"Open threads: {', '.join(continuity.open_thread_ids)}")
+    return "\n".join(segments)[:max_chars]
 
 
 def render_continuity_digest(continuity: BookContinuityState, *, max_chars: int = 4_000) -> str:

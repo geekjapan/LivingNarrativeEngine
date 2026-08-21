@@ -4,8 +4,15 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from living_narrative.book.continuity import render_continuity_digest
-from living_narrative.state.models import WorldStateBundle, latest_memory_summary
+from living_narrative.book.continuity import (
+    render_continuity_digest,
+    render_hierarchical_continuity_context,
+)
+from living_narrative.state.models import (
+    CharacterArcTarget,
+    WorldStateBundle,
+    latest_memory_summary,
+)
 
 
 class ChapterContext(BaseModel):
@@ -15,11 +22,13 @@ class ChapterContext(BaseModel):
     act_id: str
     planned_goal: str
     required_thread_ids: list[str] = Field(default_factory=list)
+    character_arc_targets: list[CharacterArcTarget] = Field(default_factory=list)
     target_min_words: int
     target_max_words: int
     reader_facts: list[str] = Field(default_factory=list)
     memory_summary: str = ""
     continuity_digest: str = ""
+    hierarchical_continuity: str = ""
     source_turns: list[int] = Field(default_factory=list)
 
 
@@ -47,11 +56,17 @@ def build_chapter_context(
         act_id=chapter.act_id,
         planned_goal=chapter.planned_goal,
         required_thread_ids=list(chapter.required_thread_ids),
+        character_arc_targets=list(chapter.character_arc_targets),
         target_min_words=chapter.target_word_range.min_words,
         target_max_words=chapter.target_word_range.max_words,
         reader_facts=reader_facts,
         memory_summary=latest_memory_summary(bundle.memory_summaries),
         continuity_digest=render_continuity_digest(bundle.book_ledger.continuity),
+        hierarchical_continuity=render_hierarchical_continuity_context(
+            bundle.book_ledger.continuity,
+            act_id=chapter.act_id,
+            character_ids=[target.character_id for target in chapter.character_arc_targets],
+        ),
         source_turns=sorted(set(source_turns)),
     )
 

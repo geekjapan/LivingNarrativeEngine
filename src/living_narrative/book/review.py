@@ -23,6 +23,27 @@ class ChapterReviewMetrics(BaseModel):
     max_units: int = Field(ge=1)
 
 
+class SemanticFindingCategory(StrEnum):
+    """Reader-safe continuity dimensions preserved in a review artifact."""
+
+    REQUIRED_THREAD = "required_thread"
+    CHARACTER_ARC = "character_arc"
+    POINT_OF_VIEW = "point_of_view"
+    CHARACTER_RELATION = "character_relation"
+    FORESHADOWING = "foreshadowing"
+    ACT_PROMISE = "act_promise"
+    OTHER = "other"
+
+
+class SemanticEvidenceSource(StrEnum):
+    """Allowed reader-safe sources for a semantic finding's explanation."""
+
+    CANDIDATE = "candidate"
+    CHAPTER_PLAN = "chapter_plan"
+    READER_FACTS = "reader_facts"
+    CONTINUITY_DIGEST = "continuity_digest"
+
+
 class SemanticContinuityFinding(BaseModel):
     """A model-assessed concern with reviewable evidence and an actionable repair."""
 
@@ -30,12 +51,16 @@ class SemanticContinuityFinding(BaseModel):
     severity: Literal["warn", "block"]
     evidence: str
     repair_instruction: str
+    category: SemanticFindingCategory = SemanticFindingCategory.OTHER
+    subject_ids: list[str] = Field(default_factory=list)
+    evidence_sources: list[SemanticEvidenceSource] = Field(default_factory=list)
 
 
 class SemanticContinuityAssessment(BaseModel):
     """Reader-safe semantic continuity evaluation for one candidate chapter."""
 
     required_threads_covered: list[str] = Field(default_factory=list)
+    character_arc_target_ids_covered: list[str] = Field(default_factory=list)
     findings: list[SemanticContinuityFinding] = Field(default_factory=list)
 
 
@@ -92,9 +117,12 @@ def evaluate_semantic_continuity(
             "content": (
                 f"Chapter goal: {context.planned_goal}\n"
                 f"Required threads: {context.required_thread_ids}\n"
+                "Character arc targets: "
+                f"{[target.model_dump(mode='json') for target in context.character_arc_targets]}\n"
                 f"Reader facts: {context.reader_facts}\n"
                 f"Continuity summary: {context.memory_summary}\n"
                 f"Book continuity digest: {context.continuity_digest}\n"
+                f"Hierarchical continuity: {context.hierarchical_continuity}\n"
                 f"Candidate:\n{candidate.markdown}"
             ),
         },
@@ -103,11 +131,17 @@ def evaluate_semantic_continuity(
         "chapter_continuity",
         messages,
         SemanticContinuityAssessment,
-        prompt_template_name="book.chapter_continuity.v1",
+        prompt_template_name="book.chapter_continuity.v2",
     )
     assessment = SemanticContinuityAssessment.model_validate(raw)
     covered = set(assessment.required_threads_covered)
     missing = [thread_id for thread_id in context.required_thread_ids if thread_id not in covered]
+    covered_arc_ids = set(assessment.character_arc_target_ids_covered)
+    missing_arc_ids = [
+        target.character_id
+        for target in context.character_arc_targets
+        if target.character_id not in covered_arc_ids
+    ]
     findings = list(assessment.findings)
     for thread_id in missing:
         findings.append(
@@ -116,6 +150,21 @@ def evaluate_semantic_continuity(
                 severity="block",
                 evidence=f"required thread {thread_id} is not covered",
                 repair_instruction=f"Address or deliberately advance {thread_id} in the chapter.",
+                category=SemanticFindingCategory.REQUIRED_THREAD,
+                subject_ids=[thread_id],
+                evidence_sources=[SemanticEvidenceSource.CHAPTER_PLAN],
+            )
+        )
+    for character_id in missing_arc_ids:
+        findings.append(
+            SemanticContinuityFinding(
+                code="character_arc_target_missing",
+                severity="block",
+                evidence=f"planned character arc target {character_id} is not covered",
+                repair_instruction=f"Show or deliberately advance {character_id}'s planned arc.",
+                category=SemanticFindingCategory.CHARACTER_ARC,
+                subject_ids=[character_id],
+                evidence_sources=[SemanticEvidenceSource.CHAPTER_PLAN],
             )
         )
     return assessment.model_copy(update={"findings": findings})
