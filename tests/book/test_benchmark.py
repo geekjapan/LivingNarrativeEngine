@@ -190,3 +190,23 @@ def test_benchmark_aggregates_reader_safe_production_run_evidence(tmp_path):
     assert len(observation.production_run_fingerprint) == 64
     assert "detail" not in observation.model_dump_json()
     assert "must not leak" not in observation.model_dump_json()
+
+
+def test_artifact_index_persists_reader_safe_benchmark_fingerprints(tmp_path):
+    workspace = _two_chapter_workspace(tmp_path)
+
+    from living_narrative.book.artifact_index import (
+        build_book_artifact_index,
+        load_book_artifact_index,
+    )
+
+    built = build_book_artifact_index(workspace)
+    loaded = load_book_artifact_index(workspace)
+
+    assert loaded == built
+    assert built.planned_chapters == 2
+    assert len(built.artifact_fingerprint) == 64
+    assert len(built.production_run_fingerprint) == 64
+    rendered = built.model_dump_json()
+    assert str(workspace) not in rendered
+    assert "prompt" not in rendered

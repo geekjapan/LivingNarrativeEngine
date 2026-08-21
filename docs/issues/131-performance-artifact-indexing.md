@@ -24,7 +24,8 @@ Cockpit、benchmark、export planningがchapterごとのrun artifactを毎回全
 
 - [x] deterministic 100章fixtureを`create_benchmark_fixture.py --chapters 100`で生成できる。
 - [ ] status/benchmark/export planningの基準値とSLOをv0.3.1 baselineから固定する。
-- [ ] reader-safe run/lineage/publication metadataだけを索引化し、本文、prompt、credential、private contextを保存しない。
+- [x] reader-safe benchmark fingerprintとplanned chapter countだけをatomic YAML indexとして保存・再読込できる。
+- [ ] reader-safe run/lineage/publication metadataを追加索引化し、本文、prompt、credential、private contextを保存しない。
 - [ ] index更新はevent-first/atomic publishで、partial writeまたはhash不整合時にfail closedまたはartifact再読込する。
 - [ ] cache miss、index削除、worker restartでpublic結果が変わらないことを回帰テストで固定する。
 - [ ] SLO測定をbenchmark reportへ追加し、閾値超過をCIで検出する。
