@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+from collections import Counter
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -50,6 +51,15 @@ class ProductionAdmissionDecision(BaseModel):
     allowed: bool
     reason: str | None = None
     lease: ProductionAdmissionLease | None = None
+
+
+class ProductionAdmissionMetrics(BaseModel):
+    """Reader-safe operational projection for one scheduler namespace."""
+
+    active_admissions: int = 0
+    reserved_usd: Decimal = Decimal(0)
+    deferred_reason_counts: dict[str, int] = Field(default_factory=dict)
+    oldest_admission_age_seconds: int | None = None
 
 
 class _ActiveAdmission(BaseModel):
@@ -106,6 +116,37 @@ def _read_snapshot(path: Path) -> _AdmissionSnapshot:
         raise ValueError("production admission snapshot is invalid") from exc
 
 
+def collect_production_admission_metrics(
+    scheduler_root: Path,
+    *,
+    now: datetime | None = None,
+) -> ProductionAdmissionMetrics:
+    """Read durable admission state without exposing production-private data."""
+    snapshot = _read_snapshot(scheduler_root / "admission.yaml")
+    current = (now or datetime.now(UTC)).astimezone(UTC)
+    ages = [
+        max(0, int((current - _parse_timestamp(admission.admitted_at)).total_seconds()))
+        for admission in snapshot.active_admissions
+    ]
+    deferred_reasons: Counter[str] = Counter()
+    events_dir = scheduler_root / "events"
+    for path in sorted(events_dir.glob("*.yaml")) if events_dir.is_dir() else []:
+        try:
+            event = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        if event.get("event") == "deferred" and isinstance(event.get("reason"), str):
+            deferred_reasons[event["reason"]] += 1
+    return ProductionAdmissionMetrics(
+        active_admissions=len(snapshot.active_admissions),
+        reserved_usd=sum(
+            (admission.forecast_usd or Decimal(0)) for admission in snapshot.active_admissions
+        ),
+        deferred_reason_counts=dict(sorted(deferred_reasons.items())),
+        oldest_admission_age_seconds=max(ages) if ages else None,
+    )
+
+
 class ProductionAdmissionController:
     """Limit concurrently admitted chapter deliveries within one scheduler namespace."""
 
@@ -147,34 +188,22 @@ class ProductionAdmissionController:
                 for admission in provider_admissions
             )
             if provider_deliveries >= self._policy.max_deliveries_per_provider_window:
-                return ProductionAdmissionDecision(
-                    allowed=False,
-                    reason="provider rate limit reached",
-                )
+                return self._defer("provider rate limit reached")
         if request.hard_usd is not None:
             if request.actual_usd is None or request.forecast_usd is None:
-                return ProductionAdmissionDecision(
-                    allowed=False,
-                    reason="book hard USD budget cannot be evaluated",
-                )
+                return self._defer("book hard USD budget cannot be evaluated")
             active_reserved_usd = sum(
                 admission.forecast_usd or Decimal(0)
                 for admission in self._leases.values()
                 if admission.book_id == request.book_id
             )
             if request.actual_usd + active_reserved_usd + request.forecast_usd > request.hard_usd:
-                return ProductionAdmissionDecision(
-                    allowed=False,
-                    reason="book hard USD budget exceeded",
-                )
+                return self._defer("book hard USD budget exceeded")
         if (
             self._policy.max_active_deliveries is not None
             and len(self._leases) >= self._policy.max_active_deliveries
         ):
-            return ProductionAdmissionDecision(
-                allowed=False,
-                reason="parallel delivery limit reached",
-            )
+            return self._defer("parallel delivery limit reached")
         self._sequence += 1
         lease = ProductionAdmissionLease(admission_id=f"admission_{self._sequence:06d}")
         self._leases[lease.admission_id] = _ActiveAdmission(
@@ -238,6 +267,10 @@ class ProductionAdmissionController:
             for admission in self._provider_admissions
             if _parse_timestamp(admission.admitted_at) > cutoff
         ]
+
+    def _defer(self, reason: str) -> ProductionAdmissionDecision:
+        self._write_event("deferred", {"reason": reason})
+        return ProductionAdmissionDecision(allowed=False, reason=reason)
 
     def _write_event(self, event: str, details: dict[str, Any]) -> None:
         events_dir = self._scheduler_root / "events"

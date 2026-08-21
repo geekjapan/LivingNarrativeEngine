@@ -10,6 +10,7 @@ from living_narrative.book.production_admission import (
     ProductionAdmissionController,
     ProductionAdmissionPolicy,
     ProductionAdmissionRequest,
+    collect_production_admission_metrics,
 )
 
 
@@ -238,3 +239,38 @@ def test_admission_records_reader_safe_admit_and_release_events(tmp_path: Path) 
         serialized = yaml.safe_dump(event, allow_unicode=True)
         for forbidden in ("prompt", "credential", "worker", "workspace", "traceback"):
             assert forbidden not in serialized
+
+
+def test_admission_metrics_projects_active_reservation_and_deferred_reason(tmp_path: Path) -> None:
+    scheduler_root = tmp_path / "scheduler"
+    controller = ProductionAdmissionController(
+        scheduler_root,
+        policy=ProductionAdmissionPolicy(max_active_deliveries=1),
+        clock=lambda: datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+    admitted = controller.try_admit(
+        ProductionAdmissionRequest(
+            book_id="book-alpha",
+            provider_profile_id="provider-a/fiction",
+            forecast_usd=Decimal("0.75"),
+        )
+    )
+    assert admitted.allowed is True
+
+    deferred = controller.try_admit(
+        ProductionAdmissionRequest(
+            book_id="book-beta",
+            provider_profile_id="provider-a/fiction",
+        )
+    )
+    assert deferred.allowed is False
+
+    metrics = collect_production_admission_metrics(
+        scheduler_root,
+        now=datetime(2026, 8, 21, 12, 0, 10, tzinfo=UTC),
+    )
+
+    assert metrics.active_admissions == 1
+    assert metrics.reserved_usd == Decimal("0.75")
+    assert metrics.deferred_reason_counts == {"parallel delivery limit reached": 1}
+    assert metrics.oldest_admission_age_seconds == 10
