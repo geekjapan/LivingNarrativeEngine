@@ -91,6 +91,8 @@ INDEX_HTML = """\
   #book-roadmap .chapter p { margin: 0.25rem 0; }
   #book-roadmap .book-start { margin-top: 0.25rem; }
   #book-message { font-size: 0.9rem; color: #b45309; }
+  #book-roadmap .book-run-status { font-size: 0.85rem; color: #455a64; }
+  #book-roadmap .book-run-status.failure { color: #c62828; }
 </style>
 </head>
 <body>
@@ -267,6 +269,8 @@ const bookMessageEl = document.getElementById("book-message");
 const bookRoadmapEl = document.getElementById("book-roadmap");
 
 let pollHandle = null;
+let bookRunPollHandle = null;
+let bookRunStatuses = {};
 let gmOpen = false;
 let settingsOpen = false;
 
@@ -356,16 +360,51 @@ function renderReview(review) {
     .join("");
 }
 
+function renderBookRunStatus(run) {
+  if (!run) return "";
+  const status = run.status || {};
+  const details = [
+    `phase: ${escapeHtml(status.phase || "unknown")}`,
+    status.resumed ? "再開済み" : "",
+    status.stopped_reason ? `停止理由: ${escapeHtml(status.stopped_reason)}` : "",
+    status.failure_code ? `失敗: ${escapeHtml(status.failure_code)}` : "",
+  ].filter(Boolean).join(" / ");
+  const body = escapeHtml(details || "run情報を取得中");
+  if (status.failure_code) {
+    return `<p class="book-run-status failure">${body}</p>`;
+  }
+  return `<p class="book-run-status">${body}</p>`;
+}
+
+function updateBookRunPolling() {
+  const hasActiveRun = Object.values(bookRunStatuses).some((run) => run.running === true);
+  if (hasActiveRun && bookRunPollHandle === null) {
+    bookRunPollHandle = setInterval(loadBookCockpit, 1000);
+  } else if (!hasActiveRun && bookRunPollHandle !== null) {
+    clearInterval(bookRunPollHandle);
+    bookRunPollHandle = null;
+  }
+}
+
 function renderBookCockpit(cockpit) {
   bookPremiseEl.textContent = cockpit.premise ? "制作方針: " + cockpit.premise : "BookPlan未作成";
   bookNextActionEl.innerHTML = escapeHtml(cockpit.next_action || "待機中");
   bookRoadmapEl.innerHTML = (cockpit.chapters || [])
     .map((chapter) => {
       const operable = cockpit.can_operate === true;
-      const startable = operable && chapter.startable === true;
+      const run = bookRunStatuses[chapter.chapter_id];
+      const activeRun = run && run.running === true;
+      const resumable = ["running", "candidate"].includes(chapter.lifecycle) && !activeRun;
+      const startable = operable && (chapter.startable === true || resumable);
+      const startLabel = resumable ? "制作を再開" : "章制作を実行";
       const start = startable
         ? `<button class="book-start" data-chapter-id="${escapeHtml(chapter.chapter_id)}" ` +
-          `aria-label="${escapeHtml(chapter.chapter_id)}の制作を開始">制作を開始</button>`
+          `aria-label="${escapeHtml(chapter.chapter_id)}の制作を実行">` +
+          `${startLabel}</button>`
+        : "";
+      const stop = operable && activeRun
+        ? `<button class="book-stop" data-chapter-id="${escapeHtml(chapter.chapter_id)}" ` +
+          `aria-label="${escapeHtml(chapter.chapter_id)}の制作を停止">停止</button>`
         : "";
       const reviewActions = operable && chapter.lifecycle === "review"
         ? `<button class="book-action" data-action="accept" ` +
@@ -381,12 +420,15 @@ function renderBookCockpit(cockpit) {
         <p>${escapeHtml(chapter.planned_goal)}</p>
         <p>目標: ${escapeHtml(chapter.target_min_words)}–
           ${escapeHtml(chapter.target_max_words)} units</p>
-        ${start}${reviewActions}
+        ${renderBookRunStatus(run)}${start}${stop}${reviewActions}
       </article>`;
     })
     .join("") || "<p>章計画はまだありません。</p>";
   document.querySelectorAll(".book-start").forEach((button) => {
     button.addEventListener("click", () => startBookChapter(button.dataset.chapterId));
+  });
+  document.querySelectorAll(".book-stop").forEach((button) => {
+    button.addEventListener("click", () => stopBookChapter(button.dataset.chapterId));
   });
   document.querySelectorAll(".book-action").forEach((button) => {
     button.addEventListener("click", () => {
@@ -403,8 +445,18 @@ async function loadBookCockpit() {
     bookMessageEl.textContent = "長編コックピットを読み込めません。";
     return;
   }
+  const cockpit = await res.json();
+  const chapters = cockpit.chapters || [];
+  const runEntries = await Promise.all(chapters.map(async (chapter) => {
+    const path = `/api/project/${encodeURIComponent(name)}/book/chapters/` +
+      `${encodeURIComponent(chapter.chapter_id)}/run`;
+    const runResponse = await fetch(path);
+    return [chapter.chapter_id, runResponse.ok ? await runResponse.json() : null];
+  }));
+  bookRunStatuses = Object.fromEntries(runEntries.filter((entry) => entry[1] !== null));
   bookMessageEl.textContent = "";
-  renderBookCockpit(await res.json());
+  renderBookCockpit(cockpit);
+  updateBookRunPolling();
 }
 
 async function startBookChapter(chapterId) {
@@ -412,12 +464,25 @@ async function startBookChapter(chapterId) {
   if (!name || !chapterId) return;
   bookMessageEl.textContent = "章制作を開始しています…";
   const path = `/api/project/${encodeURIComponent(name)}/book/chapters/` +
-    `${encodeURIComponent(chapterId)}/start`;
+    `${encodeURIComponent(chapterId)}/run`;
   const res = await fetch(path, { method: "POST" });
   const data = await res.json();
   bookMessageEl.textContent = res.ok
-    ? `${data.chapter_id} を開始しました。`
+    ? `${chapterId} の制作runを開始しました。`
     : data.detail || "章制作を開始できませんでした。";
+  await loadBookCockpit();
+}
+
+async function stopBookChapter(chapterId) {
+  const name = currentProject();
+  if (!name || !chapterId) return;
+  const path = `/api/project/${encodeURIComponent(name)}/book/chapters/` +
+    `${encodeURIComponent(chapterId)}/run/stop`;
+  const res = await fetch(path, { method: "POST" });
+  const data = await res.json();
+  bookMessageEl.textContent = res.ok
+    ? `${chapterId} の停止を要求しました。`
+    : data.detail || "章制作を停止できませんでした。";
   await loadBookCockpit();
 }
 
@@ -653,6 +718,11 @@ async function loadProjects() {
   gmToggleButton.disabled = !hasProjects;
   settingsToggleButton.disabled = !hasProjects;
   bookPanelEl.hidden = true;
+  bookRunStatuses = {};
+  if (bookRunPollHandle !== null) {
+    clearInterval(bookRunPollHandle);
+    bookRunPollHandle = null;
+  }
   if (hasProjects) await refresh();
 }
 

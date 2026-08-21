@@ -13,6 +13,10 @@ import yaml
 from pydantic import ValidationError
 
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
+from living_narrative.book.production_runner import (
+    ChapterProductionRunner,
+    ChapterProductionRunStatus,
+)
 from living_narrative.cli._common import runtime_error, usage_error
 
 app = typer.Typer(name="book", help="Long-form book planning commands")
@@ -58,3 +62,53 @@ def plan(
     )
     typer.echo(f"book plan proposal: {output}")
     typer.echo("canonical state was not changed; review the proposal before applying its StateDiff")
+
+
+def _echo_production_run_status(status: ChapterProductionRunStatus) -> None:
+    """Emit only the runner's public status projection."""
+    typer.echo(yaml.safe_dump(status.model_dump(mode="json"), allow_unicode=True, sort_keys=False))
+
+
+@app.command("run-chapter")
+def run_chapter(
+    project: Annotated[Path, typer.Option(..., "--project", help="Path to project.yaml")],
+    chapter: Annotated[str, typer.Option(..., "--chapter", help="Chapter ID to produce")],
+) -> None:
+    """Synchronously start or resume one chapter production run."""
+    if not project.exists():
+        usage_error(f"project not found: {project}")
+    try:
+        status = ChapterProductionRunner().run(project, chapter)
+    except ValueError as exc:
+        runtime_error(str(exc))
+    _echo_production_run_status(status)
+
+
+@app.command("chapter-run-status")
+def chapter_run_status(
+    project: Annotated[Path, typer.Option(..., "--project", help="Path to project.yaml")],
+    chapter: Annotated[str, typer.Option(..., "--chapter", help="Chapter ID to inspect")],
+) -> None:
+    """Read the durable status of one chapter production run."""
+    if not project.exists():
+        usage_error(f"project not found: {project}")
+    try:
+        status = ChapterProductionRunner().status(project, chapter)
+    except ValueError as exc:
+        runtime_error(str(exc))
+    _echo_production_run_status(status)
+
+
+@app.command("stop-chapter-run")
+def stop_chapter_run(
+    project: Annotated[Path, typer.Option(..., "--project", help="Path to project.yaml")],
+    chapter: Annotated[str, typer.Option(..., "--chapter", help="Chapter ID to stop")],
+) -> None:
+    """Request a safe phase-boundary stop for one chapter production run."""
+    if not project.exists():
+        usage_error(f"project not found: {project}")
+    try:
+        status = ChapterProductionRunner().request_stop(project, chapter)
+    except ValueError as exc:
+        runtime_error(str(exc))
+    _echo_production_run_status(status)

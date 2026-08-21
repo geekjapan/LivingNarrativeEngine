@@ -286,6 +286,9 @@ def test_inner_html_template_values_use_escape_html(tmp_path, build_project):
         "stats",
         "summaries",
         "start",
+        "startLabel",
+        "stop",
+        "renderBookRunStatus(run)",
         "threads",
         "threats",
         "visualProfile",
@@ -501,7 +504,7 @@ def test_book_cockpit_panel_loads_safe_roadmap_and_starts_planned_chapter(tmp_pa
     assert "fetch(`/api/project/${encodeURIComponent(name)}/book/cockpit`)" in page
     assert "async function startBookChapter(chapterId)" in page
     assert "const path = `/api/project/${encodeURIComponent(name)}/book/chapters/` +" in page
-    assert "`${encodeURIComponent(chapterId)}/start`;" in page
+    assert "`${encodeURIComponent(chapterId)}/run`;" in page
     assert 'fetch(path, { method: "POST" })' in page
     assert "${escapeHtml(chapter.planned_goal)}" in page
     assert "${escapeHtml(chapter.lifecycle)}" in page
@@ -514,3 +517,8 @@ def test_book_cockpit_panel_loads_safe_roadmap_and_starts_planned_chapter(tmp_pa
     assert 'bookNextActionEl.innerHTML = escapeHtml(cockpit.next_action || "待機中");' in page
     assert "book-roadmap .chapter" in page
     assert "book-start" in page
+    assert "book-stop" in page
+    assert "function renderBookRunStatus(run)" in page
+    assert "function updateBookRunPolling()" in page
+    assert "async function stopBookChapter(chapterId)" in page
+    assert "`${encodeURIComponent(chapterId)}/run/stop`;" in page

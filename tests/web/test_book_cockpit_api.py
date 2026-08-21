@@ -6,9 +6,15 @@ import yaml
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
+import living_narrative.web.app as web_app  # noqa: E402
 from living_narrative.book.coordinator import apply_book_plan_proposal  # noqa: E402
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal  # noqa: E402
+from living_narrative.book.production_runner import (  # noqa: E402
+    ChapterProductionRunStatus,
+    ProductionRunPhase,
+)
 from living_narrative.web.app import create_app  # noqa: E402
+from living_narrative.web.production_run import ProductionRunInfo  # noqa: E402
 from living_narrative.workspace.init import create_project  # noqa: E402
 from living_narrative.workspace.loader import load_project  # noqa: E402
 
@@ -90,7 +96,7 @@ def test_book_mutations_require_an_authoring_mode(tmp_path, user_mode):
     client = _client_with_book(tmp_path, user_mode=user_mode)
 
     assert client.get("/api/project/book/book/cockpit").status_code == 200
-    for action in ("start", "accept", "revise"):
+    for action in ("start", "run", "run/stop", "accept", "revise"):
         response = client.post(f"/api/project/book/book/chapters/chapter_001/{action}")
         assert response.status_code == 403, action
 
@@ -146,3 +152,30 @@ def test_book_mutations_follow_configured_workspace_paths(tmp_path):
     assert started.json()["lifecycle"] == "running"
     assert (project_yaml.parent / "history" / ".transactions").is_dir()
     assert not (workspace / "runs").exists()
+
+
+def test_book_run_api_starts_background_production_with_a_reader_safe_status(tmp_path, monkeypatch):
+    client = _client_with_book(tmp_path)
+
+    def start_run(_project_yaml, chapter_id):
+        return ProductionRunInfo(
+            running=True,
+            status=ChapterProductionRunStatus(
+                run_id="generation_example_revision_001",
+                chapter_id=chapter_id,
+                phase=ProductionRunPhase.DRAFTING,
+                lifecycle="running",
+            ),
+        )
+
+    monkeypatch.setattr(web_app, "start_book_chapter_run", start_run)
+
+    response = client.post("/api/project/book/book/chapters/chapter_001/run")
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["running"] is True
+    assert payload["status"]["phase"] == "drafting"
+    assert payload["status"]["lifecycle"] == "running"
+    assert "prompt" not in payload
+    assert "credential" not in payload
