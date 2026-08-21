@@ -17,6 +17,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 
+from living_narrative.book.cost_policy import CostPolicyV2, CostScope
+from living_narrative.book.usage import collect_book_usage
 from living_narrative.state.diff import fsync_directory
 from living_narrative.workspace.loader import load_project
 
@@ -61,7 +63,9 @@ class ProjectProductionAdmission:
     controller: ProductionAdmissionController
     book_id: str
     provider_profile_id: str
+    actual_usd: Decimal | None
     forecast_usd: Decimal | None
+    hard_usd: Decimal | None
 
     def request_for(self, project_yaml: Path) -> ProductionAdmissionRequest:
         """Build a stable reader-safe request for the configured project."""
@@ -69,7 +73,9 @@ class ProjectProductionAdmission:
         return ProductionAdmissionRequest(
             book_id=self.book_id,
             provider_profile_id=self.provider_profile_id,
+            actual_usd=self.actual_usd,
             forecast_usd=self.forecast_usd,
+            hard_usd=self.hard_usd,
         )
 
 
@@ -160,6 +166,7 @@ def load_project_production_admission(
         )
     except (OSError, yaml.YAMLError, ValidationError, ValueError) as exc:
         raise ValueError("production admission config is invalid") from exc
+    actual_usd, hard_usd = _load_book_hard_usd(project_yaml)
     root = Path(config.scheduler_root)
     scheduler_root = root if root.is_absolute() else project_yaml.parent / root
     profile_name = read.config.llm_bindings.get("chapter_draft")
@@ -173,7 +180,29 @@ def load_project_production_admission(
         controller=ProductionAdmissionController(scheduler_root, policy=config),
         book_id=book_id,
         provider_profile_id=provider_profile_id,
+        actual_usd=actual_usd,
         forecast_usd=config.forecast_usd,
+        hard_usd=hard_usd,
+    )
+
+
+def _load_book_hard_usd(project_yaml: Path) -> tuple[Decimal | None, Decimal | None]:
+    """Return actual and hard book USD only when a configured hard cap exists."""
+    path = project_yaml.parent / "cost_policy.yaml"
+    if not path.is_file():
+        return None, None
+    try:
+        policy = CostPolicyV2.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")) or {})
+    except (OSError, yaml.YAMLError, ValidationError, ValueError) as exc:
+        raise ValueError("book cost policy is invalid") from exc
+    budget = policy.budgets.get(CostScope.BOOK)
+    if budget is None or budget.hard_usd is None:
+        return None, None
+    if policy.price_snapshot is None:
+        return None, budget.hard_usd
+    return (
+        collect_book_usage(project_yaml, price_snapshot=policy.price_snapshot).book.actual_usd,
+        budget.hard_usd,
     )
 
 

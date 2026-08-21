@@ -11,7 +11,9 @@ from living_narrative.book.production_admission import (
     ProductionAdmissionPolicy,
     ProductionAdmissionRequest,
     collect_production_admission_metrics,
+    load_project_production_admission,
 )
+from living_narrative.workspace.init import create_project
 
 
 def test_admission_limits_parallel_delivery_across_distinct_books(tmp_path: Path) -> None:
@@ -274,3 +276,39 @@ def test_admission_metrics_projects_active_reservation_and_deferred_reason(tmp_p
     assert metrics.reserved_usd == Decimal("0.75")
     assert metrics.deferred_reason_counts == {"parallel delivery limit reached": 1}
     assert metrics.oldest_admission_age_seconds == 10
+
+
+def test_project_admission_uses_book_cost_policy_for_hard_usd_reservation(
+    tmp_path: Path,
+) -> None:
+    project_yaml = create_project(tmp_path / "book", title="Book")
+    (project_yaml.parent / "production_admission.yaml").write_text(
+        "scheduler_root: scheduler\nforecast_usd: '0.75'\n",
+        encoding="utf-8",
+    )
+    (project_yaml.parent / "cost_policy.yaml").write_text(
+        """
+price_snapshot:
+  profile_id: provider-a
+  version: 2026-08
+  input_usd_per_1m: '1.00'
+  output_usd_per_1m: '2.00'
+  tax_rate: '0.00'
+  discount_rate: '0.00'
+budgets:
+  book:
+    hard_usd: '0.50'
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    configured = load_project_production_admission(project_yaml)
+
+    assert configured is not None
+    request = configured.request_for(project_yaml)
+    assert request.actual_usd == Decimal("0")
+    assert request.forecast_usd == Decimal("0.75")
+    assert request.hard_usd == Decimal("0.50")
+    decision = configured.controller.try_admit(request)
+    assert decision.allowed is False
+    assert decision.reason == "book hard USD budget exceeded"
