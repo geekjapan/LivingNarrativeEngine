@@ -50,12 +50,33 @@ jobs:
           # regressions at 2x.
           LNE_PERF_BUDGET_SCALE: "2"
         run: uv run pytest
+      - name: generate and compare nine-chapter book benchmark
+        env:
+          FIXTURE_ROOT: artifacts/benchmark-fixture-${{ matrix.name }}
+          REPORT_PATH: artifacts/book-benchmark-${{ matrix.name }}.json
+          BASELINE_PATH: tests/fixtures/benchmark-v2-baseline.json
+        run: |
+          rm -rf "$FIXTURE_ROOT"
+          uv run python scripts/create_benchmark_fixture.py --output "$FIXTURE_ROOT"
+          expected="$(uv run python -c "import json; print(json.load(open('$BASELINE_PATH', encoding='utf-8'))['benchmark_fingerprint'])")"
+          uv run living-narrative book benchmark \
+            --project "$FIXTURE_ROOT/project.yaml" \
+            --name ci-nine \
+            --output "$REPORT_PATH" \
+            --expect-fingerprint "$expected"
       - name: upload long-smoke report
         if: ${{ always() && hashFiles('artifacts/long-smoke-*.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: long-smoke-${{ matrix.name }}
           path: artifacts/long-smoke-${{ matrix.name }}.json
+          if-no-files-found: error
+      - name: upload book benchmark report
+        if: ${{ always() && hashFiles('artifacts/book-benchmark-*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: book-benchmark-${{ matrix.name }}
+          path: artifacts/book-benchmark-${{ matrix.name }}.json
           if-no-files-found: error
 
   quality:

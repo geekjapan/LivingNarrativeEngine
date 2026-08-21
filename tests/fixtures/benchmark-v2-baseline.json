@@ -1,0 +1,7 @@
+{
+  "schema_version": 2,
+  "fixture": "ci-nine",
+  "benchmark_fingerprint": "0f68543a2ef5835e417aaa96ec0b343b2998c9c40cdad7bd3b3e0e02ff445d24",
+  "artifact_fingerprint": "6081fb406bfcad85c14deff81bc645fdcd6face46e498b4f5f0b00241c62ef93",
+  "production_run_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+}
