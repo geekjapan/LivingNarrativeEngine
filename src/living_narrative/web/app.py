@@ -25,12 +25,15 @@ from living_narrative.state.transaction import ProjectLockError
 from living_narrative.web.page import INDEX_HTML
 from living_narrative.web.service import (
     AutoRunAlreadyRunningError,
+    ChapterProductionRunAlreadyRunningError,
+    ChapterProductionRunNotFoundError,
     NoPendingReviewError,
     ProjectNotFoundError,
     SettingsValidationError,
     accept_book_chapter,
     collect_narration,
     collect_structured_narration,
+    get_book_chapter_run_status,
     get_book_cockpit,
     get_gm_characters,
     get_gm_threads,
@@ -50,6 +53,8 @@ from living_narrative.web.service import (
     run_turn,
     start_auto_run,
     start_book_chapter,
+    start_book_chapter_run,
+    stop_book_chapter_run,
     submit_review,
     update_settings_yaml,
 )
@@ -184,6 +189,49 @@ def create_app(project_root: Path) -> FastAPI:
             "lifecycle": result.lifecycle.value,
             "journal_id": result.journal_dir.name,
         }
+
+    def _production_run_payload(info) -> dict:
+        return {
+            "running": info.running,
+            "status": info.status.model_dump(mode="json"),
+        }
+
+    @app.post("/api/project/{name}/book/chapters/{chapter_id}/run", status_code=202)
+    def api_start_book_chapter_run(name: str, chapter_id: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_book_authoring_access(project_yaml)
+        try:
+            return _production_run_payload(start_book_chapter_run(project_yaml, chapter_id))
+        except ChapterProductionRunAlreadyRunningError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (ProjectLockError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/project/{name}/book/chapters/{chapter_id}/run")
+    def api_get_book_chapter_run(name: str, chapter_id: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_sensitive_session_access(project_yaml)
+        try:
+            return _production_run_payload(get_book_chapter_run_status(project_yaml, chapter_id))
+        except ChapterProductionRunNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"chapter production run not found: {chapter_id}",
+            ) from exc
+
+    @app.post("/api/project/{name}/book/chapters/{chapter_id}/run/stop", status_code=202)
+    def api_stop_book_chapter_run(name: str, chapter_id: str) -> dict:
+        project_yaml = _project_yaml(name)
+        _require_book_authoring_access(project_yaml)
+        try:
+            return _production_run_payload(stop_book_chapter_run(project_yaml, chapter_id))
+        except ChapterProductionRunNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"chapter production run not found: {chapter_id}",
+            ) from exc
+        except (ProjectLockError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/project/{name}/book/chapters/{chapter_id}/accept")
     def api_accept_book_chapter(name: str, chapter_id: str) -> dict:

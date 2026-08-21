@@ -156,11 +156,18 @@ def _chapter_transition(
         raise ValueError("review chapter_id does not match lifecycle target")
 
     workspace_root, state_dir, runs_dir = resolve_workspace_dirs(workspace)
-    candidate_suffix = (
-        hashlib.sha256(candidate.markdown.encode("utf-8")).hexdigest()[:16]
-        if candidate is not None
-        else journal_key
-    )
+    if candidate is not None:
+        candidate_digest = hashlib.sha256(candidate.markdown.encode("utf-8")).hexdigest()
+        # A revision may intentionally reproduce identical prose from a distinct recoverable
+        # draft run. The transaction must remain idempotent for the same provenance while not
+        # colliding with the earlier candidate transition's completed journal.
+        candidate_suffix = (
+            hashlib.sha256(f"{candidate_digest}:{draft_run_id}".encode()).hexdigest()[:16]
+            if draft_run_id is not None
+            else candidate_digest[:16]
+        )
+    else:
+        candidate_suffix = journal_key
     journal_suffix = f"_{candidate_suffix}" if candidate_suffix else ""
     with project_lock(workspace_root):
         bundle = StateStore.load(state_dir)
@@ -229,8 +236,13 @@ def _chapter_transition(
                 save_chapter_artifacts(chapters_root, candidate, review)
                 existing = load_chapter_lineage(chapters_root, chapter_id)
                 candidate_hash = hashlib.sha256(candidate.markdown.encode("utf-8")).hexdigest()
-                recorded_hashes = {attempt.candidate_sha256 for attempt in existing.attempts}
-                if candidate_hash not in recorded_hashes:
+                already_recorded = any(
+                    attempt.candidate_sha256 == candidate_hash
+                    and attempt.review == review
+                    and attempt.draft_run_id == draft_run_id
+                    for attempt in existing.attempts
+                )
+                if not already_recorded:
                     record_chapter_attempt(
                         chapters_root, candidate, review, draft_run_id=draft_run_id
                     )
@@ -326,11 +338,31 @@ def _reviewed_attempt_id(chapters_root: Path, chapter_id: str) -> str:
 
 
 def _current_candidate_key(workspace: Path | WorkspacePaths, chapter_id: str) -> str:
+    """Stable review transaction key for the candidate currently on the review desk.
+
+    Candidate text alone is insufficient: a revision can intentionally retain identical prose while
+    carrying a new draft provenance. Prefer the newest immutable attempt matching the current
+    candidate/review pair, then preserve the legacy body-only key when no provenance exists.
+    """
     root = resolve_workspace_dirs(workspace)[0]
-    candidate_path = root / "books" / "chapters" / chapter_id / "candidate.md"
+    chapters_root = root / "books" / "chapters"
+    candidate_path = chapters_root / chapter_id / "candidate.md"
     if not candidate_path.is_file():
         raise ValueError(f"candidate artifact not found for {chapter_id}")
-    return hashlib.sha256(candidate_path.read_bytes()).hexdigest()[:16]
+    candidate_digest = hashlib.sha256(candidate_path.read_bytes()).hexdigest()
+    _, review = load_chapter_artifacts(chapters_root, chapter_id)
+    lineage = load_chapter_lineage(chapters_root, chapter_id)
+    attempt = next(
+        (
+            item
+            for item in reversed(lineage.attempts)
+            if item.candidate_sha256 == candidate_digest and item.review == review
+        ),
+        None,
+    )
+    if attempt is None or attempt.draft_run_id is None:
+        return candidate_digest[:16]
+    return hashlib.sha256(f"{candidate_digest}:{attempt.draft_run_id}".encode()).hexdigest()[:16]
 
 
 def open_chapter_review(

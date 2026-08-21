@@ -3,9 +3,89 @@ from __future__ import annotations
 import yaml
 from typer.testing import CliRunner
 
+from living_narrative.book.coordinator import (
+    apply_book_plan_proposal,
+    plan_generation,
+    start_chapter_production,
+)
+from living_narrative.book.planning import StoryBible, build_book_plan_proposal
+from living_narrative.book.production_runner import (
+    ChapterProductionRunner,
+    ChapterProductionRunStatus,
+    ProductionRunPhase,
+)
 from living_narrative.cli import app
+from living_narrative.cli import book as book_module
+from living_narrative.state.models import ChapterLifecycle
+from living_narrative.state.store import StateStore
+from living_narrative.workspace.init import create_project
 
 runner = CliRunner()
+
+
+class _Gateway:
+    def complete(self, binding_key, messages, response_schema, prompt_template_name):
+        if binding_key == "chapter_draft":
+            return response_schema(
+                body="澪は駅の時刻表に刻まれた矛盾を見つけ、改札の外へ駆け出した。"
+            )
+        if binding_key == "chapter_continuity":
+            return response_schema(required_threads_covered=[], findings=[])
+        raise AssertionError(f"unexpected binding: {binding_key}")
+
+
+def _production_project(tmp_path):
+    project_yaml = create_project(tmp_path / "production-book", title="Production Book")
+    proposal = build_book_plan_proposal(
+        StoryBible.model_validate(
+            {
+                "premise": "霧の駅から帰還する。",
+                "audience": "fantasy readers",
+                "acts": [
+                    {
+                        "id": "act_001",
+                        "promise": "異常を知る。",
+                        "chapter_ids": ["chapter_001"],
+                    }
+                ],
+                "chapters": [
+                    {
+                        "id": "chapter_001",
+                        "act_id": "act_001",
+                        "planned_goal": "時刻表の矛盾を発見する。",
+                        "target_word_range": {"min_words": 10, "max_words": 100},
+                    }
+                ],
+            }
+        )
+    )
+    apply_book_plan_proposal(project_yaml.parent / "workspace", proposal)
+    return project_yaml
+
+
+def _running_production_run(project_yaml):
+    workspace = project_yaml.parent / "workspace"
+    start_chapter_production(workspace, "chapter_001")
+    bundle = StateStore.load(workspace / "state")
+    run_id = f"generation_{plan_generation(bundle)}_revision_001"
+    run_dir = workspace / "runs" / "chapter_production" / "chapter_001" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "request.yaml").write_text(
+        yaml.safe_dump({"schema_version": 1, "run_id": run_id, "chapter_id": "chapter_001"}),
+        encoding="utf-8",
+    )
+    (run_dir / "manifest.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "run_id": run_id,
+                "chapter_id": "chapter_001",
+                "phase": "drafting",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return run_dir
 
 
 def _story_bible() -> dict[str, object]:
@@ -62,3 +142,93 @@ def test_book_plan_rejects_invalid_story_bible(tmp_path):
 
     assert result.exit_code == 2
     assert "story bible" in result.output
+
+
+def test_book_chapter_run_status_outputs_a_durable_reader_safe_projection(tmp_path):
+    project_yaml = _production_project(tmp_path)
+    ChapterProductionRunner().run(project_yaml, "chapter_001", gateway=_Gateway())
+
+    result = runner.invoke(
+        app,
+        [
+            "book",
+            "chapter-run-status",
+            "--project",
+            str(project_yaml),
+            "--chapter",
+            "chapter_001",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = yaml.safe_load(result.output)
+    assert payload["phase"] == "awaiting_author"
+    assert payload["lifecycle"] == "review"
+    assert payload["attempt_id"] == "attempt_001"
+    assert "prompt" not in payload
+    assert "credential" not in payload
+
+
+def test_book_stop_chapter_run_records_a_durable_stop_request(tmp_path):
+    project_yaml = _production_project(tmp_path)
+    run_dir = _running_production_run(project_yaml)
+
+    result = runner.invoke(
+        app,
+        [
+            "book",
+            "stop-chapter-run",
+            "--project",
+            str(project_yaml),
+            "--chapter",
+            "chapter_001",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = yaml.safe_load(result.output)
+    assert payload["phase"] == "drafting"
+    assert payload["lifecycle"] == "running"
+    assert payload["stopped_reason"] == "author_requested"
+    request = yaml.safe_load((run_dir / "stop_requested.yaml").read_text(encoding="utf-8"))
+    assert request["reason"] == "author_requested"
+
+
+def test_book_run_chapter_delegates_to_the_domain_runner_and_returns_public_status(
+    tmp_path, monkeypatch
+):
+    project_yaml = _production_project(tmp_path)
+    observed: dict[str, object] = {}
+
+    def fake_run(self, project, chapter, *, gateway=None, budget=None):
+        observed["project"] = project
+        observed["chapter"] = chapter
+        return ChapterProductionRunStatus(
+            run_id="generation_example_revision_001",
+            chapter_id=chapter,
+            phase=ProductionRunPhase.AWAITING_AUTHOR,
+            lifecycle=ChapterLifecycle.REVIEW,
+            draft_run_id="chapter_chapter_001_example_attempt_001",
+            attempt_id="attempt_001",
+        )
+
+    monkeypatch.setattr(book_module.ChapterProductionRunner, "run", fake_run)
+
+    result = runner.invoke(
+        app,
+        [
+            "book",
+            "run-chapter",
+            "--project",
+            str(project_yaml),
+            "--chapter",
+            "chapter_001",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert observed == {"project": project_yaml, "chapter": "chapter_001"}
+    payload = yaml.safe_load(result.output)
+    assert payload["phase"] == "awaiting_author"
+    assert payload["lifecycle"] == "review"
+    assert "auto_accept" not in payload

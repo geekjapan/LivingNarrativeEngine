@@ -47,15 +47,26 @@ from living_narrative.web.auto_run import (
     request_stop,
     start_auto_run,
 )
+from living_narrative.web.production_run import (
+    ChapterProductionRunAlreadyRunningError,
+    ChapterProductionRunNotFoundError,
+    ProductionRunInfo,
+    get_chapter_production_run,
+    start_chapter_production_run,
+    stop_chapter_production_run,
+)
 from living_narrative.workspace.loader import load_project
 
 __all__ = [
     "AutoRunAlreadyRunningError",
+    "ChapterProductionRunAlreadyRunningError",
+    "ChapterProductionRunNotFoundError",
     "GmThreadsInfo",
     "GmWorldInfo",
     "InterventionsInfo",
     "NoPendingReviewError",
     "PermissionsInfo",
+    "ProductionRunInfo",
     "ProjectNotFoundError",
     "SettingsValidationError",
     "ReviewInfo",
@@ -63,7 +74,9 @@ __all__ = [
     "TurnNarration",
     "collect_narration",
     "get_book_cockpit",
+    "get_book_chapter_run_status",
     "start_book_chapter",
+    "start_book_chapter_run",
     "accept_book_chapter",
     "revise_book_chapter",
     "collect_structured_narration",
@@ -83,6 +96,7 @@ __all__ = [
     "resolve_project_dir",
     "run_turn",
     "start_auto_run",
+    "stop_book_chapter_run",
     "submit_review",
     "update_settings_yaml",
 ]
@@ -309,6 +323,30 @@ def revise_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductio
     if not read.is_valid:
         raise ProjectNotFoundError(str(project_yaml))
     return request_chapter_revision(read.paths, chapter_id)
+
+
+def start_book_chapter_run(project_yaml: Path, chapter_id: str) -> ProductionRunInfo:
+    """Start or resume one durable chapter production run in the Web background adapter."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return start_chapter_production_run(project_yaml, chapter_id)
+
+
+def get_book_chapter_run_status(project_yaml: Path, chapter_id: str) -> ProductionRunInfo:
+    """Read public durable status for one chapter production run."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return get_chapter_production_run(project_yaml, chapter_id)
+
+
+def stop_book_chapter_run(project_yaml: Path, chapter_id: str) -> ProductionRunInfo:
+    """Request a phase-boundary stop for one chapter production run."""
+    read = load_project(project_yaml)
+    if not read.is_valid:
+        raise ProjectNotFoundError(str(project_yaml))
+    return stop_chapter_production_run(project_yaml, chapter_id)
 
 
 def start_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
