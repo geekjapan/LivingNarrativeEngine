@@ -98,6 +98,7 @@ class ProductionQueueMetrics(BaseModel):
     failed_jobs: int = Field(ge=0)
     stopped_jobs: int = Field(ge=0)
     retry_count: int = Field(ge=0)
+    oldest_lease_age_seconds: int | None = Field(default=None, ge=0)
 
 
 @dataclass(frozen=True)
@@ -181,8 +182,13 @@ def collect_production_queue_metrics(project_yaml: Path) -> ProductionQueueMetri
     with project_lock(paths.root):
         jobs = _read_snapshot(paths.runs / "chapter_production_queue" / "queue.yaml").jobs
     counts = {state: 0 for state in QueueJobState}
+    lease_ages: list[int] = []
+    now = _utc_now()
     for job in jobs:
         counts[job.state] += 1
+        if job.state is QueueJobState.LEASED and job.lease_heartbeat_at is not None:
+            age_seconds = int((now - _parse_timestamp(job.lease_heartbeat_at)).total_seconds())
+            lease_ages.append(max(0, age_seconds))
     return ProductionQueueMetrics(
         total_jobs=len(jobs),
         queued_jobs=counts[QueueJobState.QUEUED],
@@ -191,6 +197,7 @@ def collect_production_queue_metrics(project_yaml: Path) -> ProductionQueueMetri
         failed_jobs=counts[QueueJobState.FAILED],
         stopped_jobs=counts[QueueJobState.STOPPED],
         retry_count=sum(max(0, job.delivery_count - 1) for job in jobs),
+        oldest_lease_age_seconds=max(lease_ages, default=None),
     )
 
 

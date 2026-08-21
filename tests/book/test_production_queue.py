@@ -300,3 +300,21 @@ def test_queue_collects_reader_safe_operational_metrics(tmp_path):
     rendered = metrics.model_dump_json()
     assert str(project_yaml) not in rendered
     assert "prompt" not in rendered
+
+
+def test_queue_metrics_reports_oldest_active_lease_age_without_worker_identity(tmp_path):
+    project_yaml = _project(tmp_path)
+    queue = DurableProductionQueue()
+    queue.enqueue(project_yaml, "chapter_001")
+    claim = queue.claim(project_yaml, "worker-alpha")
+    assert claim is not None
+
+    from living_narrative.book.production_queue import collect_production_queue_metrics
+
+    metrics = collect_production_queue_metrics(project_yaml)
+
+    assert metrics.leased_jobs == 1
+    assert metrics.oldest_lease_age_seconds is not None
+    assert metrics.oldest_lease_age_seconds >= 0
+    assert "worker-alpha" not in metrics.model_dump_json()
+    queue.release(claim)
