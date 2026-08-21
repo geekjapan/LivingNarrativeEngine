@@ -27,6 +27,7 @@ from living_narrative.book.production_admission import (
     ProductionAdmissionController,
     ProductionAdmissionLease,
     ProductionAdmissionRequest,
+    load_project_production_admission,
 )
 from living_narrative.book.production_runner import (
     ChapterProductionRunner,
@@ -575,11 +576,18 @@ class DurableProductionWorker:
         stop_heartbeats = threading.Event()
         heartbeat_thread: threading.Thread | None = None
         admission_lease: ProductionAdmissionLease | None = None
+        admission_controller = self._admission_controller
+        admission_request = self._admission_request
         try:
             chapter_id = self._queue.job_for_claim(project_yaml, claim)
-            if self._admission_controller is not None and self._admission_request is not None:
-                request = self._admission_request(project_yaml)
-                decision = self._admission_controller.try_admit(request)
+            if admission_controller is None:
+                configured = load_project_production_admission(project_yaml)
+                if configured is not None:
+                    admission_controller = configured.controller
+                    admission_request = configured.request_for
+            if admission_controller is not None and admission_request is not None:
+                request = admission_request(project_yaml)
+                decision = admission_controller.try_admit(request)
                 if not decision.allowed:
                     self._queue.defer(
                         project_yaml,
@@ -613,8 +621,8 @@ class DurableProductionWorker:
             if heartbeat_thread is not None:
                 heartbeat_thread.join(timeout=self._heartbeat_interval_seconds + 1.0)
             if admission_lease is not None:
-                assert self._admission_controller is not None
-                self._admission_controller.release(admission_lease)
+                assert admission_controller is not None
+                admission_controller.release(admission_lease)
             self._queue.release(claim)
 
     def _heartbeat_until_done(

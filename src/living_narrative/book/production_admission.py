@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import os
 from collections import Counter
 from collections.abc import Callable
@@ -17,6 +18,7 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError
 
 from living_narrative.state.diff import fsync_directory
+from living_narrative.workspace.loader import load_project
 
 
 class ProductionAdmissionPolicy(BaseModel):
@@ -26,6 +28,13 @@ class ProductionAdmissionPolicy(BaseModel):
     admission_lease_seconds: int | None = Field(default=None, ge=1)
     provider_window_seconds: int | None = Field(default=None, ge=1)
     max_deliveries_per_provider_window: int | None = Field(default=None, ge=1)
+
+
+class ProjectProductionAdmissionConfig(ProductionAdmissionPolicy):
+    """Opt-in project configuration for a shared scheduler namespace."""
+
+    scheduler_root: str = Field(min_length=1)
+    forecast_usd: Decimal | None = Field(default=None, ge=0)
 
 
 class ProductionAdmissionRequest(BaseModel):
@@ -43,6 +52,25 @@ class ProductionAdmissionLease:
     """Opaque ownership token returned only to the admitting worker."""
 
     admission_id: str
+
+
+@dataclass(frozen=True)
+class ProjectProductionAdmission:
+    """Resolved opt-in controller and reader-safe request identity for one project."""
+
+    controller: ProductionAdmissionController
+    book_id: str
+    provider_profile_id: str
+    forecast_usd: Decimal | None
+
+    def request_for(self, project_yaml: Path) -> ProductionAdmissionRequest:
+        """Build a stable reader-safe request for the configured project."""
+        del project_yaml
+        return ProductionAdmissionRequest(
+            book_id=self.book_id,
+            provider_profile_id=self.provider_profile_id,
+            forecast_usd=self.forecast_usd,
+        )
 
 
 class ProductionAdmissionDecision(BaseModel):
@@ -114,6 +142,39 @@ def _read_snapshot(path: Path) -> _AdmissionSnapshot:
         return _AdmissionSnapshot.model_validate(raw)
     except (OSError, yaml.YAMLError, ValidationError, ValueError) as exc:
         raise ValueError("production admission snapshot is invalid") from exc
+
+
+def load_project_production_admission(
+    project_yaml: Path,
+) -> ProjectProductionAdmission | None:
+    """Load explicit admission configuration; absent configuration preserves v0.6 behavior."""
+    path = project_yaml.parent / "production_admission.yaml"
+    if not path.is_file():
+        return None
+    read = load_project(project_yaml)
+    if not read.is_valid or read.config is None:
+        raise ValueError(f"invalid project: {project_yaml}")
+    try:
+        config = ProjectProductionAdmissionConfig.model_validate(
+            yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        )
+    except (OSError, yaml.YAMLError, ValidationError, ValueError) as exc:
+        raise ValueError("production admission config is invalid") from exc
+    root = Path(config.scheduler_root)
+    scheduler_root = root if root.is_absolute() else project_yaml.parent / root
+    profile_name = read.config.llm_bindings.get("chapter_draft")
+    provider_profile_id = (
+        f"profile:{profile_name}"
+        if profile_name is not None
+        else f"default:{read.config.llm.provider}:{read.config.llm.model}"
+    )
+    book_id = hashlib.sha256(read.config.id.encode("utf-8")).hexdigest()[:16]
+    return ProjectProductionAdmission(
+        controller=ProductionAdmissionController(scheduler_root, policy=config),
+        book_id=book_id,
+        provider_profile_id=provider_profile_id,
+        forecast_usd=config.forecast_usd,
+    )
 
 
 def collect_production_admission_metrics(

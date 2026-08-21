@@ -6,6 +6,7 @@ from living_narrative.book.production_admission import (
     ProductionAdmissionController,
     ProductionAdmissionPolicy,
     ProductionAdmissionRequest,
+    load_project_production_admission,
 )
 from living_narrative.book.production_queue import (
     DurableProductionQueue,
@@ -144,6 +145,50 @@ def test_worker_defers_queue_delivery_when_admission_is_unavailable(tmp_path, mo
     assert queue.status(project_yaml, "chapter_001").state is QueueJobState.QUEUED
 
     controller.release(blocker.lease)
+    completed = worker.run_once(project_yaml, worker_id="worker-alpha")
+
+    assert completed.claimed is True
+    assert calls == ["chapter_001"]
+
+
+def test_worker_loads_opt_in_project_admission_policy_without_manual_injection(
+    tmp_path, monkeypatch
+):
+    project_yaml = _project(tmp_path)
+    (project_yaml.parent / "production_admission.yaml").write_text(
+        "scheduler_root: ../shared-scheduler\nmax_active_deliveries: 1\n",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    def completed_run(self, project, chapter_id, *, gateway=None, budget=None):
+        calls.append(chapter_id)
+        return ChapterProductionRunStatus(
+            run_id="generation_example_revision_001",
+            chapter_id=chapter_id,
+            phase=ProductionRunPhase.AWAITING_AUTHOR,
+            lifecycle=ChapterLifecycle.REVIEW,
+        )
+
+    monkeypatch.setattr(
+        "living_narrative.book.production_queue.ChapterProductionRunner.run",
+        completed_run,
+    )
+    queue = DurableProductionQueue()
+    queue.enqueue(project_yaml, "chapter_001")
+    configured = load_project_production_admission(project_yaml)
+    assert configured is not None
+    blocker = configured.controller.try_admit(configured.request_for(project_yaml))
+    assert blocker.lease is not None
+
+    worker = DurableProductionWorker(queue)
+    deferred = worker.run_once(project_yaml, worker_id="worker-alpha")
+
+    assert deferred.claimed is False
+    assert calls == []
+    assert queue.status(project_yaml, "chapter_001").state is QueueJobState.QUEUED
+
+    configured.controller.release(blocker.lease)
     completed = worker.run_once(project_yaml, worker_id="worker-alpha")
 
     assert completed.claimed is True
