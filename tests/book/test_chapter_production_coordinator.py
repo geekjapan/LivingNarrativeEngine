@@ -83,6 +83,7 @@ def test_chapter_production_lifecycle_persists_candidate_review_and_acceptance(t
     assert bundle.book_ledger.chapter("chapter_001").lifecycle == ChapterLifecycle.ACCEPTED
     assert bundle.book_ledger.chapter("chapter_001").review_decision == "accept"
     assert bundle.book_ledger.continuity.entries[0].chapter_id == "chapter_001"
+    assert bundle.book_ledger.continuity.act_summaries[0].act_id == "act_001"
     assert result.journal_dir.exists()
     assert (workspace / "books" / "chapters" / "chapter_001" / "candidate.md").exists()
     lineage = load_chapter_lineage(workspace / "books" / "chapters", "chapter_001")

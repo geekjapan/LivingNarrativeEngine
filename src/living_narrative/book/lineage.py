@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from living_narrative.book.chapters import ChapterCandidate
 from living_narrative.book.review import ChapterReview, ChapterReviewDecision
+from living_narrative.book.revision_policy import RevisionPolicyDecision, decide_revision_policy
 from living_narrative.state.diff import fsync_directory
 
 
@@ -25,6 +26,7 @@ class ChapterAttempt(BaseModel):
     source_turns: list[int] = Field(default_factory=list)
     draft_run_id: str | None = None
     review: ChapterReview
+    revision_decision: RevisionPolicyDecision | None = None
     candidate_markdown: str = ""
 
 
@@ -128,6 +130,11 @@ def record_chapter_attempt(
         source_turns=candidate.source_turns,
         draft_run_id=draft_run_id,
         review=review,
+        revision_decision=(
+            decide_revision_policy(review)
+            if review.decision is ChapterReviewDecision.REVISE
+            else None
+        ),
         candidate_markdown=candidate.markdown,
     )
     attempt_dir = _attempt_dir(chapters_root, candidate.chapter_id, attempt_id)

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from living_narrative.book.chapters import build_chapter_context, compile_chapter
 from living_narrative.state.models import (
+    BookActContinuitySummary,
     BookActPlan,
     BookChapterPlan,
+    BookCharacterArcSummary,
     BookContinuityEntry,
     BookLedgerState,
     BookPlanState,
     BookWordRange,
+    CharacterArcTarget,
     CharacterState,
     MemorySummary,
     ReaderStateEntry,
@@ -57,6 +60,12 @@ def _bundle() -> WorldStateBundle:
                     act_id="act_001",
                     planned_goal="時刻表の矛盾を発見する。",
                     required_thread_ids=[],
+                    character_arc_targets=[
+                        CharacterArcTarget(
+                            character_id="char_001",
+                            delta="異常を追う決意を固める。",
+                        )
+                    ],
                     target_word_range=BookWordRange(min_words=100, max_words=500),
                 )
             ],
@@ -105,3 +114,29 @@ def test_chapter_context_includes_bounded_book_continuity_digest():
     context = build_chapter_context(bundle, "chapter_001", source_turns=[])
 
     assert context.continuity_digest == "透は公開された帳簿の矛盾を保留している。"
+
+
+def test_chapter_context_includes_current_act_and_target_character_summary():
+    bundle = _bundle()
+    bundle.book_ledger.continuity.act_summaries.append(
+        BookActContinuitySummary(
+            act_id="act_001",
+            chapter_ids=["chapter_001"],
+            summary="澪は逆向きの時計を観察した。",
+        )
+    )
+    bundle.book_ledger.continuity.character_arcs.append(
+        BookCharacterArcSummary(
+            character_id="char_001",
+            chapter_ids=["chapter_001"],
+            observed_deltas=["異常を追う決意を固める。"],
+        )
+    )
+
+    context = build_chapter_context(bundle, "chapter_001", source_turns=[])
+
+    assert "Act act_001:" in context.hierarchical_continuity
+    assert "Character char_001:" in context.hierarchical_continuity
+    serialized = context.model_dump_json()
+    assert "犯人を知っている" not in serialized
+    assert "このことは隠す" not in serialized

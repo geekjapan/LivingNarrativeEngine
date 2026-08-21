@@ -94,6 +94,7 @@ def _prompt(context: ChapterContext) -> list[dict[str, Any]]:
                 f"Reader-visible facts:\n{reader_facts}\n"
                 f"Continuity summary:\n{context.memory_summary or 'None'}\n"
                 f"Book continuity digest:\n{context.continuity_digest or 'None'}\n"
+                f"Hierarchical continuity:\n{context.hierarchical_continuity or 'None'}\n"
                 "Write one self-contained chapter draft. Do not reveal GM-only or private facts."
             ),
         },

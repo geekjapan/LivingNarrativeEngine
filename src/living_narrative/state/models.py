@@ -262,11 +262,30 @@ class BookContinuityEntry(StateBaseModel):
     open_thread_ids: list[ThreadId] = Field(default_factory=list)
 
 
+class BookActContinuitySummary(StateBaseModel):
+    """Reader-safe accumulation for one planned act."""
+
+    act_id: str = Field(pattern=r"^act_\d+$")
+    chapter_ids: list[str] = Field(default_factory=list)
+    summary: str = ""
+    open_thread_ids: list[ThreadId] = Field(default_factory=list)
+
+
+class BookCharacterArcSummary(StateBaseModel):
+    """Reader-safe observed movement for one planned character arc."""
+
+    character_id: CharacterId
+    chapter_ids: list[str] = Field(default_factory=list)
+    observed_deltas: list[str] = Field(default_factory=list)
+
+
 class BookContinuityState(StateBaseModel):
     """Rolling reader-safe digest used to bound subsequent chapter context."""
 
     entries: list[BookContinuityEntry] = Field(default_factory=list)
     open_thread_ids: list[ThreadId] = Field(default_factory=list)
+    act_summaries: list[BookActContinuitySummary] = Field(default_factory=list)
+    character_arcs: list[BookCharacterArcSummary] = Field(default_factory=list)
 
 
 class BookLedgerState(StateBaseModel):
