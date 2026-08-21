@@ -1,11 +1,19 @@
-"""In-process Web adapter for durable chapter Production Runner executions."""
+"""Web adapter for durable chapter-production delivery.
+
+HTTP callers only enqueue a reader-safe delivery job.  A separately started durable
+worker invokes the domain runner, so an HTTP server restart never owns production state.
+"""
 
 from __future__ import annotations
 
-import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
+from living_narrative.book.production_queue import (
+    DurableProductionQueue,
+    ProductionQueueJobNotFoundError,
+    QueueJobState,
+)
 from living_narrative.book.production_runner import (
     ChapterProductionRunner,
     ChapterProductionRunStatus,
@@ -16,37 +24,19 @@ from living_narrative.workspace.loader import load_project
 
 
 class ChapterProductionRunAlreadyRunningError(Exception):
-    """A Web caller requested a second production run while one is still active."""
+    """A Web caller requested a second queued or leased production delivery."""
 
 
 class ChapterProductionRunNotFoundError(Exception):
-    """No durable or in-process production run exists for the requested chapter."""
+    """No durable production delivery or prior runner artifact exists for this chapter."""
 
 
 @dataclass(frozen=True)
 class ProductionRunInfo:
-    """Reader-safe projection of durable status plus in-process execution state."""
+    """Reader-safe projection of durable delivery state and runner status."""
 
     running: bool
     status: ChapterProductionRunStatus
-
-
-@dataclass
-class _RunState:
-    lock: threading.Lock = field(default_factory=threading.Lock)
-    thread: threading.Thread | None = None
-    running: bool = False
-    status: ChapterProductionRunStatus | None = None
-
-
-_RUN_STATES: dict[tuple[Path, str], _RunState] = {}
-_REGISTRY_LOCK = threading.Lock()
-
-
-def _state_for(project_yaml: Path, chapter_id: str) -> _RunState:
-    key = (project_yaml.resolve(), chapter_id)
-    with _REGISTRY_LOCK:
-        return _RUN_STATES.setdefault(key, _RunState())
 
 
 def _initial_status(project_yaml: Path, chapter_id: str) -> ChapterProductionRunStatus:
@@ -62,79 +52,74 @@ def _initial_status(project_yaml: Path, chapter_id: str) -> ChapterProductionRun
     )
 
 
+def _info_from_queue(project_yaml: Path, chapter_id: str) -> ProductionRunInfo:
+    queued = DurableProductionQueue().status(project_yaml, chapter_id)
+    status = queued.status or _initial_status(project_yaml, chapter_id)
+    return ProductionRunInfo(
+        running=queued.state in {QueueJobState.QUEUED, QueueJobState.LEASED},
+        status=status,
+    )
+
+
 def start_chapter_production_run(project_yaml: Path, chapter_id: str) -> ProductionRunInfo:
-    """Start/resume a chapter runner in a daemon thread and return immediately.
+    """Enqueue one chapter production delivery without running it in the Web process."""
+    queue = DurableProductionQueue()
+    try:
+        existing = queue.status(project_yaml, chapter_id)
+    except ProductionQueueJobNotFoundError:
+        queued = queue.enqueue(project_yaml, chapter_id)
+        return ProductionRunInfo(
+            running=True,
+            status=queued.status or _initial_status(project_yaml, chapter_id),
+        )
 
-    The thread is an execution convenience only. The runner's manifest is the recovery source of
-    truth, and a later CLI/Web start can resume it after a server restart.
-    """
-    state = _state_for(project_yaml, chapter_id)
-    with state.lock:
-        if state.running:
-            raise ChapterProductionRunAlreadyRunningError(
-                f"a chapter production run is already in progress for {chapter_id}"
-            )
-        state.running = True
-        state.status = _initial_status(project_yaml, chapter_id)
-
-    def _worker() -> None:
-        runner = ChapterProductionRunner()
-        try:
-            status = runner.run(project_yaml, chapter_id)
-        except Exception:  # noqa: BLE001 - surface only a sanitized durable status
-            try:
-                status = runner.status(project_yaml, chapter_id)
-            except ValueError:
-                previous = state.status
-                if previous is None:
-                    previous = _initial_status(project_yaml, chapter_id)
-                status = previous.model_copy(
-                    update={
-                        "phase": ProductionRunPhase.FAILED,
-                        "failure_code": "production_run_failed",
-                    }
-                )
-        with state.lock:
-            state.status = status
-            state.running = False
-
-    thread = threading.Thread(target=_worker, daemon=True)
-    with state.lock:
-        state.thread = thread
-        status = state.status
-    thread.start()
-    assert status is not None
-    return ProductionRunInfo(running=True, status=status)
+    if existing.state in {QueueJobState.QUEUED, QueueJobState.LEASED}:
+        raise ChapterProductionRunAlreadyRunningError(
+            f"a chapter production run is already in progress for {chapter_id}"
+        )
+    if existing.state in {QueueJobState.FAILED, QueueJobState.STOPPED}:
+        queued = queue.enqueue(project_yaml, chapter_id)
+        return ProductionRunInfo(
+            running=True,
+            status=queued.status or _initial_status(project_yaml, chapter_id),
+        )
+    return _info_from_queue(project_yaml, chapter_id)
 
 
 def get_chapter_production_run(project_yaml: Path, chapter_id: str) -> ProductionRunInfo:
-    """Read durable runner status, falling back to a just-started in-process projection."""
-    state = _state_for(project_yaml, chapter_id)
-    with state.lock:
-        running = state.running
-        in_process = state.status
+    """Read queue-backed public status, falling back to a pre-v0.6 runner artifact."""
     try:
-        durable = ChapterProductionRunner().status(project_yaml, chapter_id)
-    except ValueError as exc:
-        if in_process is None:
+        return _info_from_queue(project_yaml, chapter_id)
+    except ProductionQueueJobNotFoundError:
+        try:
+            durable = ChapterProductionRunner().status(project_yaml, chapter_id)
+        except ValueError as exc:
             raise ChapterProductionRunNotFoundError(chapter_id) from exc
-        return ProductionRunInfo(running=running, status=in_process)
-    with state.lock:
-        state.status = durable
-    return ProductionRunInfo(running=running, status=durable)
+        return ProductionRunInfo(running=False, status=durable)
 
 
 def stop_chapter_production_run(project_yaml: Path, chapter_id: str) -> ProductionRunInfo:
-    """Record a durable stop request; the Runner observes it at its next safe phase boundary."""
-    state = _state_for(project_yaml, chapter_id)
+    """Stop an unclaimed job or record a phase-boundary stop for an active Runner."""
+    queue = DurableProductionQueue()
+    try:
+        queued = queue.status(project_yaml, chapter_id)
+    except ProductionQueueJobNotFoundError:
+        queued = None
+    if queued is not None and queued.state is QueueJobState.QUEUED:
+        stopped = queue.stop(project_yaml, chapter_id)
+        assert stopped.status is not None
+        return ProductionRunInfo(running=False, status=stopped.status)
+    if queued is not None and queued.state is QueueJobState.STOPPED:
+        assert queued.status is not None
+        return ProductionRunInfo(running=False, status=queued.status)
     try:
         status = ChapterProductionRunner().request_stop(project_yaml, chapter_id)
     except ValueError as exc:
         raise ChapterProductionRunNotFoundError(chapter_id) from exc
-    with state.lock:
-        state.status = status
-        running = state.running
-    return ProductionRunInfo(running=running, status=status)
+    return ProductionRunInfo(
+        running=queued is not None and queued.state is QueueJobState.LEASED,
+        status=status,
+    )
 
 
 __all__ = [

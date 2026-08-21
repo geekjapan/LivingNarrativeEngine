@@ -250,3 +250,27 @@ def test_book_run_api_blocks_when_hard_budget_cannot_be_evaluated(tmp_path):
 
     assert response.status_code == 409
     assert response.json()["detail"] == "book USD budget cannot be evaluated"
+
+
+def test_book_cockpit_api_projects_reader_safe_production_operations(tmp_path):
+    client, project_yaml = _client_with_book(tmp_path, return_project_yaml=True)
+
+    response = client.get("/api/project/book/book/cockpit")
+
+    assert response.status_code == 200
+    assert response.json()["operations"] == {
+        "queue": {
+            "total_jobs": 0,
+            "queued_jobs": 0,
+            "leased_jobs": 0,
+            "completed_jobs": 0,
+            "failed_jobs": 0,
+            "stopped_jobs": 0,
+            "retry_count": 0,
+            "oldest_lease_age_seconds": None,
+            "failure_code_counts": {},
+        }
+    }
+    assert "prompt" not in response.text
+    assert "credential" not in response.text
+    assert str(project_yaml) not in response.text

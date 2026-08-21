@@ -1,12 +1,8 @@
-from __future__ import annotations
-
-import threading
-import time
-
 import pytest
 
 from living_narrative.book.coordinator import apply_book_plan_proposal
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
+from living_narrative.book.production_queue import DurableProductionWorker
 from living_narrative.book.production_runner import (
     ChapterProductionRunStatus,
     ProductionRunPhase,
@@ -49,25 +45,14 @@ def _project(tmp_path):
     return project_yaml
 
 
-def _wait_until(predicate, *, timeout: float = 2.0) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return True
-        time.sleep(0.01)
-    return predicate()
-
-
-def test_background_adapter_prevents_duplicate_start_and_projects_completed_status(
+def test_background_adapter_enqueues_without_executing_and_projects_worker_completion(
     tmp_path, monkeypatch
 ):
     project_yaml = _project(tmp_path)
-    entered = threading.Event()
-    release = threading.Event()
+    calls: list[tuple[str, str]] = []
 
-    def delayed_run(self, project, chapter_id, *, gateway=None, budget=None):
-        entered.set()
-        assert release.wait(timeout=2.0)
+    def completed_run(self, project, chapter_id, *, gateway=None, budget=None):
+        calls.append((str(project), chapter_id))
         return ChapterProductionRunStatus(
             run_id="generation_example_revision_001",
             chapter_id=chapter_id,
@@ -79,19 +64,60 @@ def test_background_adapter_prevents_duplicate_start_and_projects_completed_stat
 
     monkeypatch.setattr(
         "living_narrative.web.production_run.ChapterProductionRunner.run",
-        delayed_run,
+        completed_run,
     )
 
     started = start_chapter_production_run(project_yaml, "chapter_001")
+
     assert started.running is True
-    assert entered.wait(timeout=2.0)
+    assert started.status.phase is ProductionRunPhase.CREATED
+    assert calls == []
 
     with pytest.raises(ChapterProductionRunAlreadyRunningError):
         start_chapter_production_run(project_yaml, "chapter_001")
 
-    release.set()
-    assert _wait_until(lambda: not get_chapter_production_run(project_yaml, "chapter_001").running)
+    result = DurableProductionWorker().run_once(project_yaml, worker_id="worker-alpha")
+
+    assert result.claimed is True
+    assert calls == [(str(project_yaml), "chapter_001")]
     completed = get_chapter_production_run(project_yaml, "chapter_001")
     assert completed.running is False
     assert completed.status.phase is ProductionRunPhase.AWAITING_AUTHOR
     assert completed.status.lifecycle is ChapterLifecycle.REVIEW
+
+
+def test_background_adapter_stops_a_queued_delivery_before_any_runner_call_and_can_resume(
+    tmp_path, monkeypatch
+):
+    project_yaml = _project(tmp_path)
+    calls: list[str] = []
+
+    def completed_run(self, project, chapter_id, *, gateway=None, budget=None):
+        calls.append(chapter_id)
+        return ChapterProductionRunStatus(
+            run_id="generation_example_revision_001",
+            chapter_id=chapter_id,
+            phase=ProductionRunPhase.AWAITING_AUTHOR,
+            lifecycle=ChapterLifecycle.REVIEW,
+        )
+
+    monkeypatch.setattr(
+        "living_narrative.web.production_run.ChapterProductionRunner.run",
+        completed_run,
+    )
+    from living_narrative.web.production_run import stop_chapter_production_run
+
+    start_chapter_production_run(project_yaml, "chapter_001")
+    stopped = stop_chapter_production_run(project_yaml, "chapter_001")
+
+    assert stopped.running is False
+    assert stopped.status.phase is ProductionRunPhase.STOPPED
+    assert stopped.status.lifecycle is ChapterLifecycle.PLANNED
+    assert calls == []
+
+    resumed = start_chapter_production_run(project_yaml, "chapter_001")
+    assert resumed.running is True
+    result = DurableProductionWorker().run_once(project_yaml, worker_id="worker-alpha")
+
+    assert result.claimed is True
+    assert calls == ["chapter_001"]

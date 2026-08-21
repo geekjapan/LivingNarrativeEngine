@@ -29,6 +29,7 @@ from living_narrative.book.cost_policy import (
     CostTokenEstimate,
     evaluate_cost_policy,
 )
+from living_narrative.book.production_observability import collect_production_operational_metrics
 from living_narrative.book.usage import collect_book_usage
 from living_narrative.cli._common import read_narration_body
 from living_narrative.intervention.history import load_history
@@ -365,7 +366,12 @@ def get_book_cockpit(project_yaml: Path) -> BookCockpit:
         StateStore.load(read.paths.state),
         can_operate=is_book_authoring_allowed(read.config.user_mode),
     )
-    return cockpit.model_copy(update={"budget": _book_budget_cockpit(project_yaml)})
+    return cockpit.model_copy(
+        update={
+            "budget": _book_budget_cockpit(project_yaml),
+            "operations": collect_production_operational_metrics(project_yaml),
+        }
+    )
 
 
 def accept_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
