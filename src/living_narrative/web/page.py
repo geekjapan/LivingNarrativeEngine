@@ -191,6 +191,7 @@ INDEX_HTML = """\
   <p id="book-premise"></p>
   <p>次アクション: <span id="book-next-action"></span></p>
   <p id="book-message" aria-live="polite"></p>
+  <div id="book-budget" aria-live="polite"></div>
   <div id="book-roadmap"></div>
 </section>
 <div id="characters"></div>
@@ -266,6 +267,7 @@ const bookPanelEl = document.getElementById("book-panel");
 const bookPremiseEl = document.getElementById("book-premise");
 const bookNextActionEl = document.getElementById("book-next-action");
 const bookMessageEl = document.getElementById("book-message");
+const bookBudgetEl = document.getElementById("book-budget");
 const bookRoadmapEl = document.getElementById("book-roadmap");
 
 let pollHandle = null;
@@ -386,16 +388,33 @@ function updateBookRunPolling() {
   }
 }
 
+function renderBookBudget(budget) {
+  if (!budget) {
+    bookBudgetEl.textContent = "予算ポリシー未設定";
+    return;
+  }
+  const display = (value) => value === null || value === undefined ? "不明" : "$" + value;
+  const status = budget.status || "unknown";
+  const reason = budget.reason ? " — " + budget.reason : "";
+  const resume = budget.resume_allowed === false ? "予算により停止中" : "実行・再開可能";
+  bookBudgetEl.textContent =
+    "予算: " + status + reason + " / 実費: " + display(budget.actual_usd) + " / " +
+    "見積: " + display(budget.estimated_usd) + " / 予測: " + display(budget.forecast_usd) + " / " +
+    "hard残額: " + display(budget.remaining_hard_usd) + " / " + resume;
+}
+
 function renderBookCockpit(cockpit) {
   bookPremiseEl.textContent = cockpit.premise ? "制作方針: " + cockpit.premise : "BookPlan未作成";
   bookNextActionEl.innerHTML = escapeHtml(cockpit.next_action || "待機中");
+  renderBookBudget(cockpit.budget);
+  const canResumeForBudget = !cockpit.budget || cockpit.budget.resume_allowed !== false;
   bookRoadmapEl.innerHTML = (cockpit.chapters || [])
     .map((chapter) => {
       const operable = cockpit.can_operate === true;
       const run = bookRunStatuses[chapter.chapter_id];
       const activeRun = run && run.running === true;
       const resumable = ["running", "candidate"].includes(chapter.lifecycle) && !activeRun;
-      const startable = operable && (chapter.startable === true || resumable);
+      const startable = operable && canResumeForBudget && (chapter.startable === true || resumable);
       const startLabel = resumable ? "制作を再開" : "章制作を実行";
       const start = startable
         ? `<button class="book-start" data-chapter-id="${escapeHtml(chapter.chapter_id)}" ` +

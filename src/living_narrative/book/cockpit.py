@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from pydantic import BaseModel, Field
 
 from living_narrative.book.scheduler import (
@@ -22,6 +24,20 @@ class CockpitChapter(BaseModel):
     startable: bool = False
 
 
+class BookBudgetCockpit(BaseModel):
+    """Reader-safe budget state for production decisions, without prompts or provider secrets."""
+
+    status: str
+    reason: str | None = None
+    price_version: str | None = None
+    actual_usd: Decimal | None = None
+    estimated_usd: Decimal | None = None
+    variance_usd: Decimal | None = None
+    forecast_usd: Decimal | None = None
+    remaining_hard_usd: Decimal | None = None
+    resume_allowed: bool = False
+
+
 class BookCockpit(BaseModel):
     premise: str
     audience: str
@@ -29,6 +45,7 @@ class BookCockpit(BaseModel):
     active_chapter_id: str | None = None
     next_action: str
     chapters: list[CockpitChapter] = Field(default_factory=list)
+    budget: BookBudgetCockpit | None = None
 
 
 def build_book_cockpit(bundle: WorldStateBundle, *, can_operate: bool = False) -> BookCockpit:
