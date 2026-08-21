@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
+from living_narrative.book.production_observability import ProductionOperationalMetrics
 from living_narrative.book.scheduler import (
     IN_FLIGHT_CHAPTER_LIFECYCLES,
     NextChapterAction,
@@ -46,6 +47,7 @@ class BookCockpit(BaseModel):
     next_action: str
     chapters: list[CockpitChapter] = Field(default_factory=list)
     budget: BookBudgetCockpit | None = None
+    operations: ProductionOperationalMetrics | None = None
 
 
 def build_book_cockpit(bundle: WorldStateBundle, *, can_operate: bool = False) -> BookCockpit:
