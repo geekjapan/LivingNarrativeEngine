@@ -14,7 +14,7 @@ ADR-0018で、単一Bookにおけるchapter productionの重複実行は、durab
 
 ```python
 try_admit(request: ProductionAdmissionRequest) -> ProductionAdmissionDecision
-release(lease: ProductionAdmissionLease, outcome: ProductionAdmissionOutcome) -> None
+release(lease: ProductionAdmissionLease) -> None
 ```
 
 queue jobはadmissionが許可された後にだけrunnerを起動する。admissionが拒否されたqueue jobはterminal failureにせず、同じidempotency keyを保って`queued`へ戻す。したがって、rate limit又はbudgetの一時的な不足はreview・author approval・chapter lifecycleを変更しない。
