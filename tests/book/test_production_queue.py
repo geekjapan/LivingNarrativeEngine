@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from living_narrative.book.coordinator import apply_book_plan_proposal
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
+from living_narrative.book.production_admission import (
+    ProductionAdmissionController,
+    ProductionAdmissionPolicy,
+    ProductionAdmissionRequest,
+)
 from living_narrative.book.production_queue import (
     DurableProductionQueue,
     DurableProductionWorker,
@@ -91,6 +96,58 @@ def test_queue_enqueues_idempotently_and_worker_completes_reader_safe_status(tmp
         "attempt_id": "attempt_001",
         "resumed": False,
     }
+
+
+def test_worker_defers_queue_delivery_when_admission_is_unavailable(tmp_path, monkeypatch):
+    project_yaml = _project(tmp_path)
+    calls: list[str] = []
+
+    def completed_run(self, project, chapter_id, *, gateway=None, budget=None):
+        calls.append(chapter_id)
+        return ChapterProductionRunStatus(
+            run_id="generation_example_revision_001",
+            chapter_id=chapter_id,
+            phase=ProductionRunPhase.AWAITING_AUTHOR,
+            lifecycle=ChapterLifecycle.REVIEW,
+        )
+
+    monkeypatch.setattr(
+        "living_narrative.book.production_queue.ChapterProductionRunner.run",
+        completed_run,
+    )
+    queue = DurableProductionQueue()
+    queue.enqueue(project_yaml, "chapter_001")
+    controller = ProductionAdmissionController(
+        tmp_path / "scheduler",
+        policy=ProductionAdmissionPolicy(max_active_deliveries=1),
+    )
+    blocker = controller.try_admit(
+        ProductionAdmissionRequest(
+            book_id="book-other",
+            provider_profile_id="provider-a/fiction",
+        )
+    )
+    assert blocker.lease is not None
+    worker = DurableProductionWorker(
+        queue,
+        admission_controller=controller,
+        admission_request=lambda project: ProductionAdmissionRequest(
+            book_id="book-current",
+            provider_profile_id="provider-a/fiction",
+        ),
+    )
+
+    deferred = worker.run_once(project_yaml, worker_id="worker-alpha")
+
+    assert deferred.claimed is False
+    assert calls == []
+    assert queue.status(project_yaml, "chapter_001").state is QueueJobState.QUEUED
+
+    controller.release(blocker.lease)
+    completed = worker.run_once(project_yaml, worker_id="worker-alpha")
+
+    assert completed.claimed is True
+    assert calls == ["chapter_001"]
 
 
 def test_queue_reenqueues_a_failed_delivery_with_the_same_job_id_for_safe_runner_resume(
