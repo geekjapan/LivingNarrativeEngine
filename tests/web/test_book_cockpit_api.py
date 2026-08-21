@@ -19,7 +19,9 @@ from living_narrative.workspace.init import create_project  # noqa: E402
 from living_narrative.workspace.loader import load_project  # noqa: E402
 
 
-def _client_with_book(tmp_path, *, user_mode: str = "author") -> TestClient:
+def _client_with_book(
+    tmp_path, *, user_mode: str = "author", return_project_yaml: bool = False
+) -> TestClient | tuple[TestClient, object]:
     root = tmp_path / "projects"
     project_yaml = create_project(root / "book", title="Book")
     config = yaml.safe_load(project_yaml.read_text(encoding="utf-8"))
@@ -51,7 +53,8 @@ def _client_with_book(tmp_path, *, user_mode: str = "author") -> TestClient:
         )
     )
     apply_book_plan_proposal(project_yaml.parent / "workspace", proposal)
-    return TestClient(create_app(root))
+    client = TestClient(create_app(root))
+    return (client, project_yaml) if return_project_yaml else client
 
 
 def test_book_cockpit_api_projects_safe_read_model_and_start_action(tmp_path):
@@ -75,6 +78,46 @@ def test_book_cockpit_api_projects_safe_read_model_and_start_action(tmp_path):
     assert started.json()["lifecycle"] == "running"
     assert updated.json()["active_chapter_id"] == "chapter_001"
     assert updated.json()["chapters"][0]["lifecycle"] == "running"
+
+
+def test_book_cockpit_api_projects_reader_safe_budget_and_resume_eligibility(tmp_path):
+    client, project_yaml = _client_with_book(tmp_path, return_project_yaml=True)
+    (project_yaml.parent / "cost_policy.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "price_snapshot": {
+                    "profile_id": "provider-a/fiction",
+                    "version": "2026-08-21",
+                    "input_usd_per_1m": "1.50",
+                    "output_usd_per_1m": "6.00",
+                    "tax_rate": "0.00",
+                    "discount_rate": "0.00",
+                },
+                "budgets": {"book": {"soft_usd": "1.00", "hard_usd": "2.00"}},
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/project/book/book/cockpit")
+
+    assert response.status_code == 200
+    budget = response.json()["budget"]
+    assert budget == {
+        "status": "allow",
+        "reason": None,
+        "price_version": "2026-08-21",
+        "actual_usd": "0",
+        "estimated_usd": None,
+        "variance_usd": None,
+        "forecast_usd": "0",
+        "remaining_hard_usd": "2.00",
+        "resume_allowed": True,
+    }
+    assert "prompt" not in response.text
+    assert "credential" not in response.text
 
 
 def test_book_cockpit_api_reuses_completed_start_operation_idempotently(tmp_path):
@@ -179,3 +222,31 @@ def test_book_run_api_starts_background_production_with_a_reader_safe_status(tmp
     assert payload["status"]["lifecycle"] == "running"
     assert "prompt" not in payload
     assert "credential" not in payload
+
+
+def test_book_cockpit_page_renders_budget_projection_and_disables_blocked_start(tmp_path):
+    client = _client_with_book(tmp_path)
+
+    page = client.get("/").text
+
+    assert 'id="book-budget"' in page
+    assert "function renderBookBudget(budget)" in page
+    assert "budget.resume_allowed !== false" in page
+    assert "予算により停止中" in page
+
+
+def test_book_run_api_blocks_when_hard_budget_cannot_be_evaluated(tmp_path):
+    client, project_yaml = _client_with_book(tmp_path, return_project_yaml=True)
+    (project_yaml.parent / "cost_policy.yaml").write_text(
+        yaml.safe_dump(
+            {"price_snapshot": None, "budgets": {"book": {"hard_usd": "2.00"}}},
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    response = client.post("/api/project/book/book/chapters/chapter_001/run")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "book USD budget cannot be evaluated"

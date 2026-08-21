@@ -18,6 +18,7 @@ from living_narrative.book.production_runner import (
     ChapterProductionRunner,
     ChapterProductionRunStatus,
 )
+from living_narrative.book.publication import export_publication, verify_publication
 from living_narrative.cli._common import load_project_or_exit, runtime_error, usage_error
 
 app = typer.Typer(name="book", help="Long-form book planning commands")
@@ -97,6 +98,49 @@ def benchmark(
             f"expected {expected_fingerprint}, observed {observation.benchmark_fingerprint}"
         )
     typer.echo(f"benchmark report: {report_path}")
+
+
+@app.command("export-publication")
+def export_publication_command(
+    project: Annotated[Path, typer.Option(..., "--project", help="Path to project.yaml")],
+    output: Annotated[Path, typer.Option(..., "--output", help="Publication output directory")],
+) -> None:
+    """Export DOCX, EPUB, PDF, and a hash-linked manifest from accepted chapters only."""
+    read = load_project_or_exit(project)
+    if read.paths is None:
+        runtime_error(f"project paths unavailable: {project}")
+    try:
+        result = export_publication(read.paths, output)
+    except (OSError, ValueError, RuntimeError) as exc:
+        runtime_error(str(exc))
+    typer.echo(
+        yaml.safe_dump(
+            {
+                "manifest_path": str(result.manifest_path),
+                "format_names": sorted(result.format_paths),
+                "manuscript_sha256": result.manuscript_sha256,
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        )
+    )
+
+
+@app.command("verify-publication")
+def verify_publication_command(
+    manifest: Annotated[
+        Path,
+        typer.Option(..., "--manifest", help="Path to publication_manifest.yaml"),
+    ],
+) -> None:
+    """Fail closed unless a publication manifest and every linked artifact match their hashes."""
+    if not manifest.is_file():
+        usage_error(f"publication manifest not found: {manifest}")
+    try:
+        result = verify_publication(manifest)
+    except (OSError, ValueError) as exc:
+        runtime_error(str(exc))
+    typer.echo(yaml.safe_dump(result.model_dump(mode="json"), allow_unicode=True, sort_keys=False))
 
 
 def _echo_production_run_status(status: ChapterProductionRunStatus) -> None:

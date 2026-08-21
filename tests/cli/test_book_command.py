@@ -4,6 +4,7 @@ import yaml
 from typer.testing import CliRunner
 
 from living_narrative.book.coordinator import (
+    accept_chapter_review,
     apply_book_plan_proposal,
     plan_generation,
     start_chapter_production,
@@ -321,3 +322,41 @@ def test_book_benchmark_rejects_an_invalid_project_as_usage_error(tmp_path):
 
     assert result.exit_code == 2
     assert "invalid project" in result.output
+
+
+def test_book_publication_export_and_verify_commands_use_accepted_manuscript(tmp_path):
+    project_yaml = _production_project(tmp_path)
+    ChapterProductionRunner().run(project_yaml, "chapter_001", gateway=_Gateway())
+    accept_chapter_review(project_yaml.parent / "workspace", "chapter_001")
+    output_dir = tmp_path / "publication"
+
+    exported = runner.invoke(
+        app,
+        [
+            "book",
+            "export-publication",
+            "--project",
+            str(project_yaml),
+            "--output",
+            str(output_dir),
+        ],
+    )
+
+    assert exported.exit_code == 0, exported.output
+    manifest_path = output_dir / "publication_manifest.yaml"
+    assert manifest_path.is_file()
+    assert (output_dir / "manuscript.docx").is_file()
+    assert (output_dir / "manuscript.epub").is_file()
+    assert (output_dir / "manuscript.pdf").is_file()
+
+    verified = runner.invoke(
+        app,
+        ["book", "verify-publication", "--manifest", str(manifest_path)],
+    )
+
+    assert verified.exit_code == 0, verified.output
+    payload = yaml.safe_load(verified.output)
+    assert payload["format_names"] == ["docx", "epub", "pdf"]
+    assert "公開本文" not in verified.output
+    assert "prompt" not in verified.output
+    assert "credential" not in verified.output

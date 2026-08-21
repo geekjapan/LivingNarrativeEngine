@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 import yaml
 
 from living_narrative.book.budget import BookBudgetPolicy, BudgetExceededError
 from living_narrative.book.coordinator import apply_book_plan_proposal
+from living_narrative.book.cost_policy import (
+    CostPolicyV2,
+    CostPriceSnapshot,
+    CostScope,
+    CostScopeBudget,
+    CostTokenEstimate,
+)
 from living_narrative.book.drafting import run_chapter_draft
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
 from living_narrative.workspace.init import create_project
@@ -62,6 +71,37 @@ def test_budget_blocks_chapter_attempt_before_provider_call_and_records_reason(t
     assert (blocked[0] / "circuit_breaker.yaml").exists()
 
 
+def test_cost_policy_hard_cap_blocks_draft_provider_before_any_call(tmp_path):
+    project_yaml = _project(tmp_path)
+    gateway = _Gateway()
+    policy = CostPolicyV2(
+        price_snapshot=CostPriceSnapshot(
+            profile_id="provider-a/fiction",
+            version="2026-08-21",
+            input_usd_per_1m=Decimal("1.50"),
+            output_usd_per_1m=Decimal("6.00"),
+            tax_rate=Decimal("0.00"),
+            discount_rate=Decimal("0.00"),
+        ),
+        budgets={CostScope.CHAPTER: CostScopeBudget(hard_usd=Decimal("0.005"))},
+    )
+
+    with pytest.raises(BudgetExceededError, match="chapter hard USD budget exceeded"):
+        run_chapter_draft(
+            project_yaml,
+            "chapter_001",
+            gateway=gateway,
+            cost_policy=policy,
+            cost_estimate=CostTokenEstimate(input_tokens=2_000, output_tokens=1_000),
+        )
+
+    assert gateway.call_count == 0
+    drafts_root = project_yaml.parent / "workspace" / "runs" / "chapter_drafts"
+    blocked = list(drafts_root.glob("chapter_chapter_001_*_attempt_001"))
+    assert len(blocked) == 1
+    assert (blocked[0] / "cost_circuit_breaker.yaml").exists()
+
+
 def test_budget_blocks_book_attempts_across_chapters_before_provider_call(tmp_path):
     project_yaml = _project(tmp_path)
     gateway = _Gateway()
@@ -112,3 +152,71 @@ def test_draft_run_uses_resolved_workspace_paths(tmp_path):
     assert result.run_dir == custom_root / "runs" / "chapter_drafts" / result.run_id
     assert (result.run_dir / "meta.yaml").exists()
     assert not (project_dir / "workspace").exists()
+
+
+def test_cost_policy_soft_cap_allows_draft_and_persists_reader_safe_warning(tmp_path):
+    project_yaml = _project(tmp_path)
+    gateway = _Gateway()
+    policy = CostPolicyV2(
+        price_snapshot=CostPriceSnapshot(
+            profile_id="provider-a/fiction",
+            version="2026-08-21",
+            input_usd_per_1m=Decimal("1.50"),
+            output_usd_per_1m=Decimal("6.00"),
+            tax_rate=Decimal("0.00"),
+            discount_rate=Decimal("0.00"),
+        ),
+        budgets={CostScope.CHAPTER: CostScopeBudget(soft_usd=Decimal("0.005"))},
+    )
+
+    result = run_chapter_draft(
+        project_yaml,
+        "chapter_001",
+        gateway=gateway,
+        cost_policy=policy,
+        cost_estimate=CostTokenEstimate(input_tokens=2_000, output_tokens=1_000),
+    )
+
+    warning = yaml.safe_load((result.run_dir / "cost_warning.yaml").read_text(encoding="utf-8"))
+    assert gateway.call_count == 1
+    assert warning == {
+        "status": "warn",
+        "reason": "chapter soft USD budget exceeded",
+        "scope": "chapter",
+        "price_version": "2026-08-21",
+        "forecast_usd": "0.009",
+    }
+
+
+def test_cost_policy_persists_allow_preflight_for_later_estimate_actual_reporting(tmp_path):
+    project_yaml = _project(tmp_path)
+    policy = CostPolicyV2(
+        price_snapshot=CostPriceSnapshot(
+            profile_id="provider-a/fiction",
+            version="2026-08-21",
+            input_usd_per_1m=Decimal("1.50"),
+            output_usd_per_1m=Decimal("6.00"),
+            tax_rate=Decimal("0.00"),
+            discount_rate=Decimal("0.00"),
+        )
+    )
+
+    result = run_chapter_draft(
+        project_yaml,
+        "chapter_001",
+        gateway=_Gateway(),
+        cost_policy=policy,
+        cost_estimate=CostTokenEstimate(input_tokens=2_000, output_tokens=1_000),
+    )
+
+    assessment = yaml.safe_load(
+        (result.run_dir / "cost_assessment.yaml").read_text(encoding="utf-8")
+    )
+    assert assessment == {
+        "status": "allow",
+        "reason": None,
+        "scope": "chapter",
+        "price_version": "2026-08-21",
+        "estimate_usd": "0.009",
+        "forecast_usd": "0.009",
+    }

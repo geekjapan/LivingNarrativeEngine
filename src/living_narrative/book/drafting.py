@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -17,6 +18,13 @@ from living_narrative.book.budget import (
 )
 from living_narrative.book.chapters import ChapterContext, build_chapter_context
 from living_narrative.book.coordinator import plan_generation
+from living_narrative.book.cost_policy import (
+    CostPolicyStatus,
+    CostPolicyV2,
+    CostScope,
+    CostTokenEstimate,
+    evaluate_cost_policy,
+)
 from living_narrative.pipeline.llm_gateway import LLMGateway
 from living_narrative.state.diff import fsync_directory
 from living_narrative.state.store import StateStore
@@ -66,6 +74,11 @@ def _atomic_write_yaml(path: Path, payload: dict[str, Any]) -> None:
     _atomic_write_text(path, yaml.safe_dump(payload, allow_unicode=True, sort_keys=False))
 
 
+def _render_usd(value: Decimal | None) -> str | None:
+    """Render a precise Decimal cost without insignificant trailing zeroes."""
+    return format(value.normalize(), "f") if value is not None else None
+
+
 def _load_response(path: Path) -> ChapterDraftResponse:
     payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return ChapterDraftResponse.model_validate(payload)
@@ -108,6 +121,8 @@ def run_chapter_draft(
     attempt: int = 1,
     gateway: _Gateway | None = None,
     budget: BookBudgetPolicy | None = None,
+    cost_policy: CostPolicyV2 | None = None,
+    cost_estimate: CostTokenEstimate | None = None,
 ) -> ChapterDraftResult:
     """Create or resume one recoverable chapter draft run.
 
@@ -161,6 +176,47 @@ def run_chapter_draft(
                     {"status": "blocked", "reason": stop_reason, "chapter_id": chapter_id},
                 )
                 raise BudgetExceededError(stop_reason)
+        if cost_policy is not None:
+            assessment = evaluate_cost_policy(
+                cost_policy,
+                scope=CostScope.CHAPTER,
+                spent_usd=Decimal(0),
+                estimate=cost_estimate,
+            )
+            _atomic_write_yaml(
+                run_dir / "cost_assessment.yaml",
+                {
+                    "status": assessment.status.value,
+                    "reason": assessment.reason,
+                    "scope": assessment.scope.value,
+                    "price_version": assessment.price_version,
+                    "estimate_usd": _render_usd(assessment.estimate_usd),
+                    "forecast_usd": _render_usd(assessment.forecast_usd),
+                },
+            )
+            if assessment.status is CostPolicyStatus.BLOCK:
+                _atomic_write_yaml(
+                    run_dir / "cost_circuit_breaker.yaml",
+                    {
+                        "status": "blocked",
+                        "reason": assessment.reason,
+                        "scope": assessment.scope.value,
+                        "price_version": assessment.price_version,
+                        "forecast_usd": _render_usd(assessment.forecast_usd),
+                    },
+                )
+                raise BudgetExceededError(assessment.reason or "cost policy blocked draft")
+            if assessment.status is CostPolicyStatus.WARN:
+                _atomic_write_yaml(
+                    run_dir / "cost_warning.yaml",
+                    {
+                        "status": "warn",
+                        "reason": assessment.reason,
+                        "scope": assessment.scope.value,
+                        "price_version": assessment.price_version,
+                        "forecast_usd": _render_usd(assessment.forecast_usd),
+                    },
+                )
         request_path = run_dir / "request.yaml"
         prompt_path = run_dir / "prompt.yaml"
         if request_path.is_file() and prompt_path.is_file():

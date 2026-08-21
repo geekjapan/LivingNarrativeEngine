@@ -15,13 +15,21 @@ from typing import Any
 import yaml
 from pydantic import TypeAdapter, ValidationError
 
-from living_narrative.book.cockpit import BookCockpit, build_book_cockpit
+from living_narrative.book.cockpit import BookBudgetCockpit, BookCockpit, build_book_cockpit
 from living_narrative.book.coordinator import (
     ChapterProductionResult,
     accept_chapter_review,
     request_chapter_revision,
     start_chapter_production,
 )
+from living_narrative.book.cost_policy import (
+    CostPolicyStatus,
+    CostPolicyV2,
+    CostScope,
+    CostTokenEstimate,
+    evaluate_cost_policy,
+)
+from living_narrative.book.usage import collect_book_usage
 from living_narrative.cli._common import read_narration_body
 from living_narrative.intervention.history import load_history
 from living_narrative.llm.costs import ModelPricing, ProjectCostSummary, collect_project_costs
@@ -298,15 +306,66 @@ def get_status(project_yaml: Path) -> ProjectStatus:
     )
 
 
+def _load_book_cost_policy(project_yaml: Path) -> CostPolicyV2 | None:
+    """Load optional book cost policy without exposing malformed configuration details."""
+    path = project_yaml.parent / "cost_policy.yaml"
+    if not path.is_file():
+        return None
+    try:
+        return CostPolicyV2.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")) or {})
+    except (OSError, yaml.YAMLError, ValidationError):
+        return None
+
+
+def _book_budget_cockpit(project_yaml: Path) -> BookBudgetCockpit | None:
+    """Project configured budget information without provider prompts or credentials."""
+    policy = _load_book_cost_policy(project_yaml)
+    if policy is None:
+        return None
+    if policy.price_snapshot is None:
+        return BookBudgetCockpit(
+            status=CostPolicyStatus.UNKNOWN.value,
+            reason="book USD budget cannot be evaluated",
+            resume_allowed=False,
+        )
+
+    usage = collect_book_usage(project_yaml, price_snapshot=policy.price_snapshot).book
+    assessment = evaluate_cost_policy(
+        policy,
+        scope=CostScope.BOOK,
+        spent_usd=usage.actual_usd,
+        estimate=CostTokenEstimate(input_tokens=0, output_tokens=0),
+    )
+    hard_usd = policy.budgets.get(CostScope.BOOK, None)
+    remaining_hard_usd = (
+        hard_usd.hard_usd - usage.actual_usd
+        if hard_usd is not None and hard_usd.hard_usd is not None and usage.actual_usd is not None
+        else None
+    )
+    forecast_usd = usage.actual_usd if usage.actual_usd is not None else usage.estimated_usd
+    return BookBudgetCockpit(
+        status=assessment.status.value,
+        reason=assessment.reason,
+        price_version=policy.price_snapshot.version,
+        actual_usd=usage.actual_usd,
+        estimated_usd=usage.estimated_usd,
+        variance_usd=usage.variance_usd,
+        forecast_usd=forecast_usd,
+        remaining_hard_usd=remaining_hard_usd,
+        resume_allowed=assessment.status is not CostPolicyStatus.BLOCK,
+    )
+
+
 def get_book_cockpit(project_yaml: Path) -> BookCockpit:
     """Project a long-form BookPlan/BookLedger view without private state."""
     read = load_project(project_yaml)
     if not read.is_valid:
         raise ProjectNotFoundError(str(project_yaml))
-    return build_book_cockpit(
+    cockpit = build_book_cockpit(
         StateStore.load(read.paths.state),
         can_operate=is_book_authoring_allowed(read.config.user_mode),
     )
+    return cockpit.model_copy(update={"budget": _book_budget_cockpit(project_yaml)})
 
 
 def accept_book_chapter(project_yaml: Path, chapter_id: str) -> ChapterProductionResult:
@@ -330,6 +389,9 @@ def start_book_chapter_run(project_yaml: Path, chapter_id: str) -> ProductionRun
     read = load_project(project_yaml)
     if not read.is_valid:
         raise ProjectNotFoundError(str(project_yaml))
+    budget = _book_budget_cockpit(project_yaml)
+    if budget is not None and not budget.resume_allowed:
+        raise ValueError(budget.reason or "book budget blocks chapter production")
     return start_chapter_production_run(project_yaml, chapter_id)
 
 
