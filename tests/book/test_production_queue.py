@@ -356,3 +356,31 @@ def test_operational_metrics_and_runbook_snapshot_are_reader_safe(tmp_path):
     assert "queue_total_jobs=1" in snapshot
     assert "prompt" not in snapshot
     assert str(project_yaml) not in snapshot
+
+
+def test_operational_metrics_excludes_private_execution_data(tmp_path):
+    project_yaml = _project(tmp_path)
+    queue = DurableProductionQueue()
+    queue.enqueue(project_yaml, "chapter_001")
+    claim = queue.claim(project_yaml, "worker-alpha")
+    assert claim is not None
+    queue.fail(project_yaml, claim, RuntimeError("PROMPT_SECRET\nTraceback: private body"))
+    queue.release(claim)
+
+    from living_narrative.book.production_observability import (
+        collect_production_operational_metrics,
+        render_production_runbook_snapshot,
+    )
+
+    metrics = collect_production_operational_metrics(project_yaml)
+    rendered = metrics.model_dump_json() + render_production_runbook_snapshot(metrics)
+
+    forbidden_values = (
+        "PROMPT_SECRET",
+        "Traceback",
+        "private body",
+        str(project_yaml),
+        "worker-alpha",
+    )
+    for forbidden in forbidden_values:
+        assert forbidden not in rendered
