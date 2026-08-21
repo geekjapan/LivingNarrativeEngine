@@ -52,3 +52,24 @@ def test_nine_chapter_fixture_matches_the_versioned_benchmark_baseline(tmp_path)
     assert observed.artifact_fingerprint == baseline["artifact_fingerprint"]
     assert observed.production_run_fingerprint == baseline["production_run_fingerprint"]
     assert str(output) not in baseline_path.read_text(encoding="utf-8")
+
+
+def test_benchmark_fixture_generator_creates_a_deterministic_hundred_chapter_project(tmp_path):
+    script = Path(__file__).parents[2] / "scripts" / "create_benchmark_fixture.py"
+    first_output = tmp_path / "first"
+    second_output = tmp_path / "second"
+
+    for output in (first_output, second_output):
+        result = subprocess.run(
+            [sys.executable, str(script), "--output", str(output), "--chapters", "100"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+    first = benchmark_book(load_project(first_output / "project.yaml").paths, name="ci-hundred")
+    second = benchmark_book(load_project(second_output / "project.yaml").paths, name="ci-hundred")
+
+    assert first.planned_chapters == 100
+    assert first.benchmark_fingerprint == second.benchmark_fingerprint
