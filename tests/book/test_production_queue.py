@@ -318,3 +318,22 @@ def test_queue_metrics_reports_oldest_active_lease_age_without_worker_identity(t
     assert metrics.oldest_lease_age_seconds >= 0
     assert "worker-alpha" not in metrics.model_dump_json()
     queue.release(claim)
+
+
+def test_queue_metrics_aggregates_sanitized_failure_codes_without_private_detail(tmp_path):
+    project_yaml = _project(tmp_path)
+    queue = DurableProductionQueue()
+    queue.enqueue(project_yaml, "chapter_001")
+    claim = queue.claim(project_yaml, "worker-alpha")
+    assert claim is not None
+    queue.fail(project_yaml, claim, TimeoutError("private provider response must not leak"))
+    queue.release(claim)
+
+    from living_narrative.book.production_queue import collect_production_queue_metrics
+
+    metrics = collect_production_queue_metrics(project_yaml)
+
+    assert metrics.failure_code_counts == {"timeouterror": 1}
+    rendered = metrics.model_dump_json()
+    assert "private provider response" not in rendered
+    assert "worker-alpha" not in rendered
