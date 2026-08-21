@@ -61,6 +61,7 @@ class ProjectProductionAdmission:
     """Resolved opt-in controller and reader-safe request identity for one project."""
 
     controller: ProductionAdmissionController
+    scheduler_root: Path
     book_id: str
     provider_profile_id: str
     actual_usd: Decimal | None
@@ -178,6 +179,7 @@ def load_project_production_admission(
     book_id = hashlib.sha256(read.config.id.encode("utf-8")).hexdigest()[:16]
     return ProjectProductionAdmission(
         controller=ProductionAdmissionController(scheduler_root, policy=config),
+        scheduler_root=scheduler_root,
         book_id=book_id,
         provider_profile_id=provider_profile_id,
         actual_usd=actual_usd,

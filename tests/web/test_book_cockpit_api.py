@@ -9,6 +9,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 import living_narrative.web.app as web_app  # noqa: E402
 from living_narrative.book.coordinator import apply_book_plan_proposal  # noqa: E402
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal  # noqa: E402
+from living_narrative.book.production_admission import (  # noqa: E402
+    load_project_production_admission,
+)
 from living_narrative.book.production_runner import (  # noqa: E402
     ChapterProductionRunStatus,
     ProductionRunPhase,
@@ -270,6 +273,32 @@ def test_book_cockpit_api_projects_reader_safe_production_operations(tmp_path):
             "oldest_lease_age_seconds": None,
             "failure_code_counts": {},
         }
+    }
+    assert "prompt" not in response.text
+    assert "credential" not in response.text
+    assert str(project_yaml) not in response.text
+
+
+def test_book_cockpit_api_projects_reader_safe_admission_operations_when_configured(tmp_path):
+    client, project_yaml = _client_with_book(tmp_path, return_project_yaml=True)
+    (project_yaml.parent / "production_admission.yaml").write_text(
+        "scheduler_root: shared-scheduler\nforecast_usd: '0.75'\n",
+        encoding="utf-8",
+    )
+    configured = load_project_production_admission(project_yaml)
+    assert configured is not None
+    admitted = configured.controller.try_admit(configured.request_for(project_yaml))
+    assert admitted.allowed is True
+
+    response = client.get("/api/project/book/book/cockpit")
+
+    assert response.status_code == 200
+    admission = response.json()["operations"]["admission"]
+    assert admission == {
+        "active_admissions": 1,
+        "reserved_usd": "0.75",
+        "deferred_reason_counts": {},
+        "oldest_admission_age_seconds": 0,
     }
     assert "prompt" not in response.text
     assert "credential" not in response.text

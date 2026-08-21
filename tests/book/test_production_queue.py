@@ -486,3 +486,36 @@ def test_operational_metrics_excludes_private_execution_data(tmp_path):
     )
     for forbidden in forbidden_values:
         assert forbidden not in rendered
+
+
+def test_worker_releases_project_admission_after_runner_failure(tmp_path, monkeypatch):
+    import pytest
+
+    project_yaml = _project(tmp_path)
+    (project_yaml.parent / "production_admission.yaml").write_text(
+        "scheduler_root: ../shared-scheduler\nmax_active_deliveries: 1\n",
+        encoding="utf-8",
+    )
+
+    def timeout_run(self, project, chapter_id, *, gateway=None, budget=None):
+        raise TimeoutError("provider timeout")
+
+    monkeypatch.setattr(
+        "living_narrative.book.production_queue.ChapterProductionRunner.run",
+        timeout_run,
+    )
+    queue = DurableProductionQueue()
+    queue.enqueue(project_yaml, "chapter_001")
+
+    with pytest.raises(TimeoutError):
+        DurableProductionWorker(queue).run_once(project_yaml, worker_id="worker-alpha")
+
+    configured = load_project_production_admission(project_yaml)
+    assert configured is not None
+    replacement = configured.controller.try_admit(
+        ProductionAdmissionRequest(
+            book_id="book-other",
+            provider_profile_id="provider-a/fiction",
+        )
+    )
+    assert replacement.allowed is True
