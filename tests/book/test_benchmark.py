@@ -253,3 +253,73 @@ def test_artifact_index_rebuilds_when_the_optional_cache_is_missing(tmp_path):
 
     assert rebuilt == first
     assert index_path.is_file()
+
+
+def test_artifact_index_persists_safe_metadata_and_rebuilds_after_integrity_mismatch(tmp_path):
+    workspace = _two_chapter_workspace(tmp_path)
+    chapters = workspace / "books" / "chapters"
+    attempt = record_chapter_attempt(
+        chapters,
+        ChapterCandidate(chapter_id="chapter_001", source_turns=[1], markdown="# candidate\n"),
+        _review("chapter_001"),
+    )
+    accept_chapter_attempt(chapters, "chapter_001", attempt.id)
+    run_dir = workspace / "runs" / "chapter_production" / "chapter_001" / "run_001"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "run_id": "run_001",
+                "chapter_id": "chapter_001",
+                "phase": "awaiting_author",
+            }
+        ),
+        encoding="utf-8",
+    )
+    publication = workspace / "exports" / "publication_manifest.yaml"
+    publication.parent.mkdir(parents=True, exist_ok=True)
+    publication.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "manuscript_sha256": "a" * 64,
+                "source_manuscript_manifest_sha256": "b" * 64,
+                "quality_gate": "accepted",
+                "license": "all-rights-reserved",
+                "formats": {"epub": {"filename": "book.epub", "sha256": "c" * 64}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from living_narrative.book.artifact_index import (
+        build_book_artifact_index,
+        ensure_book_artifact_index,
+        load_book_artifact_index,
+    )
+
+    built = build_book_artifact_index(workspace)
+
+    assert built.schema_version == 2
+    assert built.lineage_attempt_count == 1
+    assert built.production_run_count == 1
+    assert built.publication_format_count == 1
+    assert len(built.publication_manifest_sha256 or "") == 64
+    rendered = built.model_dump_json()
+    assert "candidate" not in rendered
+    assert "prompt" not in rendered
+    assert str(workspace) not in rendered
+    assert load_book_artifact_index(workspace) == built
+
+    index_path = workspace / "runs" / "book_artifact_index" / "index.yaml"
+    corrupted = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+    corrupted["index_sha256"] = "0" * 64
+    index_path.write_text(yaml.safe_dump(corrupted), encoding="utf-8")
+
+    import pytest
+
+    with pytest.raises(ValueError, match="book artifact index is invalid"):
+        load_book_artifact_index(workspace)
+    rebuilt = ensure_book_artifact_index(workspace)
+    assert rebuilt == built
