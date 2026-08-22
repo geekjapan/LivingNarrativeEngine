@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import yaml
 
-from living_narrative.book.benchmark import benchmark_book, write_book_benchmark_report
+from living_narrative.book.benchmark import (
+    BookBenchmarkSLO,
+    benchmark_book,
+    evaluate_book_benchmark_slo,
+    write_book_benchmark_report,
+)
 from living_narrative.book.chapters import ChapterCandidate
 from living_narrative.book.coordinator import apply_book_plan_proposal
 from living_narrative.book.lineage import accept_chapter_attempt, record_chapter_attempt
@@ -23,7 +28,8 @@ def test_book_benchmark_writes_public_stable_report_without_workspace_path(tmp_p
     assert observation.planned_chapters == 0
     assert observation.accepted_chapters == 0
     assert len(observation.artifact_fingerprint) == 64
-    assert '"schema_version": 2' in report
+    assert '"schema_version": 3' in report
+    assert '"duration_ms"' in report
     assert str(workspace) not in report
     assert "prompt" not in report
 
@@ -70,6 +76,29 @@ def _review(chapter_id: str) -> ChapterReview:
         decision=ChapterReviewDecision.ACCEPT,
         metrics=ChapterReviewMetrics(body_units=20, min_units=10, max_units=100),
     )
+
+
+def test_benchmark_records_reader_safe_duration_and_evaluates_explicit_slo(tmp_path):
+    workspace = _two_chapter_workspace(tmp_path)
+
+    observation = benchmark_book(workspace, name="slo")
+    passing = evaluate_book_benchmark_slo(
+        observation,
+        BookBenchmarkSLO(max_duration_ms=10_000),
+    )
+    failing = evaluate_book_benchmark_slo(
+        observation.model_copy(update={"duration_ms": 11}),
+        BookBenchmarkSLO(max_duration_ms=10),
+    )
+
+    assert observation.duration_ms >= 0
+    assert passing.within_budget is True
+    assert passing.max_duration_ms == 10_000
+    assert failing.within_budget is False
+    assert failing.reason == "benchmark duration exceeded"
+    rendered = observation.model_dump_json()
+    assert str(workspace) not in rendered
+    assert "prompt" not in rendered
 
 
 def test_benchmark_fingerprint_binds_chapter_lineage_and_accepted_attempt(tmp_path):
