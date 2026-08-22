@@ -54,7 +54,7 @@ jobs:
         env:
           FIXTURE_ROOT: artifacts/benchmark-fixture-${{ matrix.name }}
           REPORT_PATH: artifacts/book-benchmark-${{ matrix.name }}.json
-          BASELINE_PATH: tests/fixtures/benchmark-v2-baseline.json
+          BASELINE_PATH: tests/fixtures/benchmark-v3-baseline.json
         run: |
           rm -rf "$FIXTURE_ROOT"
           uv run python scripts/create_benchmark_fixture.py --output "$FIXTURE_ROOT"
@@ -68,16 +68,18 @@ jobs:
         env:
           FIXTURE_ROOT: artifacts/benchmark-fixture-hundred-${{ matrix.name }}
           REPORT_PATH: artifacts/book-benchmark-hundred-${{ matrix.name }}.json
-          BASELINE_PATH: tests/fixtures/benchmark-v2-hundred-baseline.json
+          BASELINE_PATH: tests/fixtures/benchmark-v3-hundred-baseline.json
         run: |
           rm -rf "$FIXTURE_ROOT"
           uv run python scripts/create_benchmark_fixture.py --output "$FIXTURE_ROOT" --chapters 100
           expected="$(uv run python -c "import json; print(json.load(open('$BASELINE_PATH', encoding='utf-8'))['benchmark_fingerprint'])")"
+          max_duration_ms="$(uv run python -c "import json; print(json.load(open('$BASELINE_PATH', encoding='utf-8'))['max_duration_ms'])")"
           uv run living-narrative book benchmark \
             --project "$FIXTURE_ROOT/project.yaml" \
             --name ci-hundred \
             --output "$REPORT_PATH" \
-            --expect-fingerprint "$expected"
+            --expect-fingerprint "$expected" \
+            --max-duration-ms "$max_duration_ms"
       - name: upload long-smoke report
         if: ${{ always() && hashFiles('artifacts/long-smoke-*.json') != '' }}
         uses: actions/upload-artifact@v4

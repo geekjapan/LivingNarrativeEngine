@@ -22,16 +22,33 @@ def test_book_benchmark_writes_public_stable_report_without_workspace_path(tmp_p
     workspace = project_yaml.parent / "workspace"
 
     observation = benchmark_book(workspace, name="empty-book")
-    report_path = write_book_benchmark_report(tmp_path / "report.json", [observation])
-    report = report_path.read_text(encoding="utf-8")
+    report_path = write_book_benchmark_report(
+        tmp_path / "report.json",
+        [observation],
+        slo=BookBenchmarkSLO(max_duration_ms=10_000),
+    )
+    report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
 
     assert observation.planned_chapters == 0
     assert observation.accepted_chapters == 0
     assert len(observation.artifact_fingerprint) == 64
-    assert '"schema_version": 3' in report
-    assert '"duration_ms"' in report
-    assert str(workspace) not in report
-    assert "prompt" not in report
+    assert report["schema_version"] == 3
+    assert report["books"][0]["duration_ms"] == observation.duration_ms
+    assert report["duration_slo"] == {
+        "max_duration_ms": 10_000,
+        "evaluations": [
+            {
+                "name": "empty-book",
+                "within_budget": True,
+                "duration_ms": observation.duration_ms,
+                "max_duration_ms": 10_000,
+                "reason": None,
+            }
+        ],
+    }
+    rendered = yaml.safe_dump(report, allow_unicode=True)
+    assert str(workspace) not in rendered
+    assert "prompt" not in rendered
 
 
 def _two_chapter_workspace(tmp_path):

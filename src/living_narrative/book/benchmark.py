@@ -196,16 +196,31 @@ def benchmark_book(workspace: Path | WorkspacePaths, *, name: str) -> BookBenchm
 
 
 def write_book_benchmark_report(
-    path: Path, observations: Sequence[BookBenchmarkObservation]
+    path: Path,
+    observations: Sequence[BookBenchmarkObservation],
+    *,
+    slo: BookBenchmarkSLO | None = None,
 ) -> Path:
     """Atomically write a comparison-friendly public report with no workspace paths or prompts."""
     names = [observation.name for observation in observations]
     if len(names) != len(set(names)):
         raise ValueError("benchmark observation names must be unique")
-    payload = {
+    payload: dict[str, object] = {
         "schema_version": 3,
         "books": [item.model_dump(mode="json") for item in observations],
     }
+    if slo is not None:
+        evaluations = [
+            {
+                "name": observation.name,
+                **evaluate_book_benchmark_slo(observation, slo).model_dump(mode="json"),
+            }
+            for observation in observations
+        ]
+        payload["duration_slo"] = {
+            "max_duration_ms": slo.max_duration_ms,
+            "evaluations": evaluations,
+        }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:

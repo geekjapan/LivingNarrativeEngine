@@ -96,9 +96,10 @@ def benchmark(
     read = load_project_or_exit(project)
     if read.paths is None:
         runtime_error(f"project paths unavailable: {project}")
+    slo = BookBenchmarkSLO(max_duration_ms=max_duration_ms) if max_duration_ms is not None else None
     try:
         observation = benchmark_book(read.paths, name=name)
-        report_path = write_book_benchmark_report(output, [observation])
+        report_path = write_book_benchmark_report(output, [observation], slo=slo)
     except (OSError, ValueError) as exc:
         runtime_error(str(exc))
     fingerprint_differs = (
@@ -110,15 +111,12 @@ def benchmark(
             "benchmark fingerprint differs: "
             f"expected {expected_fingerprint}, observed {observation.benchmark_fingerprint}"
         )
-    if max_duration_ms is not None:
-        slo = evaluate_book_benchmark_slo(
-            observation,
-            BookBenchmarkSLO(max_duration_ms=max_duration_ms),
-        )
-        if not slo.within_budget:
+    if slo is not None:
+        evaluation = evaluate_book_benchmark_slo(observation, slo)
+        if not evaluation.within_budget:
             runtime_error(
                 "benchmark duration exceeded: "
-                f"expected <= {slo.max_duration_ms}ms, observed {slo.duration_ms}ms"
+                f"expected <= {evaluation.max_duration_ms}ms, observed {evaluation.duration_ms}ms"
             )
     typer.echo(f"benchmark report: {report_path}")
 
