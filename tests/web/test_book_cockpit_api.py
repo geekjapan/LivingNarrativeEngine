@@ -272,7 +272,14 @@ def test_book_cockpit_api_projects_reader_safe_production_operations(tmp_path):
             "retry_count": 0,
             "oldest_lease_age_seconds": None,
             "failure_code_counts": {},
-        }
+            "delivery_duration_count": 0,
+            "delivery_duration_total_ms": 0,
+            "delivery_duration_max_ms": None,
+        },
+        "budget_stops": {
+            "total_stops": 0,
+            "reason_counts": {},
+        },
     }
     assert "prompt" not in response.text
     assert "credential" not in response.text
