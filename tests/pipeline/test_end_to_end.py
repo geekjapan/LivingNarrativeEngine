@@ -454,3 +454,41 @@ def test_multiple_llm_profiles_recorded_individually(tmp_path, build_project):
     assert len(meta["llm_calls"]) == 1
     assert meta["llm_calls"][0]["profile_name"] == "large"
     assert meta["llm_calls"][0]["model"] == "mock-large"
+
+
+def test_opted_in_narrative_quality_stops_short_narration_without_applying_state(
+    tmp_path, build_project, monkeypatch
+):
+    from living_narrative.pipeline import driver as driver_module
+
+    project_path = build_project(tmp_path)
+    project = yaml.safe_load(project_path.read_text(encoding="utf-8"))
+    project["narrative_quality"] = {
+        "enabled": True,
+        "minimum_narration_characters": 1200,
+        "maximum_consecutive_stall_turns": 2,
+        "target_narration_characters": 1600,
+    }
+    project_path.write_text(yaml.safe_dump(project, allow_unicode=True), encoding="utf-8")
+
+    def fake_run_narrate_phase(*, gateway, project, context, style, mood, tone_control):
+        return NarrationResult(text="短い候補。", style="novel"), {"mode": "llm", "style": "novel"}
+
+    monkeypatch.setattr(driver_module, "run_narrate_phase", fake_run_narrate_phase)
+
+    result = TurnPipeline().run(project_path, commit_mode="auto")
+
+    assert result.status == TurnStatus.STOPPED_FOR_REVIEW
+    state_diff = yaml.safe_load((result.turn_dir / "state_diff.yaml").read_text(encoding="utf-8"))
+    assert state_diff["applied"] is False
+    checks = yaml.safe_load((result.turn_dir / "checks.yaml").read_text(encoding="utf-8"))
+    findings = checks["findings"] if isinstance(checks, dict) else checks
+    quality_findings = [finding for finding in findings if finding["source"] == "narrative_quality"]
+    assert quality_findings == [
+        {
+            "severity": "error",
+            "message": "narration_too_short",
+            "source": "narrative_quality",
+            "related_ids": [],
+        }
+    ]

@@ -521,3 +521,42 @@ def test_turn_21_structured_output_failure_retries_before_renderer_fallback():
     assert record["mode"] == "llm"
     assert record["recovered_from"]["type"] == "StructuredOutputError"
     assert len(gateway.calls) == 2
+
+
+def test_llm_narrator_prompt_requires_opt_in_target_length_and_visible_causal_progress():
+    assert "narration_target_characters" in PROMPT_TEXT
+    assert "before/after" in PROMPT_TEXT
+    assert "行動・知覚・反応・場面変化" in PROMPT_TEXT
+    assert "与えられていない事実・出来事・人物の内心を新たに作らない" in PROMPT_TEXT
+    assert "隠された真相や事情を推測で書かない" in PROMPT_TEXT
+
+
+def test_llm_narrator_payload_exposes_target_only_for_opted_in_quality_gate():
+    disabled_project = _project({"narrator": "prose"})
+    enabled_project = _project({"narrator": "prose"})
+    enabled_project.narrative_quality.enabled = True
+    enabled_project.narrative_quality.target_narration_characters = 1600
+    disabled_gateway = FakeGateway(result=LLMNarratorOutput(prose="霧の底で、彼は歩き出した。"))
+    enabled_gateway = FakeGateway(result=LLMNarratorOutput(prose="霧の底で、彼は歩き出した。"))
+
+    run_narrate_phase(
+        gateway=disabled_gateway,
+        project=disabled_project,
+        context=_context(),
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+    run_narrate_phase(
+        gateway=enabled_gateway,
+        project=enabled_project,
+        context=_context(),
+        style="novel",
+        mood="緊張",
+        tone_control=None,
+    )
+
+    disabled_payload = json.loads(disabled_gateway.calls[0]["messages"][1]["content"])
+    enabled_payload = json.loads(enabled_gateway.calls[0]["messages"][1]["content"])
+    assert "narration_target_characters" not in disabled_payload
+    assert enabled_payload["narration_target_characters"] == 1600
