@@ -107,6 +107,9 @@ class ProductionQueueMetrics(BaseModel):
     retry_count: int = Field(ge=0)
     oldest_lease_age_seconds: int | None = Field(default=None, ge=0)
     failure_code_counts: dict[str, int] = Field(default_factory=dict)
+    delivery_duration_count: int = Field(default=0, ge=0)
+    delivery_duration_total_ms: int = Field(default=0, ge=0)
+    delivery_duration_max_ms: int | None = Field(default=None, ge=0)
 
 
 @dataclass(frozen=True)
@@ -188,7 +191,10 @@ def collect_production_queue_metrics(project_yaml: Path) -> ProductionQueueMetri
         raise ValueError(f"invalid project: {project_yaml}")
     paths = read.paths
     with project_lock(paths.root):
-        jobs = _read_snapshot(paths.runs / "chapter_production_queue" / "queue.yaml").jobs
+        queue_dir = paths.runs / "chapter_production_queue"
+        jobs = _read_snapshot(queue_dir / "queue.yaml").jobs
+        event_paths = sorted((queue_dir / "events").glob("*.yaml"))
+        events = [_read_queue_event(path) for path in event_paths]
     counts = {state: 0 for state in QueueJobState}
     lease_ages: list[int] = []
     failure_code_counts: dict[str, int] = {}
@@ -200,6 +206,7 @@ def collect_production_queue_metrics(project_yaml: Path) -> ProductionQueueMetri
         if job.state is QueueJobState.LEASED and job.lease_heartbeat_at is not None:
             age_seconds = int((now - _parse_timestamp(job.lease_heartbeat_at)).total_seconds())
             lease_ages.append(max(0, age_seconds))
+    delivery_durations_ms = _delivery_durations_ms(events)
     return ProductionQueueMetrics(
         total_jobs=len(jobs),
         queued_jobs=counts[QueueJobState.QUEUED],
@@ -210,7 +217,41 @@ def collect_production_queue_metrics(project_yaml: Path) -> ProductionQueueMetri
         retry_count=sum(max(0, job.delivery_count - 1) for job in jobs),
         oldest_lease_age_seconds=max(lease_ages, default=None),
         failure_code_counts=failure_code_counts,
+        delivery_duration_count=len(delivery_durations_ms),
+        delivery_duration_total_ms=sum(delivery_durations_ms),
+        delivery_duration_max_ms=max(delivery_durations_ms, default=None),
     )
+
+
+def _read_queue_event(path: Path) -> dict[str, Any]:
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ProductionQueueCorruptionError("chapter production queue is invalid") from exc
+    if not isinstance(payload, dict):
+        raise ProductionQueueCorruptionError("chapter production queue is invalid")
+    return payload
+
+
+def _delivery_durations_ms(events: list[dict[str, Any]]) -> list[int]:
+    leased_at: dict[str, datetime] = {}
+    durations: list[int] = []
+    for event in events:
+        job_id = event.get("job_id")
+        recorded_at = event.get("recorded_at")
+        if not isinstance(job_id, str) or not isinstance(recorded_at, str):
+            continue
+        if event.get("event") == "leased":
+            leased_at[job_id] = _parse_timestamp(recorded_at)
+            continue
+        if event.get("event") not in {"completed", "failed"}:
+            continue
+        started_at = leased_at.pop(job_id, None)
+        if started_at is None:
+            continue
+        duration_ms = int((_parse_timestamp(recorded_at) - started_at).total_seconds() * 1000)
+        durations.append(max(0, duration_ms))
+    return durations
 
 
 class DurableProductionQueue:

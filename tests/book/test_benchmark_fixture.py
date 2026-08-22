@@ -5,7 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from living_narrative.book.benchmark import benchmark_book
+from living_narrative.book.benchmark import (
+    BookBenchmarkSLO,
+    benchmark_book,
+    evaluate_book_benchmark_slo,
+)
 from living_narrative.workspace.loader import load_project
 
 
@@ -35,7 +39,7 @@ def test_benchmark_fixture_generator_creates_a_deterministic_nine_chapter_projec
 def test_nine_chapter_fixture_matches_the_versioned_benchmark_baseline(tmp_path):
     script = Path(__file__).parents[2] / "scripts" / "create_benchmark_fixture.py"
     output = tmp_path / "fixture"
-    baseline_path = Path(__file__).parents[1] / "fixtures" / "benchmark-v2-baseline.json"
+    baseline_path = Path(__file__).parents[1] / "fixtures" / "benchmark-v3-baseline.json"
     subprocess.run(
         [sys.executable, str(script), "--output", str(output)],
         check=True,
@@ -46,8 +50,9 @@ def test_nine_chapter_fixture_matches_the_versioned_benchmark_baseline(tmp_path)
     observed = benchmark_book(load_project(output / "project.yaml").paths, name="ci-nine")
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
-    assert baseline["schema_version"] == 2
+    assert baseline["schema_version"] == 3
     assert baseline["fixture"] == "ci-nine"
+    assert baseline["max_duration_ms"] == 10_000
     assert observed.benchmark_fingerprint == baseline["benchmark_fingerprint"]
     assert observed.artifact_fingerprint == baseline["artifact_fingerprint"]
     assert observed.production_run_fingerprint == baseline["production_run_fingerprint"]
@@ -78,7 +83,7 @@ def test_benchmark_fixture_generator_creates_a_deterministic_hundred_chapter_pro
 def test_hundred_chapter_fixture_matches_the_versioned_benchmark_baseline(tmp_path):
     script = Path(__file__).parents[2] / "scripts" / "create_benchmark_fixture.py"
     output = tmp_path / "fixture"
-    baseline_path = Path(__file__).parents[1] / "fixtures" / "benchmark-v2-hundred-baseline.json"
+    baseline_path = Path(__file__).parents[1] / "fixtures" / "benchmark-v3-hundred-baseline.json"
     subprocess.run(
         [sys.executable, str(script), "--output", str(output), "--chapters", "100"],
         check=True,
@@ -89,8 +94,16 @@ def test_hundred_chapter_fixture_matches_the_versioned_benchmark_baseline(tmp_pa
     observed = benchmark_book(load_project(output / "project.yaml").paths, name="ci-hundred")
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
-    assert baseline["schema_version"] == 2
+    assert baseline["schema_version"] == 3
     assert baseline["fixture"] == "ci-hundred"
+    assert baseline["max_duration_ms"] == 10_000
+    assert (
+        evaluate_book_benchmark_slo(
+            observed,
+            BookBenchmarkSLO(max_duration_ms=baseline["max_duration_ms"]),
+        ).within_budget
+        is True
+    )
     assert observed.benchmark_fingerprint == baseline["benchmark_fingerprint"]
     assert observed.artifact_fingerprint == baseline["artifact_fingerprint"]
     assert observed.production_run_fingerprint == baseline["production_run_fingerprint"]

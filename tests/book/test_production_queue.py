@@ -12,6 +12,7 @@ from living_narrative.book.production_queue import (
     DurableProductionQueue,
     DurableProductionWorker,
     QueueJobState,
+    collect_production_queue_metrics,
 )
 from living_narrative.book.production_runner import (
     ChapterProductionRunStatus,
@@ -326,6 +327,40 @@ def test_worker_renews_its_lease_while_the_runner_is_executing(tmp_path, monkeyp
     assert queue.status(project_yaml, "chapter_001").state is QueueJobState.COMPLETED
 
 
+def test_queue_metrics_aggregate_reader_safe_delivery_durations(tmp_path, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    project_yaml = _project(tmp_path)
+    current = datetime(2026, 8, 22, 4, 0, tzinfo=UTC)
+    monkeypatch.setattr("living_narrative.book.production_queue._utc_now", lambda: current)
+    queue = DurableProductionQueue()
+    queue.enqueue(project_yaml, "chapter_001")
+    current += timedelta(seconds=5)
+    claim = queue.claim(project_yaml, "worker-alpha")
+    assert claim is not None
+    current += timedelta(seconds=25)
+    queue.complete(
+        project_yaml,
+        claim,
+        ChapterProductionRunStatus(
+            run_id="generation_example_revision_001",
+            chapter_id="chapter_001",
+            phase=ProductionRunPhase.AWAITING_AUTHOR,
+            lifecycle=ChapterLifecycle.REVIEW,
+        ),
+    )
+    queue.release(claim)
+
+    metrics = collect_production_queue_metrics(project_yaml)
+
+    assert metrics.delivery_duration_count == 1
+    assert metrics.delivery_duration_total_ms == 25_000
+    assert metrics.delivery_duration_max_ms == 25_000
+    rendered = metrics.model_dump_json()
+    assert "worker-alpha" not in rendered
+    assert "chapter_001" not in rendered
+
+
 def test_queue_allows_only_one_leased_delivery_per_book(tmp_path):
     project_yaml = create_project(tmp_path / "book", title="Book")
     proposal = build_book_plan_proposal(
@@ -485,6 +520,48 @@ def test_operational_metrics_excludes_private_execution_data(tmp_path):
         "worker-alpha",
     )
     for forbidden in forbidden_values:
+        assert forbidden not in rendered
+
+
+def test_operational_metrics_aggregate_budget_stops_with_a_safe_taxonomy(tmp_path):
+    project_yaml = _project(tmp_path)
+    run_root = project_yaml.parent / "workspace" / "runs" / "chapter_production"
+    known_stop = run_root / "chapter_001" / "generation_current_revision_001"
+    private_stop = run_root / "chapter_002" / "generation_private_revision_001"
+    known_stop.mkdir(parents=True)
+    private_stop.mkdir(parents=True)
+    (known_stop / "stop_requested.yaml").write_text(
+        "source: budget\nreason: chapter attempt budget exceeded\n",
+        encoding="utf-8",
+    )
+    (private_stop / "stop_requested.yaml").write_text(
+        "source: budget\n"
+        "reason: candidate body PROMPT_SECRET credential GM private context /abs/path\n",
+        encoding="utf-8",
+    )
+
+    from living_narrative.book.production_observability import (
+        collect_production_operational_metrics,
+        render_production_runbook_snapshot,
+    )
+
+    metrics = collect_production_operational_metrics(project_yaml)
+    rendered = metrics.model_dump_json() + render_production_runbook_snapshot(metrics)
+
+    assert metrics.budget_stops.total_stops == 2
+    assert metrics.budget_stops.reason_counts == {
+        "chapter_attempt_limit": 1,
+        "other_budget_policy": 1,
+    }
+    assert "budget_stop_total=2" in rendered
+    for forbidden in (
+        "candidate body",
+        "PROMPT_SECRET",
+        "credential",
+        "GM private context",
+        "/abs/path",
+        str(project_yaml),
+    ):
         assert forbidden not in rendered
 
 

@@ -256,7 +256,7 @@ def test_book_benchmark_writes_a_reader_safe_read_only_report(tmp_path):
 
     assert result.exit_code == 0, result.output
     report = yaml.safe_load(output_path.read_text(encoding="utf-8"))
-    assert report["schema_version"] == 2
+    assert report["schema_version"] == 3
     assert len(report["books"]) == 1
     book = report["books"][0]
     assert book["name"] == "one-chapter"
@@ -299,6 +299,68 @@ def test_book_benchmark_returns_runtime_error_when_expected_fingerprint_differs(
     assert result.exit_code == 1
     assert "benchmark fingerprint differs" in result.output
     assert output_path.is_file()
+
+
+def test_book_benchmark_accepts_an_explicit_duration_slo(tmp_path):
+    project_yaml = _production_project(tmp_path)
+    output_path = tmp_path / "benchmark.json"
+
+    result = runner.invoke(
+        app,
+        [
+            "book",
+            "benchmark",
+            "--project",
+            str(project_yaml),
+            "--name",
+            "one-chapter-slo",
+            "--output",
+            str(output_path),
+            "--max-duration-ms",
+            "10000",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    report = yaml.safe_load(output_path.read_text(encoding="utf-8"))
+    assert report["books"][0]["duration_ms"] >= 0
+    assert report["duration_slo"]["max_duration_ms"] == 10_000
+    assert report["duration_slo"]["evaluations"][0]["within_budget"] is True
+    rendered = yaml.safe_dump(report, allow_unicode=True)
+    assert "prompt" not in rendered
+
+
+def test_book_benchmark_writes_report_before_a_duration_slo_failure(tmp_path, monkeypatch):
+    project_yaml = _production_project(tmp_path)
+    output_path = tmp_path / "benchmark.json"
+    original_benchmark = book_module.benchmark_book
+
+    def slow_benchmark(workspace, *, name):
+        return original_benchmark(workspace, name=name).model_copy(update={"duration_ms": 1})
+
+    monkeypatch.setattr(book_module, "benchmark_book", slow_benchmark)
+
+    result = runner.invoke(
+        app,
+        [
+            "book",
+            "benchmark",
+            "--project",
+            str(project_yaml),
+            "--name",
+            "one-chapter-slo-failure",
+            "--output",
+            str(output_path),
+            "--max-duration-ms",
+            "0",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "benchmark duration exceeded: expected <= 0ms, observed 1ms" in result.output
+    report = yaml.safe_load(output_path.read_text(encoding="utf-8"))
+    assert report["schema_version"] == 3
+    assert report["books"][0]["duration_ms"] == 1
 
 
 def test_book_benchmark_rejects_an_invalid_project_as_usage_error(tmp_path):

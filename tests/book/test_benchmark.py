@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import yaml
 
-from living_narrative.book.benchmark import benchmark_book, write_book_benchmark_report
+from living_narrative.book.benchmark import (
+    BookBenchmarkSLO,
+    benchmark_book,
+    evaluate_book_benchmark_slo,
+    write_book_benchmark_report,
+)
 from living_narrative.book.chapters import ChapterCandidate
 from living_narrative.book.coordinator import apply_book_plan_proposal
 from living_narrative.book.lineage import accept_chapter_attempt, record_chapter_attempt
@@ -17,15 +22,33 @@ def test_book_benchmark_writes_public_stable_report_without_workspace_path(tmp_p
     workspace = project_yaml.parent / "workspace"
 
     observation = benchmark_book(workspace, name="empty-book")
-    report_path = write_book_benchmark_report(tmp_path / "report.json", [observation])
-    report = report_path.read_text(encoding="utf-8")
+    report_path = write_book_benchmark_report(
+        tmp_path / "report.json",
+        [observation],
+        slo=BookBenchmarkSLO(max_duration_ms=10_000),
+    )
+    report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
 
     assert observation.planned_chapters == 0
     assert observation.accepted_chapters == 0
     assert len(observation.artifact_fingerprint) == 64
-    assert '"schema_version": 2' in report
-    assert str(workspace) not in report
-    assert "prompt" not in report
+    assert report["schema_version"] == 3
+    assert report["books"][0]["duration_ms"] == observation.duration_ms
+    assert report["duration_slo"] == {
+        "max_duration_ms": 10_000,
+        "evaluations": [
+            {
+                "name": "empty-book",
+                "within_budget": True,
+                "duration_ms": observation.duration_ms,
+                "max_duration_ms": 10_000,
+                "reason": None,
+            }
+        ],
+    }
+    rendered = yaml.safe_dump(report, allow_unicode=True)
+    assert str(workspace) not in rendered
+    assert "prompt" not in rendered
 
 
 def _two_chapter_workspace(tmp_path):
@@ -70,6 +93,29 @@ def _review(chapter_id: str) -> ChapterReview:
         decision=ChapterReviewDecision.ACCEPT,
         metrics=ChapterReviewMetrics(body_units=20, min_units=10, max_units=100),
     )
+
+
+def test_benchmark_records_reader_safe_duration_and_evaluates_explicit_slo(tmp_path):
+    workspace = _two_chapter_workspace(tmp_path)
+
+    observation = benchmark_book(workspace, name="slo")
+    passing = evaluate_book_benchmark_slo(
+        observation,
+        BookBenchmarkSLO(max_duration_ms=10_000),
+    )
+    failing = evaluate_book_benchmark_slo(
+        observation.model_copy(update={"duration_ms": 11}),
+        BookBenchmarkSLO(max_duration_ms=10),
+    )
+
+    assert observation.duration_ms >= 0
+    assert passing.within_budget is True
+    assert passing.max_duration_ms == 10_000
+    assert failing.within_budget is False
+    assert failing.reason == "benchmark duration exceeded"
+    rendered = observation.model_dump_json()
+    assert str(workspace) not in rendered
+    assert "prompt" not in rendered
 
 
 def test_benchmark_fingerprint_binds_chapter_lineage_and_accepted_attempt(tmp_path):
@@ -224,3 +270,73 @@ def test_artifact_index_rebuilds_when_the_optional_cache_is_missing(tmp_path):
 
     assert rebuilt == first
     assert index_path.is_file()
+
+
+def test_artifact_index_persists_safe_metadata_and_rebuilds_after_integrity_mismatch(tmp_path):
+    workspace = _two_chapter_workspace(tmp_path)
+    chapters = workspace / "books" / "chapters"
+    attempt = record_chapter_attempt(
+        chapters,
+        ChapterCandidate(chapter_id="chapter_001", source_turns=[1], markdown="# candidate\n"),
+        _review("chapter_001"),
+    )
+    accept_chapter_attempt(chapters, "chapter_001", attempt.id)
+    run_dir = workspace / "runs" / "chapter_production" / "chapter_001" / "run_001"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "run_id": "run_001",
+                "chapter_id": "chapter_001",
+                "phase": "awaiting_author",
+            }
+        ),
+        encoding="utf-8",
+    )
+    publication = workspace / "exports" / "publication_manifest.yaml"
+    publication.parent.mkdir(parents=True, exist_ok=True)
+    publication.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "manuscript_sha256": "a" * 64,
+                "source_manuscript_manifest_sha256": "b" * 64,
+                "quality_gate": "accepted",
+                "license": "all-rights-reserved",
+                "formats": {"epub": {"filename": "book.epub", "sha256": "c" * 64}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from living_narrative.book.artifact_index import (
+        build_book_artifact_index,
+        ensure_book_artifact_index,
+        load_book_artifact_index,
+    )
+
+    built = build_book_artifact_index(workspace)
+
+    assert built.schema_version == 2
+    assert built.lineage_attempt_count == 1
+    assert built.production_run_count == 1
+    assert built.publication_format_count == 1
+    assert len(built.publication_manifest_sha256 or "") == 64
+    rendered = built.model_dump_json()
+    assert "candidate" not in rendered
+    assert "prompt" not in rendered
+    assert str(workspace) not in rendered
+    assert load_book_artifact_index(workspace) == built
+
+    index_path = workspace / "runs" / "book_artifact_index" / "index.yaml"
+    corrupted = yaml.safe_load(index_path.read_text(encoding="utf-8"))
+    corrupted["index_sha256"] = "0" * 64
+    index_path.write_text(yaml.safe_dump(corrupted), encoding="utf-8")
+
+    import pytest
+
+    with pytest.raises(ValueError, match="book artifact index is invalid"):
+        load_book_artifact_index(workspace)
+    rebuilt = ensure_book_artifact_index(workspace)
+    assert rebuilt == built

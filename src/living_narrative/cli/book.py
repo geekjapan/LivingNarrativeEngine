@@ -12,7 +12,12 @@ import typer
 import yaml
 from pydantic import ValidationError
 
-from living_narrative.book.benchmark import benchmark_book, write_book_benchmark_report
+from living_narrative.book.benchmark import (
+    BookBenchmarkSLO,
+    benchmark_book,
+    evaluate_book_benchmark_slo,
+    write_book_benchmark_report,
+)
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
 from living_narrative.book.production_runner import (
     ChapterProductionRunner,
@@ -78,14 +83,23 @@ def benchmark(
             help="Expected combined benchmark fingerprint; mismatch exits with code 1",
         ),
     ] = None,
+    max_duration_ms: Annotated[
+        int | None,
+        typer.Option(
+            "--max-duration-ms",
+            min=0,
+            help="Maximum reader-safe benchmark duration; excess exits with code 1",
+        ),
+    ] = None,
 ) -> None:
     """Write a read-only, reader-safe Book benchmark report for one project."""
     read = load_project_or_exit(project)
     if read.paths is None:
         runtime_error(f"project paths unavailable: {project}")
+    slo = BookBenchmarkSLO(max_duration_ms=max_duration_ms) if max_duration_ms is not None else None
     try:
         observation = benchmark_book(read.paths, name=name)
-        report_path = write_book_benchmark_report(output, [observation])
+        report_path = write_book_benchmark_report(output, [observation], slo=slo)
     except (OSError, ValueError) as exc:
         runtime_error(str(exc))
     fingerprint_differs = (
@@ -97,6 +111,13 @@ def benchmark(
             "benchmark fingerprint differs: "
             f"expected {expected_fingerprint}, observed {observation.benchmark_fingerprint}"
         )
+    if slo is not None:
+        evaluation = evaluate_book_benchmark_slo(observation, slo)
+        if not evaluation.within_budget:
+            runtime_error(
+                "benchmark duration exceeded: "
+                f"expected <= {evaluation.max_duration_ms}ms, observed {evaluation.duration_ms}ms"
+            )
     typer.echo(f"benchmark report: {report_path}")
 
 

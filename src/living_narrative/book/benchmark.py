@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,21 @@ from living_narrative.state.diff import fsync_directory
 from living_narrative.state.models import ChapterLifecycle
 from living_narrative.state.store import StateStore
 from living_narrative.workspace.loader import WorkspacePaths
+
+
+class BookBenchmarkSLO(BaseModel):
+    """Explicit, reader-safe maximum duration for one benchmark observation."""
+
+    max_duration_ms: int = Field(ge=0)
+
+
+class BookBenchmarkSLOEvaluation(BaseModel):
+    """Reader-safe outcome of applying one benchmark duration budget."""
+
+    within_budget: bool
+    duration_ms: int = Field(ge=0)
+    max_duration_ms: int = Field(ge=0)
+    reason: str | None = None
 
 
 class BookBenchmarkObservation(BaseModel):
@@ -38,6 +54,21 @@ class BookBenchmarkObservation(BaseModel):
     production_run_event_count: int = Field(default=0, ge=0)
     production_run_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     benchmark_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    duration_ms: int = Field(default=0, ge=0)
+
+
+def evaluate_book_benchmark_slo(
+    observation: BookBenchmarkObservation,
+    slo: BookBenchmarkSLO,
+) -> BookBenchmarkSLOEvaluation:
+    """Evaluate an explicit benchmark duration SLO without mutating any artifact."""
+    within_budget = observation.duration_ms <= slo.max_duration_ms
+    return BookBenchmarkSLOEvaluation(
+        within_budget=within_budget,
+        duration_ms=observation.duration_ms,
+        max_duration_ms=slo.max_duration_ms,
+        reason=None if within_budget else "benchmark duration exceeded",
+    )
 
 
 def _read_public_run_mapping(path: Path) -> dict[str, Any]:
@@ -104,6 +135,7 @@ def benchmark_book(workspace: Path | WorkspacePaths, *, name: str) -> BookBenchm
     Accepts the resolved ``load_project()`` paths so a configured ``workspace.state`` is measured
     instead of the default layout.
     """
+    started_at_ns = time.perf_counter_ns()
     workspace_root, state_dir, runs_dir = resolve_workspace_dirs(workspace)
     bundle = StateStore.load(state_dir)
     chapter_ids = [chapter.id for chapter in bundle.book_plan.chapters]
@@ -158,21 +190,37 @@ def benchmark_book(workspace: Path | WorkspacePaths, *, name: str) -> BookBenchm
         artifact_fingerprint=artifact_fingerprint,
         production_run_fingerprint=production_run_fingerprint,
         benchmark_fingerprint=benchmark_fingerprint,
+        duration_ms=(time.perf_counter_ns() - started_at_ns) // 1_000_000,
         **run_counts,
     )
 
 
 def write_book_benchmark_report(
-    path: Path, observations: Sequence[BookBenchmarkObservation]
+    path: Path,
+    observations: Sequence[BookBenchmarkObservation],
+    *,
+    slo: BookBenchmarkSLO | None = None,
 ) -> Path:
     """Atomically write a comparison-friendly public report with no workspace paths or prompts."""
     names = [observation.name for observation in observations]
     if len(names) != len(set(names)):
         raise ValueError("benchmark observation names must be unique")
-    payload = {
-        "schema_version": 2,
+    payload: dict[str, object] = {
+        "schema_version": 3,
         "books": [item.model_dump(mode="json") for item in observations],
     }
+    if slo is not None:
+        evaluations = [
+            {
+                "name": observation.name,
+                **evaluate_book_benchmark_slo(observation, slo).model_dump(mode="json"),
+            }
+            for observation in observations
+        ]
+        payload["duration_slo"] = {
+            "max_duration_ms": slo.max_duration_ms,
+            "evaluations": evaluations,
+        }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:

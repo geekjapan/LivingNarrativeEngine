@@ -1,6 +1,7 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "fixture": "ci-hundred",
+  "max_duration_ms": 10000,
   "benchmark_fingerprint": "e2a62bb87ffaa66a7f85ffb8d846b6b4bc878d15eb6acf84687c6e0466294db4",
   "artifact_fingerprint": "2dddb8492cd8a2c61269f7b3ebf635e070180084b47c28c261837d98c1ce7ed8",
   "production_run_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
