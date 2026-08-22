@@ -153,6 +153,29 @@ run metadata、30個のturn entry、`metrics.json`の内容、resume結果を埋
 call数、`mode: llm`だったturn、`mode: renderer_fallback`だったturnと秘密を含まない理由を記録する。
 call数が0またはrenderer fallbackが1件以上ならrunを`FAIL`とする。
 
+### v0.9.0: 提出前の機械検証
+
+Issue 133の`validate_real_llm_benchmark_artifact(path, expected_revision)`は、保存済みJSONを
+**read-only**で検証する。30ターンの連番・`applied`状態、revision、provider failure、narrator
+fallback、15→16 resume、leak scan、禁止key、credential付きprovider URL、absolute source pathを
+確認する。結果は`passed`、固定reason code、turn count、revision comparisonだけであり、narration、
+prompt、credential、private context、pathを返さない。
+
+validatorのPASSは、実LLMを実行したことやR1–R8の人手判定を置換しない。FAILの場合はartifact本文を
+出力やチケットへ貼らず、固定reason codeを手掛かりにsandbox内の正本を安全に調査する。
+
+```python
+from pathlib import Path
+
+from living_narrative.release_evidence import validate_real_llm_benchmark_artifact
+
+validation = validate_real_llm_benchmark_artifact(
+    Path("sandbox/<run-id>/benchmark.json"),
+    expected_revision="<release-candidate-commit>",
+)
+assert validation.passed, validation.reason_codes
+```
+
 ## 4. Markdownへ転記する
 
 Markdownは`docs/evaluations/YYYY-MM-DD-<run-id>-benchmark.md`として保存し、
