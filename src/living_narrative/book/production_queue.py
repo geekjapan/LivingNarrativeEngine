@@ -11,6 +11,7 @@ import fcntl
 import hashlib
 import os
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -22,6 +23,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 from living_narrative.book.coordinator import plan_generation
 from living_narrative.book.lineage import load_chapter_lineage
+from living_narrative.book.production_admission import (
+    ProductionAdmissionController,
+    ProductionAdmissionLease,
+    ProductionAdmissionRequest,
+    load_project_production_admission,
+)
 from living_narrative.book.production_runner import (
     ChapterProductionRunner,
     ChapterProductionRunStatus,
@@ -371,6 +378,25 @@ class DurableProductionQueue:
             self._write_snapshot(paths, snapshot)
             return self._status(job)
 
+    def defer(self, project_yaml: Path, claim: _QueueClaim, reason: str) -> None:
+        """Return an owned delivery to the queue after a temporary admission deferral."""
+        paths = self._paths(project_yaml)
+        with project_lock(paths.root):
+            snapshot = _read_snapshot(self._snapshot_path(paths))
+            job = self._find_job(snapshot, claim.job_id)
+            self._assert_claim(job, claim)
+            job.state = QueueJobState.QUEUED
+            job.worker_id = None
+            job.lease_heartbeat_at = None
+            job.lease_expires_at = None
+            job.updated_at = _timestamp(_utc_now())
+            _write_event(
+                self._events_dir(paths),
+                "deferred",
+                {"job_id": job.job_id, "chapter_id": job.chapter_id, "reason": reason},
+            )
+            self._write_snapshot(paths, snapshot)
+
     def complete(
         self,
         project_yaml: Path,
@@ -528,11 +554,19 @@ class DurableProductionWorker:
         queue: DurableProductionQueue | None = None,
         *,
         heartbeat_interval_seconds: float = 20.0,
+        admission_controller: ProductionAdmissionController | None = None,
+        admission_request: Callable[[Path], ProductionAdmissionRequest] | None = None,
     ) -> None:
         if heartbeat_interval_seconds <= 0:
             raise ValueError("heartbeat_interval_seconds must be positive")
+        if (admission_controller is None) != (admission_request is None):
+            raise ValueError(
+                "admission_controller and admission_request must be configured together"
+            )
         self._queue = queue or DurableProductionQueue()
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
+        self._admission_controller = admission_controller
+        self._admission_request = admission_request
 
     def run_once(self, project_yaml: Path, *, worker_id: str) -> WorkerRunResult:
         """Claim one job, execute the runner once, and durably publish the outcome."""
@@ -541,8 +575,28 @@ class DurableProductionWorker:
             return WorkerRunResult(claimed=False)
         stop_heartbeats = threading.Event()
         heartbeat_thread: threading.Thread | None = None
+        admission_lease: ProductionAdmissionLease | None = None
+        admission_controller = self._admission_controller
+        admission_request = self._admission_request
         try:
             chapter_id = self._queue.job_for_claim(project_yaml, claim)
+            if admission_controller is None:
+                configured = load_project_production_admission(project_yaml)
+                if configured is not None:
+                    admission_controller = configured.controller
+                    admission_request = configured.request_for
+            if admission_controller is not None and admission_request is not None:
+                request = admission_request(project_yaml)
+                decision = admission_controller.try_admit(request)
+                if not decision.allowed:
+                    self._queue.defer(
+                        project_yaml,
+                        claim,
+                        decision.reason or "admission temporarily unavailable",
+                    )
+                    return WorkerRunResult(claimed=False)
+                assert decision.lease is not None
+                admission_lease = decision.lease
             heartbeat_thread = threading.Thread(
                 target=self._heartbeat_until_done,
                 args=(project_yaml, claim, stop_heartbeats),
@@ -566,6 +620,9 @@ class DurableProductionWorker:
             stop_heartbeats.set()
             if heartbeat_thread is not None:
                 heartbeat_thread.join(timeout=self._heartbeat_interval_seconds + 1.0)
+            if admission_lease is not None:
+                assert admission_controller is not None
+                admission_controller.release(admission_lease)
             self._queue.release(claim)
 
     def _heartbeat_until_done(

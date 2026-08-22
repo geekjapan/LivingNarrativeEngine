@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from living_narrative.book.coordinator import apply_book_plan_proposal
 from living_narrative.book.planning import StoryBible, build_book_plan_proposal
+from living_narrative.book.production_admission import (
+    ProductionAdmissionController,
+    ProductionAdmissionPolicy,
+    ProductionAdmissionRequest,
+    load_project_production_admission,
+)
 from living_narrative.book.production_queue import (
     DurableProductionQueue,
     DurableProductionWorker,
@@ -91,6 +97,102 @@ def test_queue_enqueues_idempotently_and_worker_completes_reader_safe_status(tmp
         "attempt_id": "attempt_001",
         "resumed": False,
     }
+
+
+def test_worker_defers_queue_delivery_when_admission_is_unavailable(tmp_path, monkeypatch):
+    project_yaml = _project(tmp_path)
+    calls: list[str] = []
+
+    def completed_run(self, project, chapter_id, *, gateway=None, budget=None):
+        calls.append(chapter_id)
+        return ChapterProductionRunStatus(
+            run_id="generation_example_revision_001",
+            chapter_id=chapter_id,
+            phase=ProductionRunPhase.AWAITING_AUTHOR,
+            lifecycle=ChapterLifecycle.REVIEW,
+        )
+
+    monkeypatch.setattr(
+        "living_narrative.book.production_queue.ChapterProductionRunner.run",
+        completed_run,
+    )
+    queue = DurableProductionQueue()
+    queue.enqueue(project_yaml, "chapter_001")
+    controller = ProductionAdmissionController(
+        tmp_path / "scheduler",
+        policy=ProductionAdmissionPolicy(max_active_deliveries=1),
+    )
+    blocker = controller.try_admit(
+        ProductionAdmissionRequest(
+            book_id="book-other",
+            provider_profile_id="provider-a/fiction",
+        )
+    )
+    assert blocker.lease is not None
+    worker = DurableProductionWorker(
+        queue,
+        admission_controller=controller,
+        admission_request=lambda project: ProductionAdmissionRequest(
+            book_id="book-current",
+            provider_profile_id="provider-a/fiction",
+        ),
+    )
+
+    deferred = worker.run_once(project_yaml, worker_id="worker-alpha")
+
+    assert deferred.claimed is False
+    assert calls == []
+    assert queue.status(project_yaml, "chapter_001").state is QueueJobState.QUEUED
+
+    controller.release(blocker.lease)
+    completed = worker.run_once(project_yaml, worker_id="worker-alpha")
+
+    assert completed.claimed is True
+    assert calls == ["chapter_001"]
+
+
+def test_worker_loads_opt_in_project_admission_policy_without_manual_injection(
+    tmp_path, monkeypatch
+):
+    project_yaml = _project(tmp_path)
+    (project_yaml.parent / "production_admission.yaml").write_text(
+        "scheduler_root: ../shared-scheduler\nmax_active_deliveries: 1\n",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    def completed_run(self, project, chapter_id, *, gateway=None, budget=None):
+        calls.append(chapter_id)
+        return ChapterProductionRunStatus(
+            run_id="generation_example_revision_001",
+            chapter_id=chapter_id,
+            phase=ProductionRunPhase.AWAITING_AUTHOR,
+            lifecycle=ChapterLifecycle.REVIEW,
+        )
+
+    monkeypatch.setattr(
+        "living_narrative.book.production_queue.ChapterProductionRunner.run",
+        completed_run,
+    )
+    queue = DurableProductionQueue()
+    queue.enqueue(project_yaml, "chapter_001")
+    configured = load_project_production_admission(project_yaml)
+    assert configured is not None
+    blocker = configured.controller.try_admit(configured.request_for(project_yaml))
+    assert blocker.lease is not None
+
+    worker = DurableProductionWorker(queue)
+    deferred = worker.run_once(project_yaml, worker_id="worker-alpha")
+
+    assert deferred.claimed is False
+    assert calls == []
+    assert queue.status(project_yaml, "chapter_001").state is QueueJobState.QUEUED
+
+    configured.controller.release(blocker.lease)
+    completed = worker.run_once(project_yaml, worker_id="worker-alpha")
+
+    assert completed.claimed is True
+    assert calls == ["chapter_001"]
 
 
 def test_queue_reenqueues_a_failed_delivery_with_the_same_job_id_for_safe_runner_resume(
@@ -384,3 +486,36 @@ def test_operational_metrics_excludes_private_execution_data(tmp_path):
     )
     for forbidden in forbidden_values:
         assert forbidden not in rendered
+
+
+def test_worker_releases_project_admission_after_runner_failure(tmp_path, monkeypatch):
+    import pytest
+
+    project_yaml = _project(tmp_path)
+    (project_yaml.parent / "production_admission.yaml").write_text(
+        "scheduler_root: ../shared-scheduler\nmax_active_deliveries: 1\n",
+        encoding="utf-8",
+    )
+
+    def timeout_run(self, project, chapter_id, *, gateway=None, budget=None):
+        raise TimeoutError("provider timeout")
+
+    monkeypatch.setattr(
+        "living_narrative.book.production_queue.ChapterProductionRunner.run",
+        timeout_run,
+    )
+    queue = DurableProductionQueue()
+    queue.enqueue(project_yaml, "chapter_001")
+
+    with pytest.raises(TimeoutError):
+        DurableProductionWorker(queue).run_once(project_yaml, worker_id="worker-alpha")
+
+    configured = load_project_production_admission(project_yaml)
+    assert configured is not None
+    replacement = configured.controller.try_admit(
+        ProductionAdmissionRequest(
+            book_id="book-other",
+            provider_profile_id="provider-a/fiction",
+        )
+    )
+    assert replacement.allowed is True
