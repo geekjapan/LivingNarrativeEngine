@@ -39,6 +39,13 @@ scene_summary のみ。
 - 1〜3段落の日本語のみ(固有名詞を除く)。箇条書き・見出し・\
 メタ言及(「ターン」「イベント」等)を書かない。
 
+## 本文量と局所的な進行
+- narration_target_characters が渡された場合、その文字数を目標にする。これはhard maxではない。
+- 読者可視情報だけを根拠に、before/after（ターン前の状況からターン後の状況）への因果を明確にする。
+- action_outcome や reader_visible_events を、行動・知覚・反応・場面変化として描き、\
+同じ状況の反復で終えない。
+- 目標文字数を満たすために、新しい事実・内心・隠し設定を作らない。
+
 ## 未回収の糸(伏線)
 - open_threads に、この物語でまだ回収されていない謎・伏線の一覧(id / description / origin / \
 turns_open=経過ターン数)が渡される。origin は narrator(語り手起源)または authored(作者起源)。
@@ -112,6 +119,10 @@ def _narrator_payload(
         "open_quests": [quest.model_dump(mode="json") for quest in context.open_quests],
         "memory_summary": context.memory_summary,
     }
+    if project.narrative_quality.enabled:
+        payload["narration_target_characters"] = (
+            project.narrative_quality.target_narration_characters
+        )
     # 015: summary_request is only present on turns where a memory summary is due — its
     # absence is the signal to the narrator to leave memory_summary_update null.
     if context.memory_summary_due:

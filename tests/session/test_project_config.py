@@ -55,3 +55,36 @@ def test_player_character_requires_player_char_id():
 def test_player_char_id_is_rejected_for_other_modes():
     with pytest.raises(ValidationError, match="only valid"):
         ProjectConfig.model_validate(_project(player_char_id="char_001"))
+
+
+def test_narrative_quality_defaults_disabled_and_loads_opt_in_thresholds():
+    default_config = ProjectConfig.model_validate(_project())
+    configured = ProjectConfig.model_validate(
+        _project(
+            narrative_quality={
+                "enabled": True,
+                "minimum_narration_characters": 1200,
+                "maximum_consecutive_stall_turns": 2,
+                "target_narration_characters": 1600,
+            }
+        )
+    )
+
+    assert default_config.narrative_quality.enabled is False
+    assert configured.narrative_quality.enabled is True
+    assert configured.narrative_quality.minimum_narration_characters == 1200
+    assert configured.narrative_quality.maximum_consecutive_stall_turns == 2
+    assert configured.narrative_quality.target_narration_characters == 1600
+
+
+def test_narrative_quality_rejects_target_shorter_than_minimum():
+    with pytest.raises(ValidationError, match="target_narration_characters"):
+        ProjectConfig.model_validate(
+            _project(
+                narrative_quality={
+                    "enabled": True,
+                    "minimum_narration_characters": 1200,
+                    "target_narration_characters": 1199,
+                }
+            )
+        )

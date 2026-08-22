@@ -94,6 +94,23 @@ class StopConditionConfig(BaseModel):
     threshold: int | None = None
 
 
+class NarrativeQualityConfig(BaseModel):
+    """Opt-in reader-safe mechanical thresholds for author review candidates."""
+
+    enabled: bool = False
+    minimum_narration_characters: int = Field(default=1200, ge=1)
+    maximum_consecutive_stall_turns: int | None = Field(default=2, ge=0)
+    target_narration_characters: int = Field(default=1600, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_target_length(self) -> "NarrativeQualityConfig":
+        if self.target_narration_characters < self.minimum_narration_characters:
+            raise ValueError(
+                "target_narration_characters must be at least minimum_narration_characters"
+            )
+        return self
+
+
 class ProjectConfig(BaseModel):
     model_config = {"extra": "allow"}
 
@@ -112,6 +129,7 @@ class ProjectConfig(BaseModel):
     llm_profiles: dict[str, LLMConfig] = Field(default_factory=dict)
     llm_bindings: dict[str, str] = Field(default_factory=dict)
     stop_conditions: dict[str, StopConditionConfig] = Field(default_factory=dict)
+    narrative_quality: NarrativeQualityConfig = Field(default_factory=NarrativeQualityConfig)
     player_char_id: str | None = None
     plugins: list[str] = Field(default_factory=list)
 
