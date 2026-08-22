@@ -176,6 +176,17 @@ validation = validate_real_llm_benchmark_artifact(
 assert validation.passed, validation.reason_codes
 ```
 
+CLI-firstのrelease候補確認では、同じvalidatorを次のように実行する。`--json` outputは
+release checklistへ転記するためのreader-safe summaryであり、artifact本文やpathを含まない。exit
+statusはPASSで`0`、validation FAILで`1`、入力不足で`2`である。
+
+```bash
+NO_COLOR=1 uv run living-narrative release verify-real-llm-evidence \
+  --artifact "$RUN_DIR/benchmark.json" \
+  --expected-revision "$(git rev-parse HEAD)" \
+  --json
+```
+
 ## 4. Markdownへ転記する
 
 Markdownは`docs/evaluations/YYYY-MM-DD-<run-id>-benchmark.md`として保存し、

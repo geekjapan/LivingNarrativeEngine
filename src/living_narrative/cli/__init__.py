@@ -14,6 +14,7 @@ from living_narrative.cli import doctor as _doctor
 from living_narrative.cli import export as _export
 from living_narrative.cli import init as _init
 from living_narrative.cli import metrics as _metrics
+from living_narrative.cli import release as _release
 from living_narrative.cli import review as _review
 from living_narrative.cli import rollback as _rollback
 from living_narrative.cli import serve as _serve
@@ -40,6 +41,7 @@ app.command("backup")(_backup.backup)
 app.command("restore")(_backup.restore)
 app.add_typer(_book.app, name="book")
 app.add_typer(_export.app, name="export")
+app.add_typer(_release.app, name="release")
 
 __all__ = ["app"]
 
